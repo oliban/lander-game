@@ -63,8 +63,8 @@ export class UIScene extends Phaser.Scene {
     this.createGearIndicator();
     this.createTimer();
     this.createScoreCounter();
-    this.createMedalIndicator();
     this.createInventoryDisplay();
+    this.createMedalIndicator(); // Create after inventory so it's on top
     this.createProgressBar();
     this.createControlsHint();
 
@@ -196,7 +196,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createInventoryDisplay(): void {
-    this.inventoryContainer = this.add.container(GAME_WIDTH - 90, 100);
+    // Position below timer (40), score (25), and medal indicator (24) with padding
+    this.inventoryContainer = this.add.container(GAME_WIDTH - 90, 120);
 
     // Background panel will be redrawn dynamically based on content
     const bg = this.add.graphics();
@@ -213,19 +214,30 @@ export class UIScene extends Phaser.Scene {
     this.inventoryContainer.add(title);
   }
 
-  // Short abbreviations for item display
-  private getItemAbbrev(type: string): string {
-    const abbrevs: Record<string, string> = {
-      'COVFEFE': 'COV',
-      'BRIBE': 'BRB',
-      'PEACE_MEDAL': '🏅',
-      'BURGER': '🍔',
-      'HAMBERDER': '🍔',
-      'DIET_COKE': '🥤',
-      'TRUMP_STEAK': '🥩',
-      'VODKA': '🍸',
+  // Full display names for items
+  private getItemDisplayName(type: string): string {
+    const names: Record<string, string> = {
+      'COVFEFE': 'Covfefe',
+      'BRIBE': 'Bribe',
+      'PEACE_MEDAL': 'Peace Medal',
+      'BURGER': 'Burger',
+      'HAMBERDER': 'Hamberder',
+      'DIET_COKE': 'Diet Coke',
+      'TRUMP_STEAK': 'Trump Steak',
+      'VODKA': 'Vodka',
+      'CASINO_CHIP': 'Casino Chip',
+      'GOLF_BALL': 'Golf Ball',
+      'MATRYOSHKA': 'Matryoshka',
+      'CAVIAR': 'Caviar',
+      'EXECUTIVE_TIME': 'Exec Time',
     };
-    return abbrevs[type] || type.substring(0, 3);
+    // Convert SNAKE_CASE to Title Case if not in map
+    if (!names[type]) {
+      return type.split('_').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
+    }
+    return names[type];
   }
 
   private updateInventoryDisplay(items: InventoryItem[]): void {
@@ -239,21 +251,15 @@ export class UIScene extends Phaser.Scene {
     const contrabandItems = items.filter(item => item.count > 0 && BOMB_DROPPABLE_TYPES.includes(item.type));
 
     let yOffset = 18;
-    const panelWidth = 160;
-    const colWidth = 75;
+    const panelWidth = 140;
 
-    // Regular cargo items - 2 column grid
+    // Regular cargo items - single column with full names
     if (regularItems.length > 0) {
       for (let i = 0; i < regularItems.length; i++) {
         const item = regularItems[i];
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const xPos = col === 0 ? -colWidth / 2 - 5 : colWidth / 2 - 5;
-        const yPos = yOffset + row * 18;
-
         const colorHex = '#' + item.color.toString(16).padStart(6, '0');
-        const abbrev = this.getItemAbbrev(item.type);
-        const text = this.add.text(xPos, yPos, `${abbrev}×${item.count}`, {
+        const name = this.getItemDisplayName(item.type);
+        const text = this.add.text(0, yOffset, `${name} ×${item.count}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '11px',
           color: colorHex,
@@ -261,11 +267,12 @@ export class UIScene extends Phaser.Scene {
         });
         text.setOrigin(0.5, 0);
         this.inventoryContainer.add(text);
+        yOffset += 16;
       }
-      yOffset += Math.ceil(regularItems.length / 2) * 18 + 4;
+      yOffset += 2;
     }
 
-    // Contrabands section - more compact with emoji grid
+    // Contrabands section - single column
     if (contrabandItems.length > 0) {
       // Separator line
       const sep = this.add.graphics();
@@ -285,16 +292,11 @@ export class UIScene extends Phaser.Scene {
       this.inventoryContainer.add(contrabandHeader);
       yOffset += 14;
 
-      // Contraband items in 2-column grid
+      // Contraband items in single column
       for (let i = 0; i < contrabandItems.length; i++) {
         const item = contrabandItems[i];
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const xPos = col === 0 ? -colWidth / 2 - 5 : colWidth / 2 - 5;
-        const yPos = yOffset + row * 18;
-
-        const abbrev = this.getItemAbbrev(item.type);
-        const text = this.add.text(xPos, yPos, `${abbrev}×${item.count}`, {
+        const name = this.getItemDisplayName(item.type);
+        const text = this.add.text(0, yOffset, `${name} ×${item.count}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '11px',
           color: '#CC3333',
@@ -302,11 +304,12 @@ export class UIScene extends Phaser.Scene {
         });
         text.setOrigin(0.5, 0);
         this.inventoryContainer.add(text);
+        yOffset += 16;
       }
-      yOffset += Math.ceil(contrabandItems.length / 2) * 18 + 2;
+      yOffset += 2;
     }
 
-    // Total fuel value - compact
+    // Total fuel value
     const totalValue = this.inventorySystem.getTotalFuelValue();
     if (totalValue > 0) {
       const totalText = this.add.text(0, yOffset, `⛽ ${totalValue}`, {
@@ -564,6 +567,7 @@ export class UIScene extends Phaser.Scene {
     // Medal indicator (hidden by default, shows when medal is acquired)
     this.medalIndicator = this.add.container(GAME_WIDTH - 60, 92);
     this.medalIndicator.setVisible(false);
+    this.medalIndicator.setDepth(100); // Ensure it's always on top
 
     // Background
     const bg = this.add.graphics();
@@ -574,7 +578,7 @@ export class UIScene extends Phaser.Scene {
     this.medalIndicator.add(bg);
 
     // Text
-    const text = this.add.text(0, 0, 'PEACE MEDAL', {
+    const text = this.add.text(0, 0, '🏅 PEACE MEDAL', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '11px',
       color: '#333333',

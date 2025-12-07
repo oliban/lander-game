@@ -96,7 +96,8 @@ export class Collectible extends Phaser.GameObjects.Container {
     }
 
     // Popup text - show item name when collected
-    let popupMessage = typeData.name;
+    const typeDataWithMystery = typeData as { name: string; mystery?: boolean };
+    let popupMessage = typeDataWithMystery.name;
     let fontSize = '22px';
     if (this.special === 'bribe_cannons') {
       popupMessage = 'BRIBERY!';
@@ -104,6 +105,9 @@ export class Collectible extends Phaser.GameObjects.Container {
     } else if (this.special === 'speed_boost') {
       popupMessage = 'EXECUTIVE TIME!';
       fontSize = '28px';
+    } else if (typeDataWithMystery.mystery) {
+      popupMessage = '??? Mystery!';
+      fontSize = '24px';
     }
 
     const popupText = this.collectibleScene.add.text(this.x, this.y - 30, popupMessage, {

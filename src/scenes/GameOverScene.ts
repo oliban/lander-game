@@ -11,6 +11,7 @@ interface GameOverData {
   fuelRemaining?: number;
   hasPeaceMedal?: boolean;
   skipHighScoreCheck?: boolean;
+  debugModeUsed?: boolean;
 }
 
 interface HighScoreEntry {
@@ -159,10 +160,15 @@ export class GameOverScene extends Phaser.Scene {
     const finalScore = scoreDetails.total + (data.score || 0); // Add destruction score
     this.currentScore = finalScore;
 
-    // Check if this is a high score
-    const highScoreCheck = this.isHighScore(finalScore);
-    this.isNewHighScore = highScoreCheck.isHigh;
-    this.highScoreRank = highScoreCheck.rank;
+    // Check if this is a high score (skip if debug mode was used)
+    if (data.debugModeUsed) {
+      this.isNewHighScore = false;
+      this.highScoreRank = -1;
+    } else {
+      const highScoreCheck = this.isHighScore(finalScore);
+      this.isNewHighScore = highScoreCheck.isHigh;
+      this.highScoreRank = highScoreCheck.rank;
+    }
 
     // Title with shadow (cartoon style)
     const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 53, 'MISSION COMPLETE!', {
@@ -262,15 +268,15 @@ export class GameOverScene extends Phaser.Scene {
 
     yPos += 10;
 
-    // Peace Medal bonus (if applicable)
-    if (scoreDetails.peaceMedalBonus > 0) {
+    // Peace Medal bonus (if applicable) - worth 5000 points
+    if (data.hasPeaceMedal) {
       this.add.text(GAME_WIDTH / 2 - 200, yPos, '🏅 PEACE MEDAL DELIVERED!', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '16px',
         color: '#FFD700',
         fontStyle: 'bold',
       });
-      this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${scoreDetails.peaceMedalBonus} pts`, {
+      this.add.text(GAME_WIDTH / 2 + 150, yPos, '+5000 pts', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '16px',
         color: '#FFD700',
@@ -393,8 +399,8 @@ export class GameOverScene extends Phaser.Scene {
       }
     }
 
-    // HUGE bonus for delivering the Peace Medal
-    const peaceMedalBonus = data.hasPeaceMedal ? 10000 : 0;
+    // Peace Medal bonus is already added to destruction score in GameScene (5000 points)
+    const peaceMedalBonus = 0;
 
     return {
       timeBonus,
@@ -426,8 +432,8 @@ export class GameOverScene extends Phaser.Scene {
     const score = data.score || 0;
     this.currentScore = score;
 
-    // Check if this is a high score (skip if we just saved)
-    if (data.skipHighScoreCheck) {
+    // Check if this is a high score (skip if we just saved or debug mode was used)
+    if (data.skipHighScoreCheck || data.debugModeUsed) {
       this.isNewHighScore = false;
       this.highScoreRank = -1;
     } else {
@@ -617,23 +623,23 @@ export class GameOverScene extends Phaser.Scene {
     this.nameEntryActive = true;
     this.playerName = '';
 
-    // Background panel
+    // Background panel - taller to fit everything
     const panel = this.add.graphics();
     panel.fillStyle(0x2F4F4F, 0.95);
-    panel.fillRoundedRect(x - 200, y, 400, 180, 12);
+    panel.fillRoundedRect(x - 180, y, 360, 220, 12);
     panel.lineStyle(3, 0xFFD700);
-    panel.strokeRoundedRect(x - 200, y, 400, 180, 12);
+    panel.strokeRoundedRect(x - 180, y, 360, 220, 12);
 
     // Title
-    this.add.text(x, y + 20, '🏆 NEW HIGH SCORE! 🏆', {
+    this.add.text(x, y + 18, '🏆 NEW HIGH SCORE! 🏆', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '22px',
+      fontSize: '20px',
       color: '#FFD700',
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
     // Instruction
-    this.add.text(x, y + 50, 'Enter your name:', {
+    this.add.text(x, y + 48, 'Enter your name:', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '14px',
       color: '#FFFFFF',
@@ -642,12 +648,12 @@ export class GameOverScene extends Phaser.Scene {
     // Name input field background
     const inputBg = this.add.graphics();
     inputBg.fillStyle(0xFFFFFF, 1);
-    inputBg.fillRoundedRect(x - 100, y + 70, 200, 35, 6);
+    inputBg.fillRoundedRect(x - 100, y + 68, 200, 35, 6);
     inputBg.lineStyle(2, 0x333333);
-    inputBg.strokeRoundedRect(x - 100, y + 70, 200, 35, 6);
+    inputBg.strokeRoundedRect(x - 100, y + 68, 200, 35, 6);
 
     // Name input text
-    this.nameInputText = this.add.text(x, y + 87, '|', {
+    this.nameInputText = this.add.text(x, y + 85, '|', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '18px',
       color: '#333333',
@@ -669,46 +675,51 @@ export class GameOverScene extends Phaser.Scene {
       loop: true,
     });
 
-    // Suggested names - show 5 random ones
-    const shuffled = [...SUGGESTED_NAMES].sort(() => Math.random() - 0.5);
-    const suggestions = shuffled.slice(0, 5);
-    const chipStartX = x - 180;
+    // Suggested names - show 4 random short ones to fit
+    const shortNames = SUGGESTED_NAMES.filter(n => n.length <= 10);
+    const shuffled = [...shortNames].sort(() => Math.random() - 0.5);
+    const suggestions = shuffled.slice(0, 4);
 
-    this.add.text(x, y + 115, 'Quick picks:', {
+    this.add.text(x, y + 112, 'Quick picks:', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '11px',
       color: '#AAAAAA',
     }).setOrigin(0.5, 0);
 
-    let chipX = chipStartX;
-    for (const name of suggestions) {
-      const chipWidth = Math.max(60, name.length * 8 + 16);
-      const chip = this.add.container(chipX + chipWidth / 2, y + 145);
+    // Calculate total width of chips to center them
+    const chipWidths = suggestions.map(name => Math.max(55, name.length * 7 + 14));
+    const totalChipsWidth = chipWidths.reduce((sum, w) => sum + w, 0) + (suggestions.length - 1) * 6;
+    let chipX = x - totalChipsWidth / 2;
+
+    for (let i = 0; i < suggestions.length; i++) {
+      const name = suggestions[i];
+      const chipWidth = chipWidths[i];
+      const chip = this.add.container(chipX + chipWidth / 2, y + 138);
 
       const chipBg = this.add.graphics();
       chipBg.fillStyle(0x4169E1, 1);
-      chipBg.fillRoundedRect(-chipWidth / 2, -12, chipWidth, 24, 12);
+      chipBg.fillRoundedRect(-chipWidth / 2, -11, chipWidth, 22, 11);
 
       const chipText = this.add.text(0, 0, name, {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '11px',
+        fontSize: '10px',
         color: '#FFFFFF',
       });
       chipText.setOrigin(0.5, 0.5);
 
       chip.add([chipBg, chipText]);
-      chip.setInteractive(new Phaser.Geom.Rectangle(-chipWidth / 2, -12, chipWidth, 24), Phaser.Geom.Rectangle.Contains);
+      chip.setInteractive(new Phaser.Geom.Rectangle(-chipWidth / 2, -11, chipWidth, 22), Phaser.Geom.Rectangle.Contains);
 
       chip.on('pointerover', () => {
         chipBg.clear();
         chipBg.fillStyle(0x6495ED, 1);
-        chipBg.fillRoundedRect(-chipWidth / 2, -12, chipWidth, 24, 12);
+        chipBg.fillRoundedRect(-chipWidth / 2, -11, chipWidth, 22, 11);
       });
 
       chip.on('pointerout', () => {
         chipBg.clear();
         chipBg.fillStyle(0x4169E1, 1);
-        chipBg.fillRoundedRect(-chipWidth / 2, -12, chipWidth, 24, 12);
+        chipBg.fillRoundedRect(-chipWidth / 2, -11, chipWidth, 22, 11);
       });
 
       chip.on('pointerdown', () => {
@@ -716,7 +727,7 @@ export class GameOverScene extends Phaser.Scene {
         this.nameInputText.setText(name + '|');
       });
 
-      chipX += chipWidth + 8;
+      chipX += chipWidth + 6;
     }
 
     // Keyboard input
@@ -734,8 +745,8 @@ export class GameOverScene extends Phaser.Scene {
       }
     });
 
-    // Save button - positioned inside the panel
-    const saveBtn = this.add.container(x, y + 160);
+    // Save button - positioned inside the panel (panel is 220px tall)
+    const saveBtn = this.add.container(x, y + 185);
 
     const saveBtnBg = this.add.graphics();
     saveBtnBg.fillStyle(0x32CD32, 1);

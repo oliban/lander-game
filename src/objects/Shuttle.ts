@@ -19,6 +19,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private legsKey: Phaser.Input.Keyboard.Key | null = null;
   private debugKey: Phaser.Input.Keyboard.Key | null = null;
   private debugMode: boolean = false;
+  private debugModeUsed: boolean = false; // Track if debug was ever used this game
   private debugLabel: Phaser.GameObjects.Text | null = null;
   private thrustMultiplier: number = 1.0; // For speed boost power-up
 
@@ -88,6 +89,9 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Toggle debug mode with D key
     if (this.debugKey && Phaser.Input.Keyboard.JustDown(this.debugKey)) {
       this.debugMode = !this.debugMode;
+      if (this.debugMode) {
+        this.debugModeUsed = true; // Once used, always marked
+      }
       if (this.debugLabel) {
         this.debugLabel.setVisible(this.debugMode);
       }
@@ -211,6 +215,10 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       y: vy,
       total: Math.sqrt(vx * vx + vy * vy),
     };
+  }
+
+  wasDebugModeUsed(): boolean {
+    return this.debugModeUsed;
   }
 
   checkLandingSafety(): { safe: boolean; quality: 'perfect' | 'good' | 'crash'; reason?: string } {

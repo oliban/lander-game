@@ -71,6 +71,13 @@ export class GameScene extends Phaser.Scene {
     this.gameState = 'playing';
     this.gameStartTime = this.time.now;
 
+    // Reset all game object arrays (Phaser may reuse scene instances)
+    this.landingPads = [];
+    this.cannons = [];
+    this.collectibles = [];
+    this.decorations = [];
+    this.bombs = [];
+
     // Initialize systems
     this.fuelSystem = new FuelSystem();
     this.inventorySystem = new InventorySystem();
@@ -433,6 +440,7 @@ export class GameScene extends Phaser.Scene {
           victory: false,
           message: 'You splashed into the Atlantic Ocean!',
           score: this.destructionScore,
+          debugModeUsed: this.shuttle.wasDebugModeUsed(),
         });
       });
       return;
@@ -459,6 +467,7 @@ export class GameScene extends Phaser.Scene {
         victory: false,
         message: 'You crashed into the terrain!',
         score: this.destructionScore,
+        debugModeUsed: this.shuttle.wasDebugModeUsed(),
       });
     });
   }
@@ -518,6 +527,7 @@ export class GameScene extends Phaser.Scene {
           victory: false,
           message: `Crash landing! ${landingResult.reason}`,
           score: this.destructionScore,
+          debugModeUsed: this.shuttle.wasDebugModeUsed(),
         });
       });
       return;
@@ -535,10 +545,19 @@ export class GameScene extends Phaser.Scene {
       const elapsedTime = this.getElapsedTime();
       const inventory = this.inventorySystem.getAllItems();
 
+      // Add peace medal bonus to score (5000 points!)
+      if (this.hasPeaceMedal) {
+        this.destructionScore += 5000;
+        this.events.emit('destructionScore', this.destructionScore);
+      }
+
       // Special message if carrying peace medal
       const victoryMessage = this.hasPeaceMedal
         ? "You've delivered the PEACE MEDAL to Putino! He is tremendously pleased!"
         : "You've reached Putino's Palace! Peace delivered!";
+
+      // Check if debug mode was used (disqualifies from high score)
+      const debugModeUsed = this.shuttle.wasDebugModeUsed();
 
       this.time.delayedCall(1500, () => {
         this.scene.stop('UIScene');
@@ -550,6 +569,8 @@ export class GameScene extends Phaser.Scene {
           inventory: inventory,
           fuelRemaining: this.fuelSystem.getFuel(),
           hasPeaceMedal: this.hasPeaceMedal,
+          score: this.destructionScore,
+          debugModeUsed: debugModeUsed,
         });
       });
     } else if (pad.isWashington && !this.hasPeaceMedal) {
@@ -792,23 +813,66 @@ export class GameScene extends Phaser.Scene {
     this.peaceMedalGraphics.fillCircle(medalX - 4, medalY - 1, 2);
   }
 
-  private handleProjectileHit(): void {
+  private handleProjectileHit(projectileSpriteKey?: string): void {
     if (this.gameState !== 'playing') return;
     if (this.cannonsBribed) return; // Bribed cannons shoot dollar signs - they don't hurt!
 
-    console.log('CRASH: Hit by projectile at', { x: this.shuttle.x, y: this.shuttle.y });
+    console.log('CRASH: Hit by projectile at', { x: this.shuttle.x, y: this.shuttle.y }, 'type:', projectileSpriteKey);
 
     this.gameState = 'crashed';
     this.shuttle.explode();
+
+    // Generate death message based on projectile type
+    const message = this.getProjectileDeathMessage(projectileSpriteKey);
 
     this.time.delayedCall(500, () => {
       this.scene.stop('UIScene');
       this.scene.start('GameOverScene', {
         victory: false,
-        message: 'Shot down by enemy cannons!',
+        message: message,
         score: this.destructionScore,
+        debugModeUsed: this.shuttle.wasDebugModeUsed(),
       });
     });
+  }
+
+  private getProjectileDeathMessage(spriteKey?: string): string {
+    // Map sprite keys to friendly names
+    const projectileNames: { [key: string]: string } = {
+      'teacup': 'a flying teacup',
+      'doubledecker': 'a double-decker bus',
+      'blackcab': 'a black cab',
+      'guardhat': 'a royal guard hat',
+      'baguette': 'a baguette',
+      'wine': 'a wine bottle',
+      'croissant': 'a croissant',
+      'pretzel': 'a pretzel',
+      'beer': 'a beer stein',
+      'pierogi': 'a pierogi',
+      'pottery': 'Polish pottery',
+      'proj_matryoshka': 'a matryoshka doll',
+      'balalaika': 'a balalaika',
+      'borscht': 'a bowl of borscht',
+      'samovar': 'a samovar',
+      'cannonball': 'a cannonball',
+    };
+
+    // USA arms dealer quips
+    const usaQuips = [
+      'Probably made in USA.',
+      'That weapon was likely sold by an American arms dealer.',
+      'Made with American military-industrial love.',
+      'USA: Making war profitable since 1776.',
+      'Another satisfied customer of US defense contractors!',
+      'Lockheed Martin sends their regards.',
+      '"Peace through superior firepower" - USA',
+      'Sponsored by the Pentagon.',
+    ];
+
+    const projectileName = spriteKey ? (projectileNames[spriteKey] || 'something weird') : 'enemy fire';
+    const quip = usaQuips[Math.floor(Math.random() * usaQuips.length)];
+
+    return `Taken out by ${projectileName}! ${quip}`;
   }
 
   private handleCollectiblePickup(collectible: Collectible): void {
@@ -1365,6 +1429,7 @@ export class GameScene extends Phaser.Scene {
         victory: false,
         message: message,
         score: this.destructionScore,
+        debugModeUsed: this.shuttle.wasDebugModeUsed(),
       });
     });
   }
@@ -1418,7 +1483,7 @@ export class GameScene extends Phaser.Scene {
           const dist = Math.sqrt(dx * dx + dy * dy);
 
           if (dist < 25) {
-            this.handleProjectileHit();
+            this.handleProjectileHit(projectile.getSpriteKey());
           }
         }
       }

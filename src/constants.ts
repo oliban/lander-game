@@ -58,7 +58,7 @@ export const COLLECTIBLE_TYPES = {
   TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 55, rarity: 0.05, color: 0x8B0000 },
 
   // Rare items
-  CASINO_CHIP: { name: 'Casino Chip', fuelValue: 75, rarity: 0.04, color: 0x9932CC },
+  CASINO_CHIP: { name: 'Casino Chip', fuelValue: 0, rarity: 0.04, color: 0x9932CC, mystery: true },
   MAGA_HAT: { name: 'MAGA Hat', fuelValue: 100, rarity: 0.03, color: 0xFF0000 },
   NFT: { name: 'NFT', fuelValue: 5, rarity: 0.04, color: 0xFF69B4 }, // Worthless but funny
   BITCOIN: { name: 'Bitcoin', fuelValue: 80, rarity: 0.03, color: 0xF7931A },

@@ -269,6 +269,10 @@ export class Projectile extends Phaser.GameObjects.Container {
     return this.matterBody;
   }
 
+  getSpriteKey(): string {
+    return this.spriteKey;
+  }
+
   destroy(): void {
     const matterScene = this.projectileScene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
     matterScene.matter.world.remove(this.matterBody);

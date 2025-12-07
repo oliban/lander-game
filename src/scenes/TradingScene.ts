@@ -317,7 +317,8 @@ export class TradingScene extends Phaser.Scene {
 
   private createItemSelectors(startY: number): void {
     const items = this.inventorySystem.getAllItems();
-    const displayItems = items.filter(item => item.count > 0 && item.fuelValue > 0);
+    // Include mystery items (casino chips) even with 0 fuelValue
+    const displayItems = items.filter(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery));
 
     const cols = 2;
     const spacing = 38;
@@ -356,14 +357,16 @@ export class TradingScene extends Phaser.Scene {
         fontStyle: 'bold',
       });
 
-      // Fuel value badge
+      // Fuel value badge - show "?" for mystery items
       const valueBadge = this.add.graphics();
-      valueBadge.fillStyle(0x228B22, 0.8);
+      const isMystery = item.isMystery;
+      valueBadge.fillStyle(isMystery ? 0x9932CC : 0x228B22, 0.8);
       valueBadge.fillRoundedRect(x + 105, y + 2, 40, 20, 4);
 
-      const valueText = this.add.text(x + 125, y + 12, `+${item.fuelValue}`, {
+      const valueDisplay = isMystery ? '?' : `+${item.fuelValue}`;
+      const valueText = this.add.text(x + 125, y + 12, valueDisplay, {
         fontFamily: 'Arial, sans-serif',
-        fontSize: '10px',
+        fontSize: isMystery ? '14px' : '10px',
         color: '#FFFFFF',
         fontStyle: 'bold',
       });
@@ -525,7 +528,12 @@ export class TradingScene extends Phaser.Scene {
   private calculateFuelGain(): number {
     let baseFuel = 0;
     for (const [type, count] of this.selectedItems) {
-      baseFuel += count * COLLECTIBLE_TYPES[type].fuelValue;
+      if (type === 'CASINO_CHIP' && count > 0) {
+        // Use actual random values for casino chips
+        baseFuel += this.inventorySystem.getCasinoChipTotalValue(count);
+      } else {
+        baseFuel += count * COLLECTIBLE_TYPES[type].fuelValue;
+      }
     }
     return Math.floor(baseFuel * this.landingBonus);
   }
@@ -564,7 +572,12 @@ export class TradingScene extends Phaser.Scene {
     let pointsLost = 0;
     for (const [type, count] of this.selectedItems) {
       if (count > 0) {
-        pointsLost += count * COLLECTIBLE_TYPES[type].fuelValue;
+        if (type === 'CASINO_CHIP') {
+          // Use actual random values for casino chips
+          pointsLost += this.inventorySystem.getCasinoChipTotalValue(count);
+        } else {
+          pointsLost += count * COLLECTIBLE_TYPES[type].fuelValue;
+        }
         this.inventorySystem.remove(type, count);
       }
     }
@@ -624,7 +637,7 @@ export class TradingScene extends Phaser.Scene {
 
   private hasItemsToTrade(): boolean {
     const items = this.inventorySystem.getAllItems();
-    return items.some(item => item.count > 0 && item.fuelValue > 0);
+    return items.some(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery));
   }
 
   private autoTrade(): void {
@@ -639,7 +652,7 @@ export class TradingScene extends Phaser.Scene {
       return;
     }
 
-    const hasItems = items.some(item => item.count > 0 && item.fuelValue > 0);
+    const hasItems = items.some(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery));
     if (!hasItems) {
       this.close();
       return;
@@ -650,19 +663,35 @@ export class TradingScene extends Phaser.Scene {
       this.selectedItems.set(item.type, 0);
     }
 
-    const sortedItems = [...items].filter(item => item.count > 0 && item.fuelValue > 0)
-      .sort((a, b) => a.fuelValue - b.fuelValue);
+    // Filter tradeable items, sort by value (mystery items go last since we don't know value)
+    const sortedItems = [...items].filter(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery))
+      .sort((a, b) => {
+        // Non-mystery items first, sorted by value
+        if (a.isMystery && !b.isMystery) return 1;
+        if (!a.isMystery && b.isMystery) return -1;
+        return a.fuelValue - b.fuelValue;
+      });
 
     let fuelGained = 0;
+    const casinoChipValues = this.inventorySystem.getCasinoChipValues();
+    let casinoChipIndex = 0;
 
     for (const item of sortedItems) {
       const available = item.count;
-      const valuePerItem = Math.floor(item.fuelValue * this.landingBonus);
 
       for (let i = 0; i < available; i++) {
         if (fuelGained >= fuelNeeded) break;
         const currentCount = this.selectedItems.get(item.type) || 0;
         this.selectedItems.set(item.type, currentCount + 1);
+
+        // Calculate value per item
+        let valuePerItem: number;
+        if (item.type === 'CASINO_CHIP') {
+          valuePerItem = Math.floor((casinoChipValues[casinoChipIndex] || 0) * this.landingBonus);
+          casinoChipIndex++;
+        } else {
+          valuePerItem = Math.floor(item.fuelValue * this.landingBonus);
+        }
         fuelGained += valuePerItem;
       }
 
