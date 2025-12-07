@@ -12,6 +12,7 @@ interface GameOverData {
   hasPeaceMedal?: boolean;
   skipHighScoreCheck?: boolean;
   debugModeUsed?: boolean;
+  noShake?: boolean;
 }
 
 interface HighScoreEntry {
@@ -459,8 +460,10 @@ export class GameOverScene extends Phaser.Scene {
     });
     title.setOrigin(0.5, 0.5);
 
-    // Shake effect
-    this.cameras.main.shake(500, 0.01);
+    // Shake effect (skip for water deaths)
+    if (!data.noShake) {
+      this.cameras.main.shake(500, 0.01);
+    }
 
     // Message
     const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {

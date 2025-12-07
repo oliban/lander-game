@@ -311,4 +311,11 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   setThrustMultiplier(multiplier: number): void {
     this.thrustMultiplier = multiplier;
   }
+
+  stopThrusters(): void {
+    this.isThrusting = false;
+    if (this.thrusterParticles) {
+      this.thrusterParticles.stop();
+    }
+  }
 }

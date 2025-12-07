@@ -424,25 +424,22 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Check if we're over the Atlantic Ocean - always crash in water!
+    // But NOT if we're near a landing pad
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
     const isOverWater = this.shuttle.x >= atlanticStart && this.shuttle.x < atlanticEnd;
 
-    if (isOverWater) {
+    // Check if near a landing pad (don't splash if on a pad)
+    const nearLandingPad = this.landingPads.some(pad => {
+      const horizontalDist = Math.abs(this.shuttle.x - pad.x);
+      return horizontalDist < pad.width / 2 + 30; // Some tolerance
+    });
+
+    if (isOverWater && !nearLandingPad) {
       console.log('CRASH: Splashed into the Atlantic Ocean at', { x: this.shuttle.x, y: this.shuttle.y });
 
       this.gameState = 'crashed';
-      this.shuttle.explode();
-
-      this.time.delayedCall(500, () => {
-        this.scene.stop('UIScene');
-        this.scene.start('GameOverScene', {
-          victory: false,
-          message: 'You splashed into the Atlantic Ocean!',
-          score: this.destructionScore,
-          debugModeUsed: this.shuttle.wasDebugModeUsed(),
-        });
-      });
+      this.handleWaterSplash();
       return;
     }
 
@@ -468,6 +465,189 @@ export class GameScene extends Phaser.Scene {
         message: 'You crashed into the terrain!',
         score: this.destructionScore,
         debugModeUsed: this.shuttle.wasDebugModeUsed(),
+      });
+    });
+  }
+
+  private handleWaterSplash(): void {
+    const splashX = this.shuttle.x;
+    const splashY = this.shuttle.y;
+    const waterLevel = this.terrain.getHeightAt(splashX);
+
+    // Capture velocity before stopping (for splash direction)
+    const velocity = this.shuttle.getVelocity();
+    const impactAngle = Math.atan2(-velocity.y, -velocity.x); // Opposite of travel direction
+    const impactSpeed = velocity.total;
+
+    // Stop shuttle physics and thrusters, make it sink
+    this.shuttle.setVelocity(0, 0);
+    this.shuttle.setAngularVelocity(0);
+    this.shuttle.setStatic(true);
+    this.shuttle.stopThrusters();
+
+    // Create water splash effect - splash goes opposite to direction ship came from!
+
+    // Main splash - large water droplets going in impact direction (opposite of travel)
+    for (let i = 0; i < 40; i++) {
+      // Spread around the impact angle with bias upward
+      const baseAngle = impactAngle * 0.5 - Math.PI / 2 * 0.5; // Blend impact angle with upward
+      const angle = baseAngle + (Math.random() - 0.5) * 1.2;
+      const speed = 6 + Math.random() * 12 + impactSpeed * 0.5;
+      const droplet = this.add.graphics();
+      droplet.fillStyle(0x4169E1, 0.8); // Royal blue water
+      droplet.fillCircle(0, 0, 4 + Math.random() * 8);
+      droplet.setPosition(splashX + (Math.random() - 0.5) * 50, waterLevel);
+      droplet.setDepth(101);
+
+      this.tweens.add({
+        targets: droplet,
+        x: droplet.x + Math.cos(angle) * speed * 18,
+        y: droplet.y + Math.sin(angle) * speed * 20 + 70, // Gravity pulls down
+        alpha: 0,
+        scale: 0.3,
+        duration: 900 + Math.random() * 600,
+        ease: 'Quad.easeOut',
+        onComplete: () => droplet.destroy(),
+      });
+    }
+
+    // Secondary spray - smaller droplets more in impact direction
+    for (let i = 0; i < 30; i++) {
+      const baseAngle = impactAngle * 0.7 - Math.PI / 2 * 0.3; // More toward impact direction
+      const angle = baseAngle + (Math.random() - 0.5) * 0.8;
+      const speed = 10 + Math.random() * 15 + impactSpeed * 0.3;
+      const droplet = this.add.graphics();
+      droplet.fillStyle(0x87CEEB, 0.7); // Lighter blue
+      droplet.fillCircle(0, 0, 2 + Math.random() * 4);
+      droplet.setPosition(splashX + (Math.random() - 0.5) * 30, waterLevel);
+      droplet.setDepth(102);
+
+      this.tweens.add({
+        targets: droplet,
+        x: droplet.x + Math.cos(angle) * speed * 12,
+        y: droplet.y + Math.sin(angle) * speed * 18 + 90,
+        alpha: 0,
+        scale: 0.2,
+        duration: 1100 + Math.random() * 500,
+        ease: 'Quad.easeOut',
+        onComplete: () => droplet.destroy(),
+      });
+    }
+
+    // Big splash column - offset in impact direction
+    const columnOffsetX = Math.cos(impactAngle) * 20;
+    for (let i = 0; i < 20; i++) {
+      const columnDrop = this.add.graphics();
+      columnDrop.fillStyle(0xADD8E6, 0.9);
+      columnDrop.fillEllipse(0, 0, 8 + Math.random() * 6, 18 + Math.random() * 12);
+      columnDrop.setPosition(splashX + columnOffsetX + (Math.random() - 0.5) * 35, waterLevel);
+      columnDrop.setDepth(103);
+
+      this.tweens.add({
+        targets: columnDrop,
+        y: waterLevel - 100 - Math.random() * 120,
+        x: columnDrop.x + Math.cos(impactAngle) * 30,
+        alpha: 0,
+        scaleY: 2.5,
+        duration: 600 + Math.random() * 400,
+        ease: 'Quad.easeOut',
+        onComplete: () => columnDrop.destroy(),
+      });
+    }
+
+    // Splash rings expanding outward on water surface
+    for (let i = 0; i < 5; i++) {
+      const ring = this.add.graphics();
+      ring.lineStyle(4 - i * 0.5, 0x87CEEB, 0.8);
+      ring.strokeCircle(splashX, waterLevel, 15);
+      ring.setDepth(99);
+
+      this.tweens.add({
+        targets: ring,
+        scaleX: 5 + i * 2,
+        scaleY: 0.4,
+        alpha: 0,
+        duration: 1000 + i * 300,
+        delay: i * 100,
+        ease: 'Quad.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+    }
+
+    // Big white foam splash
+    const foam = this.add.graphics();
+    foam.fillStyle(0xFFFFFF, 0.95);
+    foam.fillEllipse(splashX, waterLevel, 100, 35);
+    foam.setDepth(100);
+
+    this.tweens.add({
+      targets: foam,
+      scaleX: 3,
+      scaleY: 0.4,
+      alpha: 0,
+      duration: 700,
+      ease: 'Quad.easeOut',
+      onComplete: () => foam.destroy(),
+    });
+
+    // Secondary foam burst
+    const foam2 = this.add.graphics();
+    foam2.fillStyle(0xE0FFFF, 0.8);
+    foam2.fillEllipse(splashX, waterLevel - 10, 70, 25);
+    foam2.setDepth(100);
+
+    this.tweens.add({
+      targets: foam2,
+      scaleX: 2.5,
+      y: waterLevel - 30,
+      alpha: 0,
+      duration: 500,
+      ease: 'Quad.easeOut',
+      onComplete: () => foam2.destroy(),
+    });
+
+    // Animate shuttle sinking deeper
+    this.tweens.add({
+      targets: this.shuttle,
+      y: waterLevel + 180, // Sink deep below water
+      alpha: 0.15,
+      duration: 3500,
+      ease: 'Quad.easeIn',
+    });
+
+    // Bubbles rising as shuttle sinks (more bubbles over longer time)
+    for (let i = 0; i < 25; i++) {
+      this.time.delayedCall(200 + i * 150, () => {
+        if (this.gameState !== 'crashed') return;
+        const bubble = this.add.graphics();
+        bubble.fillStyle(0xADD8E6, 0.6);
+        bubble.fillCircle(0, 0, 2 + Math.random() * 3);
+        bubble.setPosition(
+          splashX + (Math.random() - 0.5) * 30,
+          waterLevel + 20 + Math.random() * 40
+        );
+        bubble.setDepth(98);
+
+        this.tweens.add({
+          targets: bubble,
+          y: bubble.y - 50 - Math.random() * 30,
+          alpha: 0,
+          duration: 500 + Math.random() * 300,
+          ease: 'Quad.easeOut',
+          onComplete: () => bubble.destroy(),
+        });
+      });
+    }
+
+    // Go to game over after sinking animation
+    this.time.delayedCall(4000, () => {
+      this.scene.stop('UIScene');
+      this.scene.start('GameOverScene', {
+        victory: false,
+        message: 'You splashed into the Atlantic Ocean!',
+        score: this.destructionScore,
+        debugModeUsed: this.shuttle.wasDebugModeUsed(),
+        noShake: true, // Water death is peaceful, no shake
       });
     });
   }
@@ -610,41 +790,37 @@ export class GameScene extends Phaser.Scene {
       });
 
       // Open trading scene at Washington too
-      this.time.delayedCall(1000, () => {
-        this.scene.pause();
-        this.scene.launch('TradingScene', {
-          inventorySystem: this.inventorySystem,
-          fuelSystem: this.fuelSystem,
-          padName: pad.name,
-          landingQuality: landingResult.quality,
-          onScoreChange: (delta: number) => {
-            this.destructionScore += delta;
-            this.events.emit('destructionScore', this.destructionScore);
-          },
-          onComplete: () => {
-            this.scene.resume();
-            this.gameState = 'playing';
-          },
-        });
+      this.scene.pause();
+      this.scene.launch('TradingScene', {
+        inventorySystem: this.inventorySystem,
+        fuelSystem: this.fuelSystem,
+        padName: pad.name,
+        landingQuality: landingResult.quality,
+        onScoreChange: (delta: number) => {
+          this.destructionScore += delta;
+          this.events.emit('destructionScore', this.destructionScore);
+        },
+        onComplete: () => {
+          this.scene.resume();
+          this.gameState = 'playing';
+        },
       });
     } else {
       // Open trading scene
-      this.time.delayedCall(1000, () => {
-        this.scene.pause();
-        this.scene.launch('TradingScene', {
-          inventorySystem: this.inventorySystem,
-          fuelSystem: this.fuelSystem,
-          padName: pad.name,
-          landingQuality: landingResult.quality,
-          onScoreChange: (delta: number) => {
-            this.destructionScore += delta;
-            this.events.emit('destructionScore', this.destructionScore);
-          },
-          onComplete: () => {
-            this.scene.resume();
-            this.gameState = 'playing';
-          },
-        });
+      this.scene.pause();
+      this.scene.launch('TradingScene', {
+        inventorySystem: this.inventorySystem,
+        fuelSystem: this.fuelSystem,
+        padName: pad.name,
+        landingQuality: landingResult.quality,
+        onScoreChange: (delta: number) => {
+          this.destructionScore += delta;
+          this.events.emit('destructionScore', this.destructionScore);
+        },
+        onComplete: () => {
+          this.scene.resume();
+          this.gameState = 'playing';
+        },
       });
     }
   }
@@ -1192,6 +1368,19 @@ export class GameScene extends Phaser.Scene {
       // Check collision with terrain (LAST, after checking buildings and cannons)
       const terrainY = this.terrain.getHeightAt(bombX);
       if (bombY >= terrainY - 5) {
+        // Check if over water (Atlantic Ocean)
+        const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+        const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+        const isOverWater = bombX >= atlanticStart && bombX < atlanticEnd;
+
+        if (isOverWater) {
+          // Bomb sinks in water instead of exploding
+          this.sinkBombInWater(bomb, terrainY);
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Normal terrain - explode
         const explosionX = bombX;
         const explosionY = bombY;
         bomb.explode(this);
@@ -1209,6 +1398,96 @@ export class GameScene extends Phaser.Scene {
         this.bombs.splice(i, 1);
       }
     }
+  }
+
+  private sinkBombInWater(bomb: Bomb, waterLevel: number): void {
+    const bombX = bomb.x;
+
+    // Map food types to sprite keys
+    const spriteMap: { [key: string]: string } = {
+      'BURGER': 'burger',
+      'HAMBERDER': 'hamberder',
+      'DIET_COKE': 'dietcoke',
+      'TRUMP_STEAK': 'trumpsteak',
+      'VODKA': 'vodka',
+    };
+    const spriteKey = spriteMap[bomb.foodType] || 'burger';
+
+    // Small splash effect
+    for (let i = 0; i < 8; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+      const speed = 2 + Math.random() * 4;
+      const droplet = this.add.graphics();
+      droplet.fillStyle(0x4169E1, 0.7);
+      droplet.fillCircle(0, 0, 2 + Math.random() * 3);
+      droplet.setPosition(bombX + (Math.random() - 0.5) * 20, waterLevel);
+      droplet.setDepth(101);
+
+      this.tweens.add({
+        targets: droplet,
+        x: droplet.x + Math.cos(angle) * speed * 10,
+        y: droplet.y + Math.sin(angle) * speed * 12 + 30,
+        alpha: 0,
+        duration: 400 + Math.random() * 200,
+        ease: 'Quad.easeOut',
+        onComplete: () => droplet.destroy(),
+      });
+    }
+
+    // Small ripple
+    const ripple = this.add.graphics();
+    ripple.lineStyle(2, 0x87CEEB, 0.6);
+    ripple.strokeCircle(bombX, waterLevel, 5);
+    ripple.setDepth(99);
+
+    this.tweens.add({
+      targets: ripple,
+      scaleX: 3,
+      scaleY: 0.4,
+      alpha: 0,
+      duration: 600,
+      ease: 'Quad.easeOut',
+      onComplete: () => ripple.destroy(),
+    });
+
+    // Create a sinking visual using the actual food sprite
+    const sinkingFood = this.add.sprite(bombX, waterLevel, spriteKey);
+    sinkingFood.setScale(0.06); // Same scale as bomb
+    sinkingFood.setDepth(50);
+
+    // Sink slowly to the bottom and stay there
+    this.tweens.add({
+      targets: sinkingFood,
+      y: waterLevel + 120, // Sink to bottom
+      alpha: 0.5,
+      angle: sinkingFood.angle + 30, // Slight rotation as it sinks
+      duration: 2000,
+      ease: 'Quad.easeOut',
+      // Don't destroy - let it stay at the bottom
+    });
+
+    // Small bubbles as it sinks
+    for (let i = 0; i < 5; i++) {
+      this.time.delayedCall(200 + i * 200, () => {
+        const bubble = this.add.graphics();
+        bubble.fillStyle(0xADD8E6, 0.5);
+        bubble.fillCircle(0, 0, 2);
+        bubble.setPosition(bombX + (Math.random() - 0.5) * 10, waterLevel + 30 + i * 15);
+        bubble.setDepth(98);
+
+        this.tweens.add({
+          targets: bubble,
+          y: bubble.y - 40,
+          alpha: 0,
+          duration: 400,
+          ease: 'Quad.easeOut',
+          onComplete: () => bubble.destroy(),
+        });
+      });
+    }
+
+    // Destroy the original bomb object
+    bomb.destroy();
   }
 
   private showDestructionPoints(x: number, y: number, points: number, name: string): void {
