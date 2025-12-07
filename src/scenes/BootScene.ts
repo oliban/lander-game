@@ -37,7 +37,30 @@ export class BootScene extends Phaser.Scene {
     // Load title art image
     this.load.image('title-art', 'assets/images/title-art.png');
 
-    // Generate graphics programmatically instead of loading external assets
+    // Load collectible images
+    this.load.image('burger', 'assets/images/objects/objects_two_0.png');
+    this.load.image('hamberder', 'assets/images/objects/objects_two_1.png');
+    this.load.image('dietcoke', 'assets/images/objects/objects_two_2.png');
+    this.load.image('dollar', 'assets/images/objects/objects_two_3.png');
+    this.load.image('covfefe', 'assets/images/objects/objects_two_4.png');
+    this.load.image('hairspray', 'assets/images/objects/objects_two_5.png');
+    this.load.image('twitter', 'assets/images/objects/objects_two_6.png');
+    this.load.image('trumpsteak', 'assets/images/objects/objects_two_7.png');
+    this.load.image('casinochip', 'assets/images/objects/objects_two_8.png');
+    this.load.image('magahat', 'assets/images/objects/objects_two_9.png');
+    this.load.image('nft', 'assets/images/objects/objects_two_10.png');
+    this.load.image('bitcoin', 'assets/images/objects/objects_two_11.png');
+    this.load.image('classifieddocs', 'assets/images/objects/objects_two_12.png');
+    this.load.image('goldentoilet', 'assets/images/objects/objects_two_13.png');
+    this.load.image('matryoshka', 'assets/images/objects/objects_two_14.png');
+    this.load.image('vodka', 'assets/images/objects/objects_two_15.png');
+    this.load.image('oligarchgold', 'assets/images/objects/objects_one_12.png');
+    this.load.image('tansuit', 'assets/images/objects/objects_one_13.png');
+    // Special power-up items
+    this.load.image('trumptower', 'assets/images/objects/objects_one_14.png');
+    this.load.image('redtie', 'assets/images/objects/objects_one_15.png');
+
+    // Generate graphics programmatically (shuttle, particles, etc.)
     this.createGameGraphics();
   }
 
@@ -157,20 +180,5 @@ export class BootScene extends Phaser.Scene {
     projectileGraphics.generateTexture('projectile', 12, 12);
     projectileGraphics.destroy();
 
-    // Create collectible textures
-    this.createCollectibleTexture('burger', 0xffaa00);
-    this.createCollectibleTexture('dollar', 0x00ff00);
-    this.createCollectibleTexture('twitter', 0x00aaff);
-    this.createCollectibleTexture('magahat', 0xff0000);
-  }
-
-  private createCollectibleTexture(key: string, color: number): void {
-    const graphics = this.make.graphics({ x: 0, y: 0 });
-    graphics.fillStyle(color);
-    graphics.fillCircle(12, 12, 10);
-    graphics.lineStyle(2, 0xffffff);
-    graphics.strokeCircle(12, 12, 10);
-    graphics.generateTexture(key, 24, 24);
-    graphics.destroy();
   }
 }

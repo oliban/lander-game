@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TERRAIN_SEGMENT_WIDTH, TERRAIN_ROUGHNESS, GAME_HEIGHT, COLORS, COUNTRIES, LANDING_PADS } from '../constants';
+import { TERRAIN_SEGMENT_WIDTH, TERRAIN_ROUGHNESS, GAME_HEIGHT, COLORS, COUNTRIES, LANDING_PADS, WORLD_START_X } from '../constants';
 
 export interface TerrainVertex {
   x: number;

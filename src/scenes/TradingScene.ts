@@ -30,6 +30,8 @@ export class TradingScene extends Phaser.Scene {
   private selectedItems: Map<CollectibleType, number> = new Map();
   private fuelPreview!: Phaser.GameObjects.Text;
   private quoteText!: Phaser.GameObjects.Text;
+  private countTexts: Map<CollectibleType, Phaser.GameObjects.Text> = new Map();
+  private sparkles: Phaser.GameObjects.Graphics[] = [];
 
   constructor() {
     super({ key: 'TradingScene' });
@@ -43,288 +45,485 @@ export class TradingScene extends Phaser.Scene {
 
     // Reset selection
     this.selectedItems.clear();
+    this.countTexts.clear();
 
-    // Sky blue background (in case GameScene isn't rendering)
-    this.add.rectangle(
-      GAME_WIDTH / 2,
-      GAME_HEIGHT / 2,
-      GAME_WIDTH,
-      GAME_HEIGHT,
-      0x87CEEB,
-      1
-    );
+    // Dark overlay background
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7);
 
-    // Semi-transparent overlay
-    const overlay = this.add.rectangle(
-      GAME_WIDTH / 2,
-      GAME_HEIGHT / 2,
-      GAME_WIDTH,
-      GAME_HEIGHT,
-      0x000000,
-      0.5
-    );
+    // Create animated sparkle background
+    this.createSparkleBackground();
 
-    // Panel (cartoon style with white background)
+    // Main panel with gradient effect
+    const panelX = GAME_WIDTH / 2 - 340;
+    const panelY = 50;
+    const panelW = 680;
+    const panelH = 620;
+
+    // Panel shadow
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.3);
+    shadow.fillRoundedRect(panelX + 8, panelY + 8, panelW, panelH, 16);
+
+    // Main panel background (cream/gold gradient look)
     const panel = this.add.graphics();
-    panel.fillStyle(0xFFFFFF, 0.98);
-    panel.fillRoundedRect(GAME_WIDTH / 2 - 300, 80, 600, 500, 20);
-    panel.lineStyle(4, 0x333333);
-    panel.strokeRoundedRect(GAME_WIDTH / 2 - 300, 80, 600, 500, 20);
+    panel.fillStyle(0xFFF8DC, 1); // Cornsilk
+    panel.fillRoundedRect(panelX, panelY, panelW, panelH, 16);
 
-    // Title with shadow
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 2, 112, `FUEL STOP: ${data.padName}`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
-      color: '#666666',
+    // Gold border with double line effect
+    panel.lineStyle(4, 0xDAA520);
+    panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 16);
+    panel.lineStyle(2, 0xFFD700);
+    panel.strokeRoundedRect(panelX + 6, panelY + 6, panelW - 12, panelH - 12, 12);
+
+    // Decorative corner stars
+    this.drawCornerStar(panelX + 20, panelY + 20);
+    this.drawCornerStar(panelX + panelW - 20, panelY + 20);
+    this.drawCornerStar(panelX + 20, panelY + panelH - 20);
+    this.drawCornerStar(panelX + panelW - 20, panelY + panelH - 20);
+
+    // Header banner
+    const bannerY = panelY + 15;
+    const banner = this.add.graphics();
+    banner.fillStyle(0xB22222, 1); // Firebrick red
+    banner.fillRoundedRect(panelX + 50, bannerY, panelW - 100, 50, 8);
+    banner.lineStyle(2, 0xFFD700);
+    banner.strokeRoundedRect(panelX + 50, bannerY, panelW - 100, 50, 8);
+
+    // Title
+    const title = this.add.text(GAME_WIDTH / 2, bannerY + 25, `⛽ ${data.padName.toUpperCase()} ⛽`, {
+      fontFamily: 'Georgia, serif',
+      fontSize: '26px',
+      color: '#FFD700',
       fontStyle: 'bold',
     });
-    titleShadow.setOrigin(0.5, 0);
+    title.setOrigin(0.5, 0.5);
+    title.setShadow(2, 2, '#000000', 3);
 
-    const title = this.add.text(GAME_WIDTH / 2, 110, `FUEL STOP: ${data.padName}`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
-      color: '#D4380D',
-      fontStyle: 'bold',
-    });
-    title.setOrigin(0.5, 0);
+    // Landing quality badge
+    const badgeY = bannerY + 60;
+    const isPerfect = data.landingQuality === 'perfect';
+    const badgeColor = isPerfect ? 0x228B22 : 0xDAA520;
+    const badgeText = isPerfect ? '★ PERFECT LANDING +50% ★' : '✓ Good Landing +20%';
 
-    // Landing quality bonus
-    const bonusText = data.landingQuality === 'perfect'
-      ? 'PERFECT LANDING! +50% bonus'
-      : 'Good landing! +20% bonus';
-    const bonusColor = data.landingQuality === 'perfect' ? '#4CAF50' : '#FFA000';
+    const badge = this.add.graphics();
+    badge.fillStyle(badgeColor, 0.9);
+    badge.fillRoundedRect(GAME_WIDTH / 2 - 120, badgeY, 240, 28, 14);
+    badge.lineStyle(2, 0xFFFFFF, 0.5);
+    badge.strokeRoundedRect(GAME_WIDTH / 2 - 120, badgeY, 240, 28, 14);
 
-    const bonus = this.add.text(GAME_WIDTH / 2, 145, bonusText, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '16px',
-      color: bonusColor,
-      fontStyle: 'bold',
-    });
-    bonus.setOrigin(0.5, 0);
-
-    // Random quote
-    const quote = SATIRICAL_QUOTES[Math.floor(Math.random() * SATIRICAL_QUOTES.length)];
-    this.quoteText = this.add.text(GAME_WIDTH / 2, 175, quote, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
+    const badgeLabel = this.add.text(GAME_WIDTH / 2, badgeY + 14, badgeText, {
+      fontFamily: 'Arial, sans-serif',
       fontSize: '14px',
-      color: '#666666',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+    });
+    badgeLabel.setOrigin(0.5, 0.5);
+
+    // Fuel gauge display
+    const gaugeY = badgeY + 40;
+    this.createFuelGauge(GAME_WIDTH / 2, gaugeY);
+
+    // Quote
+    const quote = SATIRICAL_QUOTES[Math.floor(Math.random() * SATIRICAL_QUOTES.length)];
+    this.quoteText = this.add.text(GAME_WIDTH / 2, gaugeY + 45, quote, {
+      fontFamily: 'Georgia, serif',
+      fontSize: '13px',
+      color: '#8B4513',
       fontStyle: 'italic',
+      wordWrap: { width: 500 },
+      align: 'center',
     });
-    this.quoteText.setOrigin(0.5, 0);
+    this.quoteText.setOrigin(0.5, 0.5);
 
-    // Current fuel display
-    const currentFuel = this.add.text(GAME_WIDTH / 2, 210,
-      `Current Fuel: ${Math.floor(this.fuelSystem.getFuel())}/${this.fuelSystem.getMaxFuel()}`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
+    // Items header
+    const itemsHeaderY = gaugeY + 75;
+    const itemsHeader = this.add.text(GAME_WIDTH / 2, itemsHeaderY, '━━━ YOUR CARGO ━━━', {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '16px',
+      color: '#8B4513',
+      fontStyle: 'bold',
+    });
+    itemsHeader.setOrigin(0.5, 0.5);
+
+    // Item selection area with scroll-like background
+    const itemsY = itemsHeaderY + 20;
+    const itemsBg = this.add.graphics();
+    itemsBg.fillStyle(0xFFFAF0, 0.8); // Floral white
+    itemsBg.fillRoundedRect(panelX + 30, itemsY, panelW - 60, 320, 8);
+    itemsBg.lineStyle(1, 0xDEB887);
+    itemsBg.strokeRoundedRect(panelX + 30, itemsY, panelW - 60, 320, 8);
+
+    // Create item selectors
+    this.createItemSelectors(itemsY + 15);
+
+    // Fuel preview with fancy styling
+    const previewY = itemsY + 335;
+    const previewBg = this.add.graphics();
+    previewBg.fillStyle(0x2F4F4F, 0.9);
+    previewBg.fillRoundedRect(GAME_WIDTH / 2 - 200, previewY, 400, 40, 8);
+
+    this.fuelPreview = this.add.text(GAME_WIDTH / 2, previewY + 20, 'Select items to trade', {
+      fontFamily: 'Arial, sans-serif',
       fontSize: '18px',
-      color: '#2E7D32',
+      color: '#90EE90',
       fontStyle: 'bold',
     });
-    currentFuel.setOrigin(0.5, 0);
+    this.fuelPreview.setOrigin(0.5, 0.5);
 
-    // Item selection
-    this.createItemSelectors();
+    // Action buttons
+    const btnY = previewY + 55;
+    this.createFancyButton(GAME_WIDTH / 2 - 170, btnY, 'AUTO-SELL', 0x1E90FF, 0x4169E1, () => this.autoTrade());
+    this.createFancyButton(GAME_WIDTH / 2, btnY, 'TRADE', 0x32CD32, 0x228B22, () => this.executeTrade());
+    this.createFancyButton(GAME_WIDTH / 2 + 170, btnY, 'SKIP', 0xFFA500, 0xFF8C00, () => this.close());
 
-    // Fuel preview
-    this.fuelPreview = this.add.text(GAME_WIDTH / 2, 450, 'Select items to trade', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
+    // Keyboard shortcuts hint
+    const hint = this.add.text(GAME_WIDTH / 2, btnY + 45, 'Press ENTER to auto-sell • ESC to skip', {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '11px',
       color: '#666666',
-      fontStyle: 'bold',
     });
-    this.fuelPreview.setOrigin(0.5, 0);
+    hint.setOrigin(0.5, 0.5);
 
-    // Trade button (green)
-    const tradeButton = this.createButton(GAME_WIDTH / 2 - 80, 500, 'TRADE', 0x4CAF50, () => {
-      this.executeTrade();
-    });
-
-    // Skip button (orange)
-    const skipButton = this.createButton(GAME_WIDTH / 2 + 80, 500, 'SKIP', 0xFF9800, () => {
-      this.close();
-    });
-
-    // Enter key to skip/continue
+    // Keyboard handlers
     this.input.keyboard!.on('keydown-ENTER', () => {
-      this.close();
+      if (this.hasItemsToTrade()) {
+        this.autoTrade();
+      } else {
+        this.close();
+      }
     });
 
-    // Escape key also skips
-    this.input.keyboard!.on('keydown-ESC', () => {
-      this.close();
-    });
+    this.input.keyboard!.on('keydown-ESC', () => this.close());
 
     // Update preview initially
     this.updateFuelPreview();
   }
 
-  private createItemSelectors(): void {
-    const items = this.inventorySystem.getAllItems();
-    const startY = 260;
-    const spacing = 45;
+  private createSparkleBackground(): void {
+    // Create floating sparkle particles
+    for (let i = 0; i < 15; i++) {
+      const sparkle = this.add.graphics();
+      const x = Math.random() * GAME_WIDTH;
+      const y = Math.random() * GAME_HEIGHT;
+      sparkle.fillStyle(0xFFD700, 0.6);
+      // Draw a diamond shape as sparkle
+      this.drawDiamond(sparkle, x, y, 4);
+      this.sparkles.push(sparkle);
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const y = startY + i * spacing;
-
-      // Item name and count
-      const colorHex = '#' + item.color.toString(16).padStart(6, '0');
-      const nameText = this.add.text(GAME_WIDTH / 2 - 200, y, item.name, {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '18px',
-        color: colorHex,
-        fontStyle: 'bold',
+      // Animate sparkle
+      this.tweens.add({
+        targets: sparkle,
+        alpha: { from: 0.3, to: 0.8 },
+        scale: { from: 0.5, to: 1.2 },
+        duration: 1000 + Math.random() * 1000,
+        yoyo: true,
+        repeat: -1,
+        delay: Math.random() * 1000,
       });
-
-      // Count and value
-      const valueText = this.add.text(GAME_WIDTH / 2, y,
-        `Have: ${item.count}  (${item.fuelValue} fuel each)`, {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '14px',
-        color: '#666666',
-      });
-      valueText.setOrigin(0.5, 0);
-
-      // Selector buttons
-      if (item.count > 0) {
-        // Initialize selection to 0
-        this.selectedItems.set(item.type, 0);
-
-        const minusBtn = this.createSmallButton(GAME_WIDTH / 2 + 100, y, '-', () => {
-          const current = this.selectedItems.get(item.type) || 0;
-          if (current > 0) {
-            this.selectedItems.set(item.type, current - 1);
-            this.updateFuelPreview();
-            this.updateCountDisplay(countText, item.type);
-          }
-        });
-
-        const countText = this.add.text(GAME_WIDTH / 2 + 140, y, '0', {
-          fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '18px',
-          color: '#ffffff',
-        });
-        countText.setOrigin(0.5, 0);
-
-        const plusBtn = this.createSmallButton(GAME_WIDTH / 2 + 180, y, '+', () => {
-          const current = this.selectedItems.get(item.type) || 0;
-          if (current < item.count) {
-            this.selectedItems.set(item.type, current + 1);
-            this.updateFuelPreview();
-            this.updateCountDisplay(countText, item.type);
-          }
-        });
-
-        // All button
-        const allBtn = this.createSmallButton(GAME_WIDTH / 2 + 230, y, 'ALL', () => {
-          this.selectedItems.set(item.type, item.count);
-          this.updateFuelPreview();
-          this.updateCountDisplay(countText, item.type);
-        });
-      }
     }
   }
 
-  private updateCountDisplay(text: Phaser.GameObjects.Text, type: CollectibleType): void {
-    const count = this.selectedItems.get(type) || 0;
-    text.setText(count.toString());
+  private drawCornerStar(x: number, y: number): void {
+    const star = this.add.graphics();
+    star.fillStyle(0xFFD700, 1);
+    // Draw a 4-point star shape
+    this.drawStar(star, x, y, 4, 8, 4);
+    star.lineStyle(1, 0xDAA520);
+    this.strokeStar(star, x, y, 4, 8, 4);
   }
 
-  private createButton(
-    x: number,
-    y: number,
-    label: string,
-    color: number,
-    callback: () => void
-  ): Phaser.GameObjects.Container {
+  private drawDiamond(graphics: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
+    graphics.beginPath();
+    graphics.moveTo(x, y - size);
+    graphics.lineTo(x + size, y);
+    graphics.lineTo(x, y + size);
+    graphics.lineTo(x - size, y);
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private drawStar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, points: number, outerRadius: number, innerRadius: number): void {
+    graphics.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const radius = i % 2 === 0 ? outerRadius : innerRadius;
+      const angle = (i * Math.PI / points) - Math.PI / 2;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) {
+        graphics.moveTo(px, py);
+      } else {
+        graphics.lineTo(px, py);
+      }
+    }
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private strokeStar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, points: number, outerRadius: number, innerRadius: number): void {
+    graphics.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const radius = i % 2 === 0 ? outerRadius : innerRadius;
+      const angle = (i * Math.PI / points) - Math.PI / 2;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) {
+        graphics.moveTo(px, py);
+      } else {
+        graphics.lineTo(px, py);
+      }
+    }
+    graphics.closePath();
+    graphics.strokePath();
+  }
+
+  private createFuelGauge(x: number, y: number): void {
+    const currentFuel = this.fuelSystem.getFuel();
+    const maxFuel = this.fuelSystem.getMaxFuel();
+    const percentage = currentFuel / maxFuel;
+
+    // Gauge background
+    const gaugeWidth = 300;
+    const gaugeHeight = 24;
+
+    const gaugeBg = this.add.graphics();
+    gaugeBg.fillStyle(0x333333, 1);
+    gaugeBg.fillRoundedRect(x - gaugeWidth / 2, y, gaugeWidth, gaugeHeight, 12);
+
+    // Fuel fill
+    const fillWidth = Math.max(0, (gaugeWidth - 4) * percentage);
+    const fillColor = percentage > 0.5 ? 0x32CD32 : percentage > 0.25 ? 0xFFD700 : 0xFF4444;
+
+    const gaugeFill = this.add.graphics();
+    gaugeFill.fillStyle(fillColor, 1);
+    gaugeFill.fillRoundedRect(x - gaugeWidth / 2 + 2, y + 2, fillWidth, gaugeHeight - 4, 10);
+
+    // Gauge border
+    gaugeBg.lineStyle(2, 0x666666);
+    gaugeBg.strokeRoundedRect(x - gaugeWidth / 2, y, gaugeWidth, gaugeHeight, 12);
+
+    // Fuel text
+    const fuelText = this.add.text(x, y + gaugeHeight / 2, `⛽ ${Math.floor(currentFuel)} / ${maxFuel}`, {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '14px',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+    });
+    fuelText.setOrigin(0.5, 0.5);
+    fuelText.setShadow(1, 1, '#000000', 2);
+  }
+
+  private createItemSelectors(startY: number): void {
+    const items = this.inventorySystem.getAllItems();
+    const displayItems = items.filter(item => item.count > 0 && item.fuelValue > 0);
+
+    const cols = 2;
+    const spacing = 38;
+    const colWidth = 290; // Narrower columns to fit in panel
+    const totalWidth = colWidth * cols;
+    const leftColX = GAME_WIDTH / 2 - totalWidth / 2 + 15; // Center both columns
+
+    for (let i = 0; i < displayItems.length; i++) {
+      const item = displayItems[i];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = leftColX + col * colWidth;
+      const y = startY + row * spacing;
+
+      // Item row background (alternating)
+      const rowBg = this.add.graphics();
+      rowBg.fillStyle(row % 2 === 0 ? 0xFFFFFF : 0xFFF8DC, 0.5);
+      rowBg.fillRoundedRect(x - 10, y - 2, colWidth - 25, 32, 4);
+
+      // Colored item indicator dot
+      const dot = this.add.graphics();
+      dot.fillStyle(item.color, 1);
+      dot.fillCircle(x + 6, y + 14, 7);
+      dot.lineStyle(2, 0x333333);
+      dot.strokeCircle(x + 6, y + 14, 7);
+
+      // Item name (truncate very long names only)
+      let displayName = item.name;
+      if (displayName.length > 15) {
+        displayName = displayName.substring(0, 14) + '…';
+      }
+      const nameText = this.add.text(x + 18, y + 4, displayName, {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '12px',
+        color: '#333333',
+        fontStyle: 'bold',
+      });
+
+      // Fuel value badge
+      const valueBadge = this.add.graphics();
+      valueBadge.fillStyle(0x228B22, 0.8);
+      valueBadge.fillRoundedRect(x + 105, y + 2, 40, 20, 4);
+
+      const valueText = this.add.text(x + 125, y + 12, `+${item.fuelValue}`, {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '10px',
+        color: '#FFFFFF',
+        fontStyle: 'bold',
+      });
+      valueText.setOrigin(0.5, 0.5);
+
+      // Have count
+      const haveText = this.add.text(x + 152, y + 12, `×${item.count}`, {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '12px',
+        color: '#666666',
+      });
+      haveText.setOrigin(0, 0.5);
+
+      // Selection controls
+      this.selectedItems.set(item.type, 0);
+
+      // Minus button
+      this.createRoundButton(x + 185, y + 12, '-', 0xFF6B6B, () => {
+        const current = this.selectedItems.get(item.type) || 0;
+        if (current > 0) {
+          this.selectedItems.set(item.type, current - 1);
+          this.updateFuelPreview();
+          this.updateCountDisplay(item.type);
+        }
+      });
+
+      // Selected count display
+      const countBg = this.add.graphics();
+      countBg.fillStyle(0x333333, 0.9);
+      countBg.fillRoundedRect(x + 200, y + 2, 28, 24, 4);
+
+      const countText = this.add.text(x + 214, y + 14, '0', {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '13px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+      });
+      countText.setOrigin(0.5, 0.5);
+      this.countTexts.set(item.type, countText);
+
+      // Plus button
+      this.createRoundButton(x + 243, y + 12, '+', 0x6BCB77, () => {
+        const current = this.selectedItems.get(item.type) || 0;
+        if (current < item.count) {
+          this.selectedItems.set(item.type, current + 1);
+          this.updateFuelPreview();
+          this.updateCountDisplay(item.type);
+        }
+      });
+    }
+  }
+
+  private createRoundButton(x: number, y: number, label: string, color: number, callback: () => void): void {
     const container = this.add.container(x, y);
 
     const bg = this.add.graphics();
-    bg.fillStyle(color, 0.3);
-    bg.fillRoundedRect(-60, -18, 120, 36, 8);
-    bg.lineStyle(2, color);
-    bg.strokeRoundedRect(-60, -18, 120, 36, 8);
+    bg.fillStyle(color, 1);
+    bg.fillCircle(0, 0, 10);
+    bg.lineStyle(2, 0xFFFFFF, 0.5);
+    bg.strokeCircle(0, 0, 10);
 
     const text = this.add.text(0, 0, label, {
-      fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '18px',
-      color: '#ffffff',
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '14px',
+      color: '#FFFFFF',
       fontStyle: 'bold',
     });
     text.setOrigin(0.5, 0.5);
 
     container.add([bg, text]);
+    container.setInteractive(new Phaser.Geom.Circle(0, 0, 10), Phaser.Geom.Circle.Contains);
 
+    container.on('pointerover', () => {
+      container.setScale(1.15);
+    });
+
+    container.on('pointerout', () => {
+      container.setScale(1);
+    });
+
+    container.on('pointerdown', () => {
+      container.setScale(0.9);
+      callback();
+    });
+
+    container.on('pointerup', () => {
+      container.setScale(1.15);
+    });
+  }
+
+  private createFancyButton(x: number, y: number, label: string, color: number, darkColor: number, callback: () => void): void {
+    const container = this.add.container(x, y);
+
+    // Shadow
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.3);
+    shadow.fillRoundedRect(-62, -16, 124, 38, 8);
+
+    // Main button
+    const bg = this.add.graphics();
+    bg.fillStyle(color, 1);
+    bg.fillRoundedRect(-60, -18, 120, 36, 8);
+    bg.lineStyle(3, darkColor);
+    bg.strokeRoundedRect(-60, -18, 120, 36, 8);
+
+    // Shine effect
+    const shine = this.add.graphics();
+    shine.fillStyle(0xFFFFFF, 0.3);
+    shine.fillRoundedRect(-56, -16, 112, 12, 6);
+
+    const text = this.add.text(0, 0, label, {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '16px',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0.5, 0.5);
+    text.setShadow(1, 1, '#000000', 2);
+
+    container.add([shadow, bg, shine, text]);
     container.setInteractive(new Phaser.Geom.Rectangle(-60, -18, 120, 36), Phaser.Geom.Rectangle.Contains);
 
     container.on('pointerover', () => {
+      container.setScale(1.05);
       bg.clear();
-      bg.fillStyle(color, 0.6);
+      bg.fillStyle(darkColor, 1);
       bg.fillRoundedRect(-60, -18, 120, 36, 8);
-      bg.lineStyle(2, color);
+      bg.lineStyle(3, color);
       bg.strokeRoundedRect(-60, -18, 120, 36, 8);
     });
 
     container.on('pointerout', () => {
+      container.setScale(1);
       bg.clear();
-      bg.fillStyle(color, 0.3);
+      bg.fillStyle(color, 1);
       bg.fillRoundedRect(-60, -18, 120, 36, 8);
-      bg.lineStyle(2, color);
+      bg.lineStyle(3, darkColor);
       bg.strokeRoundedRect(-60, -18, 120, 36, 8);
     });
 
     container.on('pointerdown', callback);
-
-    return container;
   }
 
-  private createSmallButton(x: number, y: number, label: string, callback: () => void): Phaser.GameObjects.Container {
-    const container = this.add.container(x, y);
-
-    const size = label === 'ALL' ? 40 : 28;
-    const bg = this.add.graphics();
-    bg.fillStyle(0x444444, 0.8);
-    bg.fillRoundedRect(-size / 2, -14, size, 28, 4);
-    bg.lineStyle(1, 0x666666);
-    bg.strokeRoundedRect(-size / 2, -14, size, 28, 4);
-
-    const text = this.add.text(0, 0, label, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: label === 'ALL' ? '12px' : '18px',
-      color: '#ffffff',
-    });
-    text.setOrigin(0.5, 0.5);
-
-    container.add([bg, text]);
-
-    container.setInteractive(new Phaser.Geom.Rectangle(-size / 2, -14, size, 28), Phaser.Geom.Rectangle.Contains);
-
-    container.on('pointerover', () => {
-      bg.clear();
-      bg.fillStyle(0x666666, 0.8);
-      bg.fillRoundedRect(-size / 2, -14, size, 28, 4);
-      bg.lineStyle(1, 0x888888);
-      bg.strokeRoundedRect(-size / 2, -14, size, 28, 4);
-    });
-
-    container.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(0x444444, 0.8);
-      bg.fillRoundedRect(-size / 2, -14, size, 28, 4);
-      bg.lineStyle(1, 0x666666);
-      bg.strokeRoundedRect(-size / 2, -14, size, 28, 4);
-    });
-
-    container.on('pointerdown', callback);
-
-    return container;
+  private updateCountDisplay(type: CollectibleType): void {
+    const count = this.selectedItems.get(type) || 0;
+    const text = this.countTexts.get(type);
+    if (text) {
+      text.setText(count.toString());
+      // Flash effect
+      this.tweens.add({
+        targets: text,
+        scale: 1.3,
+        duration: 100,
+        yoyo: true,
+      });
+    }
   }
 
   private calculateFuelGain(): number {
     let baseFuel = 0;
-
     for (const [type, count] of this.selectedItems) {
       baseFuel += count * COLLECTIBLE_TYPES[type].fuelValue;
     }
-
     return Math.floor(baseFuel * this.landingBonus);
   }
 
@@ -336,13 +535,11 @@ export class TradingScene extends Phaser.Scene {
         this.fuelSystem.getFuel() + fuelGain,
         this.fuelSystem.getMaxFuel()
       );
-      this.fuelPreview.setText(
-        `Trade for +${fuelGain} fuel → ${Math.floor(newTotal)}/${this.fuelSystem.getMaxFuel()}`
-      );
-      this.fuelPreview.setColor('#4CAF50');
+      this.fuelPreview.setText(`🔥 +${fuelGain} FUEL → ${Math.floor(newTotal)}/${this.fuelSystem.getMaxFuel()} 🔥`);
+      this.fuelPreview.setColor('#90EE90');
     } else {
-      this.fuelPreview.setText('Select items to trade');
-      this.fuelPreview.setColor('#666666');
+      this.fuelPreview.setText('👆 Select items to trade');
+      this.fuelPreview.setColor('#AAAAAA');
     }
   }
 
@@ -350,7 +547,6 @@ export class TradingScene extends Phaser.Scene {
     const fuelGain = this.calculateFuelGain();
 
     if (fuelGain <= 0) {
-      // Flash the preview text
       this.tweens.add({
         targets: this.fuelPreview,
         alpha: 0,
@@ -361,44 +557,114 @@ export class TradingScene extends Phaser.Scene {
       return;
     }
 
-    // Remove items from inventory
     for (const [type, count] of this.selectedItems) {
       if (count > 0) {
         this.inventorySystem.remove(type, count);
       }
     }
 
-    // Add fuel
     this.fuelSystem.add(fuelGain);
 
-    // Show success message with shadow
-    const successShadow = this.add.text(GAME_WIDTH / 2 + 3, GAME_HEIGHT / 2 + 3, `+${fuelGain} FUEL!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '48px',
-      color: '#2E7D32',
-      fontStyle: 'bold',
-    });
-    successShadow.setOrigin(0.5, 0.5);
+    // Epic success animation
+    const successBg = this.add.graphics();
+    successBg.fillStyle(0x000000, 0.7);
+    successBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     const success = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, `+${fuelGain} FUEL!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '48px',
-      color: '#4CAF50',
+      fontFamily: 'Georgia, serif',
+      fontSize: '64px',
+      color: '#FFD700',
       fontStyle: 'bold',
     });
     success.setOrigin(0.5, 0.5);
+    success.setShadow(4, 4, '#000000', 8);
+
+    // Starburst effect
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const star = this.add.graphics();
+      star.fillStyle(0xFFD700, 1);
+      this.drawStar(star, GAME_WIDTH / 2, GAME_HEIGHT / 2, 5, 10, 5);
+
+      this.tweens.add({
+        targets: star,
+        x: Math.cos(angle) * 150,
+        y: Math.sin(angle) * 150,
+        alpha: 0,
+        scale: 0.5,
+        duration: 600,
+        onComplete: () => star.destroy(),
+      });
+    }
 
     this.tweens.add({
-      targets: [success, successShadow],
-      y: GAME_HEIGHT / 2 - 50,
-      alpha: 0,
-      duration: 1000,
+      targets: success,
+      scale: { from: 0.5, to: 1.2 },
+      alpha: { from: 1, to: 0 },
+      duration: 1200,
+      ease: 'Back.easeOut',
       onComplete: () => {
+        successBg.destroy();
         success.destroy();
-        successShadow.destroy();
         this.close();
       },
     });
+  }
+
+  private hasItemsToTrade(): boolean {
+    const items = this.inventorySystem.getAllItems();
+    return items.some(item => item.count > 0 && item.fuelValue > 0);
+  }
+
+  private autoTrade(): void {
+    const items = this.inventorySystem.getAllItems();
+    const currentFuel = this.fuelSystem.getFuel();
+    const maxFuel = this.fuelSystem.getMaxFuel();
+    const targetFuel = maxFuel;
+    const fuelNeeded = targetFuel - currentFuel;
+
+    if (fuelNeeded <= 0) {
+      this.close();
+      return;
+    }
+
+    const hasItems = items.some(item => item.count > 0 && item.fuelValue > 0);
+    if (!hasItems) {
+      this.close();
+      return;
+    }
+
+    this.selectedItems.clear();
+    for (const item of items) {
+      this.selectedItems.set(item.type, 0);
+    }
+
+    const sortedItems = [...items].filter(item => item.count > 0 && item.fuelValue > 0)
+      .sort((a, b) => a.fuelValue - b.fuelValue);
+
+    let fuelGained = 0;
+
+    for (const item of sortedItems) {
+      const available = item.count;
+      const valuePerItem = Math.floor(item.fuelValue * this.landingBonus);
+
+      for (let i = 0; i < available; i++) {
+        if (fuelGained >= fuelNeeded) break;
+        const currentCount = this.selectedItems.get(item.type) || 0;
+        this.selectedItems.set(item.type, currentCount + 1);
+        fuelGained += valuePerItem;
+      }
+
+      if (fuelGained >= fuelNeeded) break;
+    }
+
+    if (fuelGained === 0) {
+      this.close();
+      return;
+    }
+
+    this.updateFuelPreview();
+    this.executeTrade();
   }
 
   private close(): void {

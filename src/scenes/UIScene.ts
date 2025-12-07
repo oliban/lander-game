@@ -10,6 +10,8 @@ interface UISceneData {
   getProgress: () => number;
   getCurrentCountry: () => { name: string; color: number };
   getLegsExtended: () => boolean;
+  getElapsedTime: () => number;
+  hasPeaceMedal?: () => boolean;
 }
 
 export class UIScene extends Phaser.Scene {
@@ -18,6 +20,8 @@ export class UIScene extends Phaser.Scene {
   private getShuttleVelocity!: () => { x: number; y: number; total: number };
   private getProgress!: () => number;
   private getLegsExtended!: () => boolean;
+  private getElapsedTime!: () => number;
+  private hasPeaceMedal!: () => boolean;
 
   private fuelBarBg!: Phaser.GameObjects.Graphics;
   private fuelBar!: Phaser.GameObjects.Graphics;
@@ -28,10 +32,15 @@ export class UIScene extends Phaser.Scene {
   private progressText!: Phaser.GameObjects.Text;
   private gearIndicator!: Phaser.GameObjects.Text;
   private gearBg!: Phaser.GameObjects.Graphics;
+  private timerText!: Phaser.GameObjects.Text;
+  private timerBg!: Phaser.GameObjects.Graphics;
+  private medalIndicator!: Phaser.GameObjects.Container;
 
   private lastProgress: number = -1;
   private lastVelocity: number = -1;
   private lastLegsState: boolean = false;
+  private lastTime: number = -1;
+  private lastMedalState: boolean = false;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -43,10 +52,14 @@ export class UIScene extends Phaser.Scene {
     this.getShuttleVelocity = data.getShuttleVelocity;
     this.getProgress = data.getProgress;
     this.getLegsExtended = data.getLegsExtended;
+    this.getElapsedTime = data.getElapsedTime;
+    this.hasPeaceMedal = data.hasPeaceMedal || (() => false);
 
     this.createFuelGauge();
     this.createVelocityMeter();
     this.createGearIndicator();
+    this.createTimer();
+    this.createMedalIndicator();
     this.createInventoryDisplay();
     this.createProgressBar();
     this.createControlsHint();
@@ -379,6 +392,70 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  private createTimer(): void {
+    // Timer in upper right corner
+    this.timerBg = this.add.graphics();
+    this.timerBg.fillStyle(0xFFFFFF, 0.9);
+    this.timerBg.fillRoundedRect(GAME_WIDTH - 110, 10, 100, 40, 8);
+    this.timerBg.lineStyle(2, 0x333333);
+    this.timerBg.strokeRoundedRect(GAME_WIDTH - 110, 10, 100, 40, 8);
+
+    this.timerText = this.add.text(GAME_WIDTH - 60, 30, '00:00', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '20px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    this.timerText.setOrigin(0.5, 0.5);
+  }
+
+  private createMedalIndicator(): void {
+    // Medal indicator (hidden by default, shows when medal is acquired)
+    this.medalIndicator = this.add.container(GAME_WIDTH - 60, 60);
+    this.medalIndicator.setVisible(false);
+
+    // Background
+    const bg = this.add.graphics();
+    bg.fillStyle(0xFFD700, 0.9);
+    bg.fillRoundedRect(-50, -12, 100, 24, 6);
+    bg.lineStyle(2, 0xB8860B);
+    bg.strokeRoundedRect(-50, -12, 100, 24, 6);
+    this.medalIndicator.add(bg);
+
+    // Text
+    const text = this.add.text(0, 0, 'PEACE MEDAL', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '11px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0.5, 0.5);
+    this.medalIndicator.add(text);
+  }
+
+  private updateMedalIndicator(): void {
+    const hasMedal = this.hasPeaceMedal();
+    if (hasMedal !== this.lastMedalState) {
+      this.lastMedalState = hasMedal;
+      this.medalIndicator.setVisible(hasMedal);
+    }
+  }
+
+  private updateTimer(): void {
+    const elapsed = this.getElapsedTime();
+    const seconds = Math.floor(elapsed / 1000);
+
+    // Only update if second changed
+    if (seconds === this.lastTime) {
+      return;
+    }
+    this.lastTime = seconds;
+
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    this.timerText.setText(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+  }
+
   private createControlsHint(): void {
     const text = this.add.text(GAME_WIDTH - 20, GAME_HEIGHT - 20,
       '↑ Thrust  ←→ Rotate  SPACE Landing Gear', {
@@ -392,5 +469,7 @@ export class UIScene extends Phaser.Scene {
     this.updateVelocityMeter();
     this.updateProgressBar();
     this.updateGearIndicator();
+    this.updateTimer();
+    this.updateMedalIndicator();
   }
 }

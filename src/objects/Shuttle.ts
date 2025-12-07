@@ -17,19 +17,25 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private fuelSystem: { consume: (amount: number) => boolean; isEmpty: () => boolean } | null = null;
   private legsExtended: boolean = false;
   private legsKey: Phaser.Input.Keyboard.Key | null = null;
+  private debugKey: Phaser.Input.Keyboard.Key | null = null;
+  private debugMode: boolean = false;
+  private debugLabel: Phaser.GameObjects.Text | null = null;
+  private thrustMultiplier: number = 1.0; // For speed boost power-up
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene.matter.world, x, y, 'shuttle');
 
     scene.add.existing(this);
 
-    // Configure physics body - use default body from sprite
+    // Configure physics body - centered on sprite
     this.setRectangle(28, 36);
 
     this.setFrictionAir(0.02); // Increased for heavier, more dampened feel
-    this.setBounce(0.05); // Less bouncy
+    this.setBounce(0.3); // Bouncy enough to survive light touches
     this.setFixedRotation();
     this.setMass(5); // Heavier mass for more inertia
+
+    this.setOrigin(0.5, 0.5);
 
     // Set collision category
     this.setCollisionCategory(1);
@@ -43,7 +49,20 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Set up landing legs key (spacebar)
     if (scene.input.keyboard) {
       this.legsKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+      this.debugKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
     }
+
+    // Create debug label (hidden initially)
+    this.debugLabel = scene.add.text(10, scene.cameras.main.height - 30, 'DEBUG MODE - Unlimited Fuel', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '14px',
+      color: '#FF0000',
+      backgroundColor: '#FFFF00',
+      padding: { x: 5, y: 3 },
+    });
+    this.debugLabel.setScrollFactor(0);
+    this.debugLabel.setDepth(1000);
+    this.debugLabel.setVisible(false);
   }
 
   setFuelSystem(fuelSystem: { consume: (amount: number) => boolean; isEmpty: () => boolean }): void {
@@ -66,13 +85,21 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   update(cursors: Phaser.Types.Input.Keyboard.CursorKeys): void {
     if (!this.active) return;
 
-    // Check for fuel
-    const hasFuel = !this.fuelSystem || !this.fuelSystem.isEmpty();
+    // Toggle debug mode with D key
+    if (this.debugKey && Phaser.Input.Keyboard.JustDown(this.debugKey)) {
+      this.debugMode = !this.debugMode;
+      if (this.debugLabel) {
+        this.debugLabel.setVisible(this.debugMode);
+      }
+    }
+
+    // Check for fuel (unlimited in debug mode)
+    const hasFuel = this.debugMode || !this.fuelSystem || !this.fuelSystem.isEmpty();
 
     // Get angular velocity from body
     const matterBody = this.body as MatterJS.BodyType;
 
-    // Toggle landing legs with down key (single press)
+    // Toggle landing legs with spacebar (single press)
     if (this.legsKey && Phaser.Input.Keyboard.JustDown(this.legsKey)) {
       this.toggleLandingLegs();
     }
@@ -96,17 +123,18 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
     // Thrust - reduced effectiveness when legs are extended
     if (cursors.up.isDown && hasFuel) {
-      // Consume fuel (more with legs extended)
-      if (this.fuelSystem) {
+      // Consume fuel (more with legs extended) - skip in debug mode
+      if (this.fuelSystem && !this.debugMode) {
         const fuelRate = this.legsExtended ? FUEL_CONSUMPTION_RATE * 1.2 : FUEL_CONSUMPTION_RATE;
         this.fuelSystem.consume(fuelRate);
       }
 
-      // Apply thrust in direction of rotation (reduced with legs)
+      // Apply thrust in direction of rotation (reduced with legs, boosted by power-up)
       const angle = this.rotation - Math.PI / 2;
-      const thrustMultiplier = this.legsExtended ? 0.7 : 1.0;
-      const forceX = Math.cos(angle) * THRUST_POWER * thrustMultiplier;
-      const forceY = Math.sin(angle) * THRUST_POWER * thrustMultiplier;
+      const legMultiplier = this.legsExtended ? 0.7 : 1.0;
+      const totalMultiplier = legMultiplier * this.thrustMultiplier;
+      const forceX = Math.cos(angle) * THRUST_POWER * totalMultiplier;
+      const forceY = Math.sin(angle) * THRUST_POWER * totalMultiplier;
 
       this.applyForce(new Phaser.Math.Vector2(forceX, forceY));
 
@@ -199,20 +227,21 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       return { safe: false, quality: 'crash', reason: 'Bad angle!' };
     }
 
-    // Check velocity
-    if (velocity.total > MAX_SAFE_LANDING_VELOCITY * 1.5) {
+    // Check velocity - more forgiving thresholds
+    if (velocity.total > MAX_SAFE_LANDING_VELOCITY * 2.0) {
       return { safe: false, quality: 'crash', reason: 'Too fast!' };
     }
 
-    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 0.5) {
+    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 0.6) {
       return { safe: true, quality: 'perfect' };
     }
 
-    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY) {
+    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 1.5) {
       return { safe: true, quality: 'good' };
     }
 
-    return { safe: false, quality: 'crash', reason: 'Too fast!' };
+    // Between 1.5x and 2x is still a safe but rough landing
+    return { safe: true, quality: 'good' };
   }
 
   explode(): void {
@@ -269,5 +298,9 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
     // Screen shake
     this.scene.cameras.main.shake(300, 0.015);
+  }
+
+  setThrustMultiplier(multiplier: number): void {
+    this.thrustMultiplier = multiplier;
   }
 }

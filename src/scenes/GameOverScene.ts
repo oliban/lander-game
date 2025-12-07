@@ -1,10 +1,15 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, COLORS, COLLECTIBLE_TYPES } from '../constants';
+import { InventoryItem } from '../systems/InventorySystem';
 
 interface GameOverData {
   victory: boolean;
   message: string;
-  score: number;
+  score?: number;
+  elapsedTime?: number;
+  inventory?: InventoryItem[];
+  fuelRemaining?: number;
+  hasPeaceMedal?: boolean;
 }
 
 const CRASH_QUOTES = [
@@ -67,75 +72,182 @@ export class GameOverScene extends Phaser.Scene {
 
   private createVictoryScreen(data: GameOverData): void {
     // Title with shadow (cartoon style)
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 123, 'MISSION COMPLETE!', {
+    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 63, 'MISSION COMPLETE!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '56px',
+      fontSize: '48px',
       color: '#2E7D32',
       fontStyle: 'bold',
     });
     titleShadow.setOrigin(0.5, 0.5);
 
-    const title = this.add.text(GAME_WIDTH / 2, 120, 'MISSION COMPLETE!', {
+    const title = this.add.text(GAME_WIDTH / 2, 60, 'MISSION COMPLETE!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '56px',
+      fontSize: '48px',
       color: '#4CAF50',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0.5);
 
     // Message
-    const message = this.add.text(GAME_WIDTH / 2, 200, data.message, {
+    const message = this.add.text(GAME_WIDTH / 2, 110, data.message, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '24px',
+      fontSize: '18px',
       color: '#333333',
     });
     message.setOrigin(0.5, 0.5);
 
-    // Score with shadow
-    const scoreShadow = this.add.text(GAME_WIDTH / 2 + 2, 282, `Final Score: ${data.score}`, {
+    // Calculate score
+    const scoreDetails = this.calculateScore(data);
+
+    // Score Report Panel
+    const panel = this.add.graphics();
+    panel.fillStyle(0xFFFFFF, 0.95);
+    panel.fillRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, 320, 15);
+    panel.lineStyle(3, 0x333333);
+    panel.strokeRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, 320, 15);
+
+    // Score Report Title
+    this.add.text(GAME_WIDTH / 2, 160, 'MISSION REPORT', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '32px',
+      fontSize: '24px',
+      color: '#333333',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    let yPos = 200;
+
+    // Time
+    const timeStr = this.formatTime(data.elapsedTime || 0);
+    this.add.text(GAME_WIDTH / 2 - 200, yPos, `Time: ${timeStr}`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '16px',
+      color: '#333333',
+    });
+    this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${scoreDetails.timeBonus} pts`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '16px',
+      color: '#4CAF50',
+      fontStyle: 'bold',
+    }).setOrigin(1, 0);
+    yPos += 30;
+
+    // Inventory items delivered
+    this.add.text(GAME_WIDTH / 2 - 200, yPos, 'Goods Delivered:', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '16px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    yPos += 25;
+
+    if (data.inventory) {
+      for (const item of data.inventory) {
+        if (item.count > 0) {
+          const colorHex = '#' + item.color.toString(16).padStart(6, '0');
+          const itemPoints = this.getItemPoints(item);
+          this.add.text(GAME_WIDTH / 2 - 180, yPos, `${item.name}: ${item.count}`, {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: colorHex,
+          });
+          this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${itemPoints} pts`, {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: '#4CAF50',
+          }).setOrigin(1, 0);
+          yPos += 22;
+        }
+      }
+    }
+
+    if (scoreDetails.itemsTotal === 0) {
+      this.add.text(GAME_WIDTH / 2 - 180, yPos, '(No goods delivered)', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '14px',
+        color: '#999999',
+        fontStyle: 'italic',
+      });
+      yPos += 22;
+    }
+
+    yPos += 10;
+
+    // Peace Medal bonus (if applicable)
+    if (scoreDetails.peaceMedalBonus > 0) {
+      this.add.text(GAME_WIDTH / 2 - 200, yPos, '🏅 PEACE MEDAL DELIVERED!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+      });
+      this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${scoreDetails.peaceMedalBonus} pts`, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+      }).setOrigin(1, 0);
+      yPos += 25;
+
+      // Putino's praise
+      this.add.text(GAME_WIDTH / 2, yPos, '"Tremendous! The greatest peace deal!"', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '13px',
+        color: '#DC143C',
+        fontStyle: 'italic',
+      }).setOrigin(0.5, 0);
+      yPos += 25;
+    }
+
+    // Divider
+    const divider = this.add.graphics();
+    divider.lineStyle(2, 0xCCCCCC);
+    divider.lineBetween(GAME_WIDTH / 2 - 200, yPos, GAME_WIDTH / 2 + 200, yPos);
+    yPos += 15;
+
+    // Total Score
+    const totalScoreShadow = this.add.text(GAME_WIDTH / 2 + 2, yPos + 2, `TOTAL SCORE: ${scoreDetails.total}`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '28px',
       color: '#B8860B',
       fontStyle: 'bold',
     });
-    scoreShadow.setOrigin(0.5, 0.5);
+    totalScoreShadow.setOrigin(0.5, 0);
 
-    const scoreText = this.add.text(GAME_WIDTH / 2, 280, `Final Score: ${data.score}`, {
+    this.add.text(GAME_WIDTH / 2, yPos, `TOTAL SCORE: ${scoreDetails.total}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '32px',
+      fontSize: '28px',
       color: '#FFD700',
       fontStyle: 'bold',
-    });
-    scoreText.setOrigin(0.5, 0.5);
+    }).setOrigin(0.5, 0);
 
     // Random quote
     const quote = VICTORY_QUOTES[Math.floor(Math.random() * VICTORY_QUOTES.length)];
-    const quoteText = this.add.text(GAME_WIDTH / 2, 360, quote, {
+    const quoteText = this.add.text(GAME_WIDTH / 2, 480, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '18px',
+      fontSize: '14px',
       color: '#666666',
       fontStyle: 'italic',
-      wordWrap: { width: 600 },
+      wordWrap: { width: 500 },
       align: 'center',
     });
-    quoteText.setOrigin(0.5, 0.5);
+    quoteText.setOrigin(0.5, 0);
 
     // Celebration confetti
     this.createCelebrationParticles();
 
     // Buttons
-    this.createButton(GAME_WIDTH / 2, 480, 'PLAY AGAIN', 0x4CAF50, () => {
+    this.createButton(GAME_WIDTH / 2 - 110, 560, 'PLAY AGAIN', 0x4CAF50, () => {
       this.scene.start('GameScene');
     });
 
-    this.createButton(GAME_WIDTH / 2, 550, 'MAIN MENU', 0x607D8B, () => {
+    this.createButton(GAME_WIDTH / 2 + 110, 560, 'MAIN MENU', 0x607D8B, () => {
       this.scene.start('MenuScene');
     });
 
     // Enter key hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, 610, 'Press ENTER to play again', {
+    const enterHint = this.add.text(GAME_WIDTH / 2, 620, 'Press ENTER to play again', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '14px',
+      fontSize: '12px',
       color: '#888888',
     });
     enterHint.setOrigin(0.5, 0.5);
@@ -144,6 +256,48 @@ export class GameOverScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ENTER', () => {
       this.scene.start('GameScene');
     });
+  }
+
+  private calculateScore(data: GameOverData): { timeBonus: number; itemsTotal: number; peaceMedalBonus: number; total: number } {
+    // Time bonus: faster = more points (max 5000 for under 2 minutes)
+    const seconds = Math.floor((data.elapsedTime || 0) / 1000);
+    const timeBonus = Math.max(0, 5000 - seconds * 10);
+
+    // Items bonus - MAGA hats are most valuable
+    let itemsTotal = 0;
+    if (data.inventory) {
+      for (const item of data.inventory) {
+        itemsTotal += this.getItemPoints(item);
+      }
+    }
+
+    // HUGE bonus for delivering the Peace Medal
+    const peaceMedalBonus = data.hasPeaceMedal ? 10000 : 0;
+
+    return {
+      timeBonus,
+      itemsTotal,
+      peaceMedalBonus,
+      total: timeBonus + itemsTotal + peaceMedalBonus,
+    };
+  }
+
+  private getItemPoints(item: InventoryItem): number {
+    // MAGA hats are most valuable for scoring (different from fuel value)
+    const pointValues: Record<string, number> = {
+      'MAGA Hat': 500,
+      'Twitter Bird': 200,
+      'Dollar': 100,
+      'Burger': 50,
+    };
+    return (pointValues[item.name] || 50) * item.count;
+  }
+
+  private formatTime(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private createCrashScreen(data: GameOverData): void {
