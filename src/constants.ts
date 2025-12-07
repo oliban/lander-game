@@ -16,7 +16,7 @@ export const FUEL_CONSUMPTION_RATE = 0.15; // per frame when thrusting
 // Terrain
 export const TERRAIN_SEGMENT_WIDTH = 20;
 export const TERRAIN_ROUGHNESS = 0.5;
-export const WORLD_WIDTH = 21500; // Total journey length (eastward)
+export const WORLD_WIDTH = 22600; // Total journey length (eastward) - Russia is 20% wider
 export const WORLD_START_X = -2800; // Washington is 2+ screen widths to the left
 
 // Countries (x positions where they start) - cartoon colors
@@ -40,7 +40,7 @@ export const LANDING_PADS = [
   { x: 8500, width: 80, name: 'Berlin Gas Station' },
   { x: 11500, width: 70, name: 'Warsaw Depot' },
   { x: 15500, width: 60, name: 'Border Station' },
-  { x: 20875, width: 250, name: "Putino's Palace" }, // Much larger final pad
+  { x: 22000, width: 250, name: "Putino's Palace" }, // Much larger final pad - adjusted for 20% wider Russia
 ];
 
 // Collectibles - organized by category and value

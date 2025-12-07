@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS, COLLECTIBLE_TYPES } from '../constants';
 import { InventoryItem } from '../systems/InventorySystem';
 
+interface DestroyedBuilding {
+  name: string;
+  points: number;
+  textureKey: string;
+  country: string;
+}
+
 interface GameOverData {
   victory: boolean;
   message: string;
@@ -13,6 +20,7 @@ interface GameOverData {
   skipHighScoreCheck?: boolean;
   debugModeUsed?: boolean;
   noShake?: boolean;
+  destroyedBuildings?: DestroyedBuilding[];
 }
 
 interface HighScoreEntry {
@@ -172,94 +180,111 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     // Title with shadow (cartoon style)
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 53, 'MISSION COMPLETE!', {
+    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 38, 'MISSION COMPLETE!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '42px',
+      fontSize: '36px',
       color: '#2E7D32',
       fontStyle: 'bold',
     });
     titleShadow.setOrigin(0.5, 0.5);
 
-    const title = this.add.text(GAME_WIDTH / 2, 50, 'MISSION COMPLETE!', {
+    const title = this.add.text(GAME_WIDTH / 2, 35, 'MISSION COMPLETE!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '42px',
+      fontSize: '36px',
       color: '#4CAF50',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0.5);
 
     // Message
-    const message = this.add.text(GAME_WIDTH / 2, 90, data.message, {
+    this.add.text(GAME_WIDTH / 2, 68, data.message, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#333333',
-    });
-    message.setOrigin(0.5, 0.5);
+    }).setOrigin(0.5, 0.5);
 
-    // Calculate panel height based on content
-    const itemCount = data.inventory ? data.inventory.filter(i => i.count > 0).length : 0;
-    const hasDestructionBonus = data.score && data.score > 0;
-    const baseHeight = 180; // Time, header, and total
-    const itemsHeight = Math.max(1, itemCount) * 22 + 35; // Items section
-    const peaceMedalHeight = data.hasPeaceMedal ? 50 : 0;
-    const destructionHeight = hasDestructionBonus ? 25 : 0;
-    const panelHeight = baseHeight + itemsHeight + peaceMedalHeight + destructionHeight;
+    // Layout constants - 3 columns
+    const leftPanelX = 30;
+    const middlePanelX = 430;
+    const rightPanelX = 830;
+    const panelTop = 95;
+    const panelWidth = 380;
+    const mainPanelHeight = 420;
 
-    // Score Report Panel
-    const panel = this.add.graphics();
-    panel.fillStyle(0xFFFFFF, 0.95);
-    panel.fillRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, panelHeight, 15);
-    panel.lineStyle(3, 0x333333);
-    panel.strokeRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, panelHeight, 15);
+    // === LEFT PANEL: Score Tally ===
+    const leftPanel = this.add.graphics();
+    leftPanel.fillStyle(0xFFFFFF, 0.95);
+    leftPanel.fillRoundedRect(leftPanelX, panelTop, panelWidth, mainPanelHeight, 12);
+    leftPanel.lineStyle(2, 0x333333);
+    leftPanel.strokeRoundedRect(leftPanelX, panelTop, panelWidth, mainPanelHeight, 12);
 
-    // Score Report Title
-    this.add.text(GAME_WIDTH / 2, 160, 'MISSION REPORT', {
+    this.add.text(leftPanelX + panelWidth / 2, panelTop + 15, 'SCORE BREAKDOWN', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '24px',
+      fontSize: '18px',
       color: '#333333',
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
-    let yPos = 200;
+    let yPos = panelTop + 45;
 
-    // Time
+    // Time bonus
     const timeStr = this.formatTime(data.elapsedTime || 0);
-    this.add.text(GAME_WIDTH / 2 - 200, yPos, `Time: ${timeStr}`, {
+    this.add.text(leftPanelX + 15, yPos, `⏱ Time: ${timeStr}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#333333',
     });
-    this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${scoreDetails.timeBonus} pts`, {
+    this.add.text(leftPanelX + panelWidth - 15, yPos, `+${scoreDetails.timeBonus}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#4CAF50',
       fontStyle: 'bold',
     }).setOrigin(1, 0);
-    yPos += 30;
+    yPos += 28;
 
-    // Inventory items delivered
-    this.add.text(GAME_WIDTH / 2 - 200, yPos, 'Goods Delivered:', {
+    // Divider
+    const div1 = this.add.graphics();
+    div1.lineStyle(1, 0xDDDDDD);
+    div1.lineBetween(leftPanelX + 15, yPos, leftPanelX + panelWidth - 15, yPos);
+    yPos += 10;
+
+    // Goods Delivered header
+    this.add.text(leftPanelX + 15, yPos, 'Goods Delivered:', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#333333',
       fontStyle: 'bold',
     });
-    yPos += 25;
+    yPos += 22;
 
+    // Inventory items with actual cargo images
     if (data.inventory) {
       for (const item of data.inventory) {
         if (item.count > 0) {
-          const colorHex = '#' + item.color.toString(16).padStart(6, '0');
+          // Get texture key from item type (same logic as Collectible.ts)
+          const textureKey = item.type.toLowerCase().replace('_', '');
+
+          // Draw small cargo image
+          try {
+            const itemImage = this.add.image(leftPanelX + 30, yPos + 10, textureKey);
+            itemImage.setDisplaySize(20, 20);
+          } catch {
+            // Fallback colored square if texture not found
+            const fallback = this.add.graphics();
+            fallback.fillStyle(item.color, 1);
+            fallback.fillRect(leftPanelX + 20, yPos + 2, 16, 16);
+          }
+
           const itemPoints = this.getItemPoints(item);
-          this.add.text(GAME_WIDTH / 2 - 180, yPos, `${item.name}: ${item.count}`, {
+          this.add.text(leftPanelX + 50, yPos + 2, `${item.name} x${item.count}`, {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '14px',
-            color: colorHex,
+            fontSize: '13px',
+            color: '#333333',
           });
-          this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${itemPoints} pts`, {
+          this.add.text(leftPanelX + panelWidth - 15, yPos + 2, `+${itemPoints}`, {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '14px',
-            color: '#4CAF50',
+            fontSize: '13px',
+            color: itemPoints > 0 ? '#4CAF50' : '#999999',
           }).setOrigin(1, 0);
           yPos += 22;
         }
@@ -267,129 +292,273 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     if (scoreDetails.itemsTotal === 0) {
-      this.add.text(GAME_WIDTH / 2 - 180, yPos, '(No goods delivered)', {
+      this.add.text(leftPanelX + 20, yPos, '(None)', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '14px',
+        fontSize: '13px',
         color: '#999999',
         fontStyle: 'italic',
       });
       yPos += 22;
     }
 
-    yPos += 10;
+    yPos += 5;
 
-    // Peace Medal bonus (if applicable) - worth 5000 points
+    // Peace Medal bonus
     if (data.hasPeaceMedal) {
-      this.add.text(GAME_WIDTH / 2 - 200, yPos, '🏅 PEACE MEDAL DELIVERED!', {
+      const div2 = this.add.graphics();
+      div2.lineStyle(1, 0xDDDDDD);
+      div2.lineBetween(leftPanelX + 15, yPos, leftPanelX + panelWidth - 15, yPos);
+      yPos += 10;
+
+      this.add.text(leftPanelX + 15, yPos, '🏅 PEACE MEDAL!', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#FFD700',
         fontStyle: 'bold',
       });
-      this.add.text(GAME_WIDTH / 2 + 150, yPos, '+5000 pts', {
+      this.add.text(leftPanelX + panelWidth - 15, yPos, '+5000', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#FFD700',
         fontStyle: 'bold',
       }).setOrigin(1, 0);
       yPos += 25;
-
-      // Putino's praise
-      this.add.text(GAME_WIDTH / 2, yPos, '"Tremendous! The greatest peace deal!"', {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '13px',
-        color: '#DC143C',
-        fontStyle: 'italic',
-      }).setOrigin(0.5, 0);
-      yPos += 25;
     }
 
-    // Divider
-    const divider = this.add.graphics();
-    divider.lineStyle(2, 0xCCCCCC);
-    divider.lineBetween(GAME_WIDTH / 2 - 200, yPos, GAME_WIDTH / 2 + 200, yPos);
-    yPos += 15;
-
-    // Destruction score bonus (if any)
+    // Destruction bonus
     if (data.score && data.score > 0) {
-      this.add.text(GAME_WIDTH / 2 - 200, yPos, 'Destruction Bonus:', {
+      this.add.text(leftPanelX + 15, yPos, '💥 Destruction Bonus:', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '16px',
-        color: '#333333',
+        fontSize: '14px',
+        color: '#FF6600',
+        fontStyle: 'bold',
       });
-      this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${data.score} pts`, {
+      this.add.text(leftPanelX + panelWidth - 15, yPos, `+${data.score}`, {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#FF6600',
         fontStyle: 'bold',
       }).setOrigin(1, 0);
       yPos += 25;
     }
 
-    // Divider before total
-    const divider2 = this.add.graphics();
-    divider2.lineStyle(2, 0xCCCCCC);
-    divider2.lineBetween(GAME_WIDTH / 2 - 200, yPos, GAME_WIDTH / 2 + 200, yPos);
-    yPos += 15;
+    // Total Score at bottom of left panel
+    const totalY = panelTop + mainPanelHeight - 50;
+    const divTotal = this.add.graphics();
+    divTotal.lineStyle(2, 0x333333);
+    divTotal.lineBetween(leftPanelX + 15, totalY - 5, leftPanelX + panelWidth - 15, totalY - 5);
 
-    // Total Score (including destruction bonus)
-    const totalScoreShadow = this.add.text(GAME_WIDTH / 2 + 2, yPos + 2, `TOTAL SCORE: ${finalScore}`, {
+    this.add.text(leftPanelX + panelWidth / 2 + 2, totalY + 12, `TOTAL: ${finalScore}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '24px',
+      fontSize: '22px',
       color: '#B8860B',
       fontStyle: 'bold',
-    });
-    totalScoreShadow.setOrigin(0.5, 0);
-
-    this.add.text(GAME_WIDTH / 2, yPos, `TOTAL SCORE: ${finalScore}`, {
+    }).setOrigin(0.5, 0);
+    this.add.text(leftPanelX + panelWidth / 2, totalY + 10, `TOTAL: ${finalScore}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '24px',
+      fontSize: '22px',
       color: '#FFD700',
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
-    // Calculate position below the panel
-    const panelBottom = 140 + panelHeight;
+    // === MIDDLE PANEL: Destruction Tally ===
+    const middlePanel = this.add.graphics();
+    middlePanel.fillStyle(0x2D2D2D, 0.95);
+    middlePanel.fillRoundedRect(middlePanelX, panelTop, panelWidth, mainPanelHeight, 12);
+    middlePanel.lineStyle(2, 0xFF6600);
+    middlePanel.strokeRoundedRect(middlePanelX, panelTop, panelWidth, mainPanelHeight, 12);
 
-    // Random quote
-    const quote = VICTORY_QUOTES[Math.floor(Math.random() * VICTORY_QUOTES.length)];
-    const quoteText = this.add.text(GAME_WIDTH / 2 - 250, panelBottom + 20, quote, {
+    this.add.text(middlePanelX + panelWidth / 2, panelTop + 15, '💥 DESTRUCTION REPORT', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '12px',
-      color: '#666666',
-      fontStyle: 'italic',
-      wordWrap: { width: 300 },
-      align: 'center',
-    });
-    quoteText.setOrigin(0.5, 0);
+      fontSize: '18px',
+      color: '#FF6600',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    const destroyedBuildings = data.destroyedBuildings || [];
+    let destructionY = panelTop + 50;
+
+    if (destroyedBuildings.length === 0) {
+      this.add.text(middlePanelX + panelWidth / 2, panelTop + mainPanelHeight / 2, 'No buildings destroyed\n\n(Peaceful mission!)', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '14px',
+        color: '#888888',
+        fontStyle: 'italic',
+        align: 'center',
+      }).setOrigin(0.5, 0.5);
+    } else {
+      // Show up to 10 buildings with their images
+      const maxToShow = Math.min(destroyedBuildings.length, 10);
+      for (let i = 0; i < maxToShow; i++) {
+        const building = destroyedBuildings[i];
+
+        // Try to show building thumbnail
+        try {
+          const thumb = this.add.image(middlePanelX + 30, destructionY + 14, building.textureKey);
+          thumb.setDisplaySize(28, 28);
+          thumb.setOrigin(0.5, 0.5);
+        } catch {
+          // If texture not found, draw a placeholder
+          const placeholder = this.add.graphics();
+          placeholder.fillStyle(0x666666, 1);
+          placeholder.fillRect(middlePanelX + 16, destructionY, 28, 28);
+        }
+
+        // Building name (truncate if too long)
+        const displayName = building.name.length > 20 ? building.name.substring(0, 18) + '...' : building.name;
+        this.add.text(middlePanelX + 50, destructionY + 2, displayName, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '12px',
+          color: '#FFFFFF',
+        });
+
+        // Country
+        this.add.text(middlePanelX + 50, destructionY + 16, building.country, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '10px',
+          color: '#888888',
+        });
+
+        // Points
+        this.add.text(middlePanelX + panelWidth - 15, destructionY + 8, `+${building.points}`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '13px',
+          color: '#FF6600',
+          fontStyle: 'bold',
+        }).setOrigin(1, 0);
+
+        destructionY += 36;
+      }
+
+      if (destroyedBuildings.length > 10) {
+        this.add.text(middlePanelX + panelWidth / 2, destructionY + 10, `...and ${destroyedBuildings.length - 10} more!`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '12px',
+          color: '#888888',
+          fontStyle: 'italic',
+        }).setOrigin(0.5, 0);
+      }
+    }
+
+    // === RIGHT PANEL: High Scores ===
+    const rightPanel = this.add.graphics();
+    rightPanel.fillStyle(0x1A1A2E, 0.95);
+    rightPanel.fillRoundedRect(rightPanelX, panelTop, panelWidth, mainPanelHeight, 12);
+    rightPanel.lineStyle(2, 0xFFD700);
+    rightPanel.strokeRoundedRect(rightPanelX, panelTop, panelWidth, mainPanelHeight, 12);
+
+    this.add.text(rightPanelX + panelWidth / 2, panelTop + 15, '🏆 HIGH SCORES', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '18px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    // High scores list
+    const highScores = this.loadHighScores();
+    const medalEmojis = ['🥇', '🥈', '🥉', '4.', '5.'];
+    const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32', '#AAAAAA', '#AAAAAA'];
+    let scoreY = panelTop + 55;
+
+    if (highScores.length === 0) {
+      this.add.text(rightPanelX + panelWidth / 2, panelTop + mainPanelHeight / 2, 'No scores yet!\n\nBe the first!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+        color: '#AAAAAA',
+        align: 'center',
+      }).setOrigin(0.5, 0.5);
+    } else {
+      for (let i = 0; i < 5; i++) {
+        if (i < highScores.length) {
+          const entry = highScores[i];
+          const isCurrentScore = entry.score === finalScore && this.highScoreRank === i;
+
+          if (isCurrentScore) {
+            const highlight = this.add.graphics();
+            highlight.fillStyle(0xFFD700, 0.15);
+            highlight.fillRoundedRect(rightPanelX + 10, scoreY - 5, panelWidth - 20, 35, 5);
+          }
+
+          // Medal/rank
+          this.add.text(rightPanelX + 25, scoreY + 10, medalEmojis[i], {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '18px',
+            color: medalColors[i],
+          }).setOrigin(0.5, 0.5);
+
+          // Name
+          this.add.text(rightPanelX + 50, scoreY + 3, entry.name, {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '16px',
+            color: isCurrentScore ? '#FFD700' : '#FFFFFF',
+            fontStyle: isCurrentScore ? 'bold' : 'normal',
+          });
+
+          // Date
+          this.add.text(rightPanelX + 50, scoreY + 20, entry.date, {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '10px',
+            color: '#666666',
+          });
+
+          // Score
+          this.add.text(rightPanelX + panelWidth - 20, scoreY + 10, entry.score.toString(), {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '18px',
+            color: isCurrentScore ? '#FFD700' : '#90EE90',
+            fontStyle: 'bold',
+          }).setOrigin(1, 0.5);
+
+          scoreY += 40;
+        } else {
+          // Empty slot
+          this.add.text(rightPanelX + 25, scoreY + 10, medalEmojis[i], {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '18px',
+            color: '#444444',
+          }).setOrigin(0.5, 0.5);
+          this.add.text(rightPanelX + 50, scoreY + 10, '---', {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '16px',
+            color: '#444444',
+          });
+          scoreY += 40;
+        }
+      }
+    }
 
     // Celebration confetti
     this.createCelebrationParticles();
 
-    // Show name entry or leaderboard on the right side
-    if (this.isNewHighScore) {
-      this.createNameEntryUI(GAME_WIDTH / 2 + 150, panelBottom, finalScore);
-    } else {
-      // Show leaderboard on the right
-      this.createLeaderboard(GAME_WIDTH / 2 + 150, panelBottom, finalScore);
+    // Random quote at bottom
+    const quote = VICTORY_QUOTES[Math.floor(Math.random() * VICTORY_QUOTES.length)];
+    this.add.text(GAME_WIDTH / 2, panelTop + mainPanelHeight + 30, quote, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '12px',
+      color: '#666666',
+      fontStyle: 'italic',
+    }).setOrigin(0.5, 0);
 
+    // Show name entry or buttons
+    const buttonY = panelTop + mainPanelHeight + 65;
+    if (this.isNewHighScore) {
+      this.createNameEntryUI(GAME_WIDTH / 2, buttonY - 20, finalScore);
+    } else {
       // Buttons
-      const buttonY = panelBottom + 220;
-      this.createButton(GAME_WIDTH / 2 - 200, buttonY, 'PLAY AGAIN', 0x4CAF50, () => {
+      this.createButton(GAME_WIDTH / 2 - 120, buttonY, 'PLAY AGAIN', 0x4CAF50, () => {
         this.scene.start('GameScene');
       });
 
-      this.createButton(GAME_WIDTH / 2, buttonY, 'MAIN MENU', 0x607D8B, () => {
+      this.createButton(GAME_WIDTH / 2 + 120, buttonY, 'MAIN MENU', 0x607D8B, () => {
         this.scene.start('MenuScene');
       });
 
       // Enter key hint
-      const enterHint = this.add.text(GAME_WIDTH / 2 - 100, buttonY + 50, 'Press ENTER to play again', {
+      this.add.text(GAME_WIDTH / 2, buttonY + 45, 'Press ENTER to play again', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '12px',
         color: '#888888',
-      });
-      enterHint.setOrigin(0.5, 0.5);
+      }).setOrigin(0.5, 0.5);
 
       // Enter key to play again
       this.input.keyboard!.on('keydown-ENTER', () => {
@@ -425,14 +594,37 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   private getItemPoints(item: InventoryItem): number {
-    // MAGA hats are most valuable for scoring (different from fuel value)
+    // Point values for different cargo types (score, not fuel!)
     const pointValues: Record<string, number> = {
-      'MAGA Hat': 500,
-      'Twitter Bird': 200,
-      'Dollar': 100,
+      // Bomb items (lower value as they're common and droppable)
       'Burger': 50,
+      'Hamberder': 50,
+      'Diet Coke': 50,
+      'Trump Steak': 50,
+      'Vodka': 50,
+      // Tradeable items
+      'Dollar': 10,
+      'Covfefe': 50,
+      'Hair Spray': 50,
+      'Twitter Bird': 200,
+      // Rare items
+      'Casino Chip': 150,
+      'MAGA Hat': 500,
+      'NFT': 0, // Worthless!
+      'Bitcoin': 80,
+      // Very rare
+      'Classified Docs': 200,
+      'Golden Toilet': 300,
+      // Russian items
+      'Matryoshka': 100,
+      'Oligarch Gold': 250,
+      // Easter egg
+      'Tan Suit': 75,
+      // Power-ups (no trade value but bonus points for having them)
+      'Trump Tower': 100,
+      'Red Tie': 100,
     };
-    return (pointValues[item.name] || 50) * item.count;
+    return (pointValues[item.name] ?? 50) * item.count;
   }
 
   private formatTime(ms: number): string {

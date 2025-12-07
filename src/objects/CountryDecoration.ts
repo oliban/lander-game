@@ -5,90 +5,90 @@ import Phaser from 'phaser';
 export const BUILDING_NAMES: Record<string, string[]> = {
   Washington: [
     'White House', 'Capitol Building', 'Washington Monument', 'Lincoln Memorial',
-    'Jefferson Memorial', 'Pentagon', 'Smithsonian', 'Supreme Court',
-    'Library of Congress', 'Treasury Building', 'FBI Building', 'State Department',
-    'National Archives', 'Union Station', 'Kennedy Center', 'National Cathedral'
+    'Jefferson Memorial', 'Supreme Court', 'Smithsonian Castle', 'National Archives',
+    'Library of Congress', 'National Cathedral', 'Treasury Building', 'Vietnam Veterans Memorial',
+    'Union Station', 'Kennedy Center', 'Fords Theatre', 'DC Row Houses'
   ],
   USA: [
-    'One World Trade Center', 'Empire State Building', 'Chrysler Building', 'Rockefeller Center',
-    'Times Square', 'Brooklyn Bridge', 'Central Park Tower', 'Flatiron Building',
-    'Grand Central', 'Madison Square Garden', 'Radio City', 'Trump Tower NYC',
-    'Woolworth Building', 'MetLife Building', 'Citigroup Center', 'Hearst Tower'
+    'One World Trade Center', 'Willis Tower', 'Transamerica Pyramid', 'Chrysler Building',
+    'Woolworth Building', 'Flatiron Building', 'Pentagon', 'Capitol Building',
+    'Biltmore Estate', 'Monticello', 'Fallingwater', 'Fallingwater House',
+    'The Broad Museum', 'Walt Disney Concert Hall', 'Guggenheim Museum', 'Independence Hall'
   ],
   UK: [
-    'Big Ben', 'Tower of London', 'Buckingham Palace', 'Westminster Abbey',
-    'Tower Bridge', 'St Pauls Cathedral', 'Houses of Parliament', 'The Shard',
-    'London Eye', 'British Museum', 'Trafalgar Square', 'Windsor Castle',
-    'Edinburgh Castle', 'Stonehenge Visitor Center', 'Royal Albert Hall', 'Harrods'
+    'Big Ben', 'Tower Bridge', 'Buckingham Palace', 'Westminster Abbey',
+    'St Pauls Cathedral', 'The Shard', 'The Gherkin', 'London Eye',
+    'Tower of London', 'Windsor Castle', 'Edinburgh Castle', 'Royal Albert Hall',
+    'Stonehenge', 'Angel of the North', 'Titanic Belfast', 'Millennium Stadium'
   ],
   France: [
-    'Eiffel Tower', 'Arc de Triomphe', 'Notre Dame', 'Louvre',
-    'Sacre Coeur', 'Palace of Versailles', 'Moulin Rouge', 'Pantheon',
-    'Opera Garnier', 'Centre Pompidou', 'Musee dOrsay', 'Hotel des Invalides',
-    'Place de la Concorde', 'Champs Elysees', 'Luxembourg Palace', 'Tuileries'
+    'Eiffel Tower', 'Louvre Museum', 'Notre Dame', 'Sacre Coeur',
+    'Arc de Triomphe', 'Palace of Versailles', 'Mont Saint-Michel', 'Chateau de Chambord',
+    'Centre Pompidou', 'Les Invalides', 'Pont du Gard', 'Carcassonne',
+    'Palais Garnier', 'Pantheon', 'Sainte-Chapelle', 'Chateau de Chenonceau'
   ],
   Germany: [
-    'Brandenburg Gate', 'Reichstag', 'Neuschwanstein Castle', 'Cologne Cathedral',
-    'Berlin TV Tower', 'Checkpoint Charlie', 'Berlin Wall Memorial', 'Hofbrauhaus',
-    'Heidelberg Castle', 'Dresden Frauenkirche', 'Munich Rathaus', 'Sanssouci Palace',
-    'Hamburg Elbphilharmonie', 'Frankfurt Skyline', 'Nuremberg Castle', 'Zwinger Palace'
+    'Brandenburg Gate', 'Reichstag', 'Cologne Cathedral', 'Neuschwanstein Castle',
+    'Dresden Frauenkirche', 'Elbphilharmonie Hamburg', 'Zwinger Palace Dresden', 'Heidelberg Castle',
+    'Berlin TV Tower', 'Berlin Cathedral', 'Aachen Cathedral', 'Semperoper Dresden',
+    'Frauenkirche Munich', 'Porta Nigra Trier', 'Holstentor Lubeck', 'Schwerin Castle'
   ],
   Poland: [
-    'Wawel Castle', 'Palace of Culture', 'Old Town Square', 'St Marys Basilica',
-    'Gdansk Crane', 'Malbork Castle', 'Cloth Hall', 'Wilanow Palace',
-    'Lazienki Palace', 'Warsaw Barbican', 'Poznan Town Hall', 'Wroclaw Cathedral',
-    'Jasna Gora', 'Auschwitz Memorial', 'Tatra Mountains Lodge', 'Salt Mine Wieliczka'
+    'Wawel Castle', 'Malbork Castle', 'St Marys Basilica', 'Palace of Culture',
+    'Warsaw Old Town', 'Moszna Castle', 'Auschwitz Memorial', 'Zamosc Town Hall',
+    'Cloth Hall Krakow', 'Centennial Hall', 'Royal Castle Warsaw', 'Poznan Town Hall',
+    'Biskupin Settlement', 'Ksiaz Castle', 'Crooked House Sopot', 'Wooden Church'
   ],
   Russia: [
-    'Kremlin', 'St Basils Cathedral', 'Winter Palace', 'Bolshoi Theatre',
-    'Red Square', 'GUM Department Store', 'Moscow State University', 'Christ the Savior',
-    'Peterhof Palace', 'Catherine Palace', 'Hermitage Museum', 'Peter and Paul Fortress',
-    'Kazan Cathedral', 'Moscow Metro', 'Ostankino Tower', 'Lubyanka'
+    'Red Square', 'Moscow Kremlin', 'St Isaacs Cathedral', 'Winter Palace',
+    'Peterhof Palace', 'Bolshoi Theatre', 'Kazan Kremlin', 'Tretyakov Gallery',
+    'Church on Spilled Blood', 'Moscow State University', 'Rostov Kremlin', 'Novodevichy Convent',
+    'Kizhi Pogost', 'Catherine Palace', 'Admiralty Building', 'GUM Department Store'
   ],
 };
 
 export const LANDMARK_NAMES: Record<string, string[]> = {
   Washington: [
-    'National Mall', 'Potomac River View', 'Cherry Blossoms', 'Arlington Cemetery',
-    'Georgetown', 'Rock Creek Park', 'Tidal Basin', 'Embassy Row',
-    'Dupont Circle', 'Capitol Hill', 'Foggy Bottom', 'The Ellipse',
-    'Constitution Gardens', 'Reflecting Pool', 'Roosevelt Island', 'C&O Canal'
+    'Space Needle', 'Pike Place Market', 'Mount Rainier', 'Museum of Pop Culture',
+    'Seattle Central Library', 'State Capitol', 'Snoqualmie Falls', 'Grand Coulee Dam',
+    'Tacoma Dome', 'Leavenworth Village', 'Washington State Ferry', 'Columbia River Gorge',
+    'Olympic Coast', 'Seattle Aquarium', 'T-Mobile Park', 'Suzzallo Library'
   ],
   USA: [
-    'Statue of Liberty', 'Golden Gate Bridge', 'Mount Rushmore', 'Grand Canyon',
-    'Niagara Falls', 'Hollywood Sign', 'Las Vegas Strip', 'Space Needle',
-    'Gateway Arch', 'Hoover Dam', 'Yellowstone', 'Alcatraz',
-    'Liberty Bell', 'Fenway Park', 'Navy Pier', 'Miami Beach'
+    'Statue of Liberty', 'Golden Gate Bridge', 'Mount Rushmore', 'The Alamo',
+    'Grand Canyon', 'Space Needle', 'Gateway Arch', 'Cloud Gate Chicago',
+    'Old Faithful', 'Great Smoky Mountains', 'Monument Valley', 'Niagara Falls',
+    'Route 66 Sign', 'Half Dome Yosemite', 'Devils Tower', 'Redwood Forest'
   ],
   UK: [
-    'Loch Ness', 'White Cliffs of Dover', 'Cotswolds', 'Lake District',
-    'Giants Causeway', 'Scottish Highlands', 'Hadrians Wall', 'Bath',
-    'Oxford Spires', 'Cambridge', 'Stratford upon Avon', 'Canterbury',
-    'Snowdonia', 'Jurassic Coast', 'Peak District', 'Cornwall Coast'
+    'Loch Ness Castle', 'Roman Baths', 'Giants Causeway', 'Hadrians Wall',
+    'Glenfinnan Viaduct', 'White Cliffs of Dover', 'Eden Project', 'Blackpool Tower',
+    'Scottish Highlands', 'Seven Sisters Cliffs', 'Forth Bridge', 'St Michaels Mount',
+    'Cheddar Gorge', 'Caernarfon Castle', 'The Needles', 'Durdle Door'
   ],
   France: [
-    'Mont Blanc', 'Gorges du Verdon', 'French Riviera', 'Loire Valley',
-    'Mont Saint Michel', 'Provence Fields', 'Normandy Beaches', 'Bordeaux Vineyards',
-    'Champagne Region', 'Dordogne Valley', 'Carcassonne', 'Strasbourg',
-    'Nice Promenade', 'Cannes', 'Marseille Port', 'Chamonix'
+    'Mont Blanc', 'Verdon Gorge', 'Dune of Pilat', 'Etretat Cliffs',
+    'Lavender Fields', 'Calanques', 'Camargue Horses', 'Puy de Dome',
+    'Bavella Needles', 'Brittany Lighthouse', 'Champagne Vineyards', 'French Alps Ski',
+    'Aiguille du Midi', 'Tarn Gorge', 'Vosges Mountains', 'Lascaux Cave'
   ],
   Germany: [
-    'Zugspitze', 'Black Forest', 'Rhine Valley', 'Bavarian Alps',
-    'Romantic Road', 'Baltic Coast', 'Saxon Switzerland', 'Moselle Valley',
-    'Lake Constance', 'Harz Mountains', 'Rugen Island', 'Spreewald',
-    'Berchtesgaden', 'Elbe Sandstone', 'Thuringian Forest', 'North Sea Coast'
+    'Zugspitze', 'Black Forest', 'Rhine Valley', 'Konigssee',
+    'Bastei Bridge', 'Lake Constance', 'Brocken Mountain', 'Rugen Chalk Cliffs',
+    'Moselle River Loop', 'Wadden Sea', 'Bavarian Alps', 'Elbe Sandstone',
+    'Loreley Rock', 'Thuringian Forest', 'Mecklenburg Lakes', 'Bavarian Forest'
   ],
   Poland: [
-    'Tatra Mountains', 'Bialowieza Forest', 'Baltic Coast', 'Mazury Lakes',
-    'Bieszczady Mountains', 'Dunajec Gorge', 'Slowinski Dunes', 'Ojcow Valley',
-    'Pieniny Mountains', 'Karkonosze', 'Roztocze', 'Jura Highlands',
-    'Vistula River', 'Kampinos Forest', 'Sudety Mountains', 'Masurian Lakes'
+    'Morskie Oko', 'Dunajec River Gorge', 'Bieszczady Mountains', 'Masurian Lakes',
+    'Bialowieza Bison', 'Slowinski Dunes', 'Wieliczka Salt Mine', 'Auschwitz Memorial',
+    'Table Mountains', 'Sniezka Peak', 'Elblag Canal', 'Giant Mountains',
+    'Biebrza Marshes', 'Augustow Canal', 'Stolowe Mountains', 'Baltic Lighthouse'
   ],
   Russia: [
-    'Lake Baikal', 'Kamchatka', 'Trans-Siberian Railway', 'Ural Mountains',
-    'Volga River', 'Caucasus Mountains', 'Siberian Taiga', 'Arctic Tundra',
-    'Golden Ring', 'Karelia', 'Altai Mountains', 'Sochi',
-    'Crimea', 'Murmansk', 'Vladivostok Port', 'Sakhalin Island'
+    'Shamanka Rock Baikal', 'Kamchatka Volcanoes', 'Lena Pillars', 'Manpupuner Rocks',
+    'Altai Mountains', 'Kuril Islands', 'Mount Elbrus', 'Valley of Geysers',
+    'Curonian Spit', 'Putorana Waterfall', 'Siberian Tiger', 'Lake Baikal',
+    'Siberian Tundra', 'Kungur Ice Cave', 'Baikal Seals', 'Siberian Taiga'
   ],
 };
 
@@ -199,8 +199,8 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
   }
 
   // For future bombing mechanic
-  explode(): { name: string; points: number } {
-    if (this.isDestroyed) return { name: this.buildingName, points: 0 };
+  explode(): { name: string; points: number; textureKey: string; country: string } {
+    if (this.isDestroyed) return { name: this.buildingName, points: 0, textureKey: this.texture.key, country: this.country };
 
     this.isDestroyed = true;
 
@@ -255,7 +255,7 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
     // Hide the building
     this.setVisible(false);
 
-    return { name: this.buildingName, points: this.pointValue };
+    return { name: this.buildingName, points: this.pointValue, textureKey: this.texture.key, country: this.country };
   }
 }
 

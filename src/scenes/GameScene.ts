@@ -62,6 +62,7 @@ export class GameScene extends Phaser.Scene {
   private bombs: Bomb[] = [];
   private bombCooldown: boolean = false;
   private destructionScore: number = 0;
+  private destroyedBuildings: { name: string; points: number; textureKey: string; country: string }[] = [];
 
   constructor() {
     super({ key: 'GameScene' });
@@ -95,8 +96,9 @@ export class GameScene extends Phaser.Scene {
     this.hasPeaceMedal = false;
     this.peaceMedalGraphics = null;
 
-    // Reset score
+    // Reset score and destroyed buildings
     this.destructionScore = 0;
+    this.destroyedBuildings = [];
 
     // Create landing pads
     this.createLandingPads();
@@ -465,6 +467,7 @@ export class GameScene extends Phaser.Scene {
         message: 'You crashed into the terrain!',
         score: this.destructionScore,
         debugModeUsed: this.shuttle.wasDebugModeUsed(),
+        destroyedBuildings: this.destroyedBuildings,
       });
     });
   }
@@ -648,6 +651,7 @@ export class GameScene extends Phaser.Scene {
         score: this.destructionScore,
         debugModeUsed: this.shuttle.wasDebugModeUsed(),
         noShake: true, // Water death is peaceful, no shake
+        destroyedBuildings: this.destroyedBuildings,
       });
     });
   }
@@ -708,6 +712,7 @@ export class GameScene extends Phaser.Scene {
           message: `Crash landing! ${landingResult.reason}`,
           score: this.destructionScore,
           debugModeUsed: this.shuttle.wasDebugModeUsed(),
+          destroyedBuildings: this.destroyedBuildings,
         });
       });
       return;
@@ -731,10 +736,19 @@ export class GameScene extends Phaser.Scene {
         this.events.emit('destructionScore', this.destructionScore);
       }
 
-      // Special message if carrying peace medal
+      // Special message if carrying peace medal - Putino speaks!
+      const putinoPhrases = [
+        '"Ochen khorosho! Very good, my friend! This medal, it is... how you say... TREMENDOUS!"',
+        '"Spasibo! Thank you! Putino is most impressed with shiny peace medal, da!"',
+        '"Bozhe moy! My God! Such beautiful medal! We make great deal together, yes?"',
+        '"Prekrasno! Wonderful! This medal bigger than all of Europe medals combined!"',
+        '"Ura! Hooray! Putino knew you would bring medal. We have best chemistry, da?"',
+        '"Zamechatelno! Magnificent! Medal so shiny, can see reflection of great Russia!"',
+        '"Otlichno! Excellent work! Putino will put medal next to his other... trophies."',
+      ];
       const victoryMessage = this.hasPeaceMedal
-        ? "You've delivered the PEACE MEDAL to Putino! He is tremendously pleased!"
-        : "You've reached Putino's Palace! Peace delivered!";
+        ? putinoPhrases[Math.floor(Math.random() * putinoPhrases.length)]
+        : '"Ah, my friend! Putino is happy to see you, but... something is missing, da?"';
 
       // Check if debug mode was used (disqualifies from high score)
       const debugModeUsed = this.shuttle.wasDebugModeUsed();
@@ -751,6 +765,7 @@ export class GameScene extends Phaser.Scene {
           hasPeaceMedal: this.hasPeaceMedal,
           score: this.destructionScore,
           debugModeUsed: debugModeUsed,
+          destroyedBuildings: this.destroyedBuildings,
         });
       });
     } else if (pad.isWashington && !this.hasPeaceMedal) {
@@ -1011,6 +1026,7 @@ export class GameScene extends Phaser.Scene {
         message: message,
         score: this.destructionScore,
         debugModeUsed: this.shuttle.wasDebugModeUsed(),
+        destroyedBuildings: this.destroyedBuildings,
       });
     });
   }
@@ -1309,8 +1325,9 @@ export class GameScene extends Phaser.Scene {
           this.applyExplosionShockwave(explosionX, explosionY);
 
           // Get building info and destroy it
-          const { name, points } = decoration.explode();
+          const { name, points, textureKey, country } = decoration.explode();
           this.destructionScore += points;
+          this.destroyedBuildings.push({ name, points, textureKey, country });
 
           // Show points popup
           this.showDestructionPoints(decoration.x, decoration.y - 50, points, name);
@@ -1714,6 +1731,7 @@ export class GameScene extends Phaser.Scene {
         message: message,
         score: this.destructionScore,
         debugModeUsed: this.shuttle.wasDebugModeUsed(),
+        destroyedBuildings: this.destroyedBuildings,
       });
     });
   }
@@ -1767,37 +1785,43 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createProjectileExplosion(x: number, y: number): void {
-    // Small explosion flash
+    // Big explosion flash - projectiles colliding creates a satisfying boom
     const flash = this.add.graphics();
-    flash.fillStyle(0xFF6600, 0.8);
-    flash.fillCircle(x, y, 12);
+    flash.fillStyle(0xFF3300, 0.9);
+    flash.fillCircle(x, y, 35);
+    flash.fillStyle(0xFF6600, 0.9);
+    flash.fillCircle(x, y, 28);
+    flash.fillStyle(0xFFAA00, 1);
+    flash.fillCircle(x, y, 20);
     flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(x, y, 8);
+    flash.fillCircle(x, y, 12);
     flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(x, y, 4);
+    flash.fillCircle(x, y, 6);
 
     this.tweens.add({
       targets: flash,
       alpha: 0,
-      scale: 1.5,
-      duration: 200,
+      scale: 2,
+      duration: 350,
       onComplete: () => flash.destroy(),
     });
 
-    // Small debris particles
-    for (let i = 0; i < 4; i++) {
-      const angle = (i / 4) * Math.PI * 2;
+    // More debris particles flying outward
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.3;
+      const distance = 40 + Math.random() * 30;
       const debris = this.add.graphics();
-      debris.fillStyle(0x888888, 1);
-      debris.fillCircle(0, 0, 2);
+      const colors = [0xFF6600, 0xFFAA00, 0x888888, 0xFFFF00];
+      debris.fillStyle(colors[Math.floor(Math.random() * colors.length)], 1);
+      debris.fillCircle(0, 0, 2 + Math.random() * 3);
       debris.setPosition(x, y);
 
       this.tweens.add({
         targets: debris,
-        x: x + Math.cos(angle) * 20,
-        y: y + Math.sin(angle) * 20,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
         alpha: 0,
-        duration: 300,
+        duration: 400 + Math.random() * 200,
         onComplete: () => debris.destroy(),
       });
     }
@@ -1888,6 +1912,7 @@ export class GameScene extends Phaser.Scene {
         victory: false,
         message: 'Lost in the void!',
         score: this.destructionScore,
+        destroyedBuildings: this.destroyedBuildings,
       });
     }
   }
