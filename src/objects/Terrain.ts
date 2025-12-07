@@ -6,6 +6,12 @@ export interface TerrainVertex {
   y: number;
 }
 
+export interface FlatArea {
+  x: number;      // Center X position
+  width: number;  // Width of flat area
+  y: number;      // Height (Y position)
+}
+
 export class Terrain {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
@@ -13,6 +19,7 @@ export class Terrain {
   private vertices: TerrainVertex[] = [];
   private bodies: MatterJS.BodyType[] = [];
   private waveOffset: number = 0;
+  private flatAreas: FlatArea[] = [];
 
   constructor(scene: Phaser.Scene, startX: number, endX: number) {
     this.scene = scene;
@@ -70,6 +77,56 @@ export class Terrain {
             heights[i] = avgHeight;
           }
         }
+      }
+    }
+
+    // Create flat plateau areas for buildings (not in Atlantic Ocean)
+    const oceanStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const oceanEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const plateauWidth = 300; // Width of flat area in pixels
+    const plateauSpacing = 800; // Average spacing between plateaus
+
+    // Create plateaus throughout the terrain, avoiding ocean and landing pads
+    for (let x = startX + 400; x < endX - 400; x += plateauSpacing + Math.random() * 400) {
+      // Skip Atlantic Ocean
+      if (x >= oceanStart && x < oceanEnd) continue;
+
+      // Skip areas near landing pads
+      const nearPad = LANDING_PADS.some(pad => Math.abs(x - pad.x) < pad.width + 200);
+      if (nearPad) continue;
+
+      // Calculate indices for this plateau
+      const plateauStartIdx = Math.floor((x - plateauWidth / 2 - startX) / TERRAIN_SEGMENT_WIDTH);
+      const plateauEndIdx = Math.ceil((x + plateauWidth / 2 - startX) / TERRAIN_SEGMENT_WIDTH);
+
+      if (plateauStartIdx >= 0 && plateauEndIdx < numPoints) {
+        // Find average height in plateau area
+        let avgHeight = 0;
+        let count = 0;
+        for (let i = plateauStartIdx; i <= plateauEndIdx; i++) {
+          if (i >= 0 && i < heights.length) {
+            avgHeight += heights[i];
+            count++;
+          }
+        }
+        avgHeight = count > 0 ? avgHeight / count : baseHeight;
+
+        // Clamp plateau height to reasonable range
+        avgHeight = Phaser.Math.Clamp(avgHeight, GAME_HEIGHT * 0.5, GAME_HEIGHT * 0.85);
+
+        // Flatten the plateau area
+        for (let i = plateauStartIdx; i <= plateauEndIdx; i++) {
+          if (i >= 0 && i < heights.length) {
+            heights[i] = avgHeight;
+          }
+        }
+
+        // Record this flat area for decoration placement
+        this.flatAreas.push({
+          x: x,
+          width: plateauWidth,
+          y: avgHeight,
+        });
       }
     }
 
@@ -208,6 +265,10 @@ export class Terrain {
 
   getVertices(): TerrainVertex[] {
     return this.vertices;
+  }
+
+  getFlatAreas(): FlatArea[] {
+    return this.flatAreas;
   }
 
   getHeightAt(x: number): number {

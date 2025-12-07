@@ -4,6 +4,7 @@ import { Terrain } from '../objects/Terrain';
 import { LandingPad } from '../objects/LandingPad';
 import { Cannon } from '../objects/Cannon';
 import { Collectible, spawnCollectibles } from '../objects/Collectible';
+import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import {
@@ -23,6 +24,7 @@ export class GameScene extends Phaser.Scene {
   private landingPads: LandingPad[] = [];
   private cannons: Cannon[] = [];
   private collectibles: Collectible[] = [];
+  private decorations: CountryDecoration[] = [];
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private fuelSystem!: FuelSystem;
   private inventorySystem!: InventorySystem;
@@ -71,6 +73,9 @@ export class GameScene extends Phaser.Scene {
     // Create terrain (including Washington DC area to the left)
     this.terrain = new Terrain(this, WORLD_START_X, WORLD_WIDTH);
 
+    // Create country decorations (buildings and landmarks)
+    this.createDecorations();
+
     // Reset peace medal state
     this.hasPeaceMedal = false;
     this.peaceMedalGraphics = null;
@@ -82,11 +87,13 @@ export class GameScene extends Phaser.Scene {
     this.createCannons();
 
     // Create collectibles (throughout entire world including Washington area)
+    // Pass decorations so collectibles don't spawn inside buildings
     this.collectibles = spawnCollectibles(
       this,
       WORLD_START_X,
       WORLD_WIDTH,
-      (x) => this.terrain.getHeightAt(x)
+      (x) => this.terrain.getHeightAt(x),
+      this.decorations
     );
 
     // Create shuttle - start landed on NYC pad (index 1, since Washington is now index 0)
@@ -251,6 +258,90 @@ export class GameScene extends Phaser.Scene {
         const cannon = new Cannon(this, x, y);
         this.cannons.push(cannon);
       }
+    }
+  }
+
+  private createDecorations(): void {
+    // Get flat areas from terrain
+    const flatAreas = this.terrain.getFlatAreas();
+
+    // Track used images to prevent duplicates: Set of "country_type_index" strings
+    const usedImages = new Set<string>();
+
+    for (const area of flatAreas) {
+      // Determine which country this flat area is in
+      let countryName = 'USA';
+      for (let i = COUNTRIES.length - 1; i >= 0; i--) {
+        if (area.x >= COUNTRIES[i].startX) {
+          countryName = COUNTRIES[i].name;
+          break;
+        }
+      }
+
+      // Get the asset prefix for this country
+      const assetPrefix = getCountryAssetPrefix(countryName);
+      if (!assetPrefix) continue; // Skip Atlantic Ocean
+
+      // Random chance to place a decoration (80%)
+      if (Math.random() > 0.8) continue;
+
+      // Choose building (70%) or landmark (30%)
+      const isLandmark = Math.random() < 0.3;
+      const typeStr = isLandmark ? 'landmark' : 'building';
+
+      // Find an unused image index for this country/type combo
+      // Try up to 16 times to find an unused one
+      let index = -1;
+      const availableIndices = [];
+      for (let i = 0; i < 16; i++) {
+        const key = `${assetPrefix}_${typeStr}_${i}`;
+        if (!usedImages.has(key)) {
+          availableIndices.push(i);
+        }
+      }
+
+      // Track final type used
+      let finalIsLandmark = isLandmark;
+
+      // If no available images of this type, try the other type
+      if (availableIndices.length === 0) {
+        finalIsLandmark = !isLandmark;
+        const altTypeStr = isLandmark ? 'building' : 'landmark';
+        for (let i = 0; i < 16; i++) {
+          const key = `${assetPrefix}_${altTypeStr}_${i}`;
+          if (!usedImages.has(key)) {
+            availableIndices.push(i);
+          }
+        }
+        if (availableIndices.length > 0) {
+          index = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+          const key = `${assetPrefix}_${altTypeStr}_${index}`;
+          usedImages.add(key);
+        }
+      } else {
+        // Pick a random available index
+        index = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+        const key = `${assetPrefix}_${typeStr}_${index}`;
+        usedImages.add(key);
+      }
+
+      // Skip if no available images
+      if (index === -1) continue;
+
+      // Get actual terrain height at this position (more accurate than stored area.y)
+      const terrainY = this.terrain.getHeightAt(area.x);
+
+      // Create the decoration
+      const decoration = new CountryDecoration(
+        this,
+        area.x,
+        terrainY,
+        assetPrefix,
+        index,
+        finalIsLandmark
+      );
+
+      this.decorations.push(decoration);
     }
   }
 

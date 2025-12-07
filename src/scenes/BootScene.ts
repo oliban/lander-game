@@ -37,28 +37,44 @@ export class BootScene extends Phaser.Scene {
     // Load title art image
     this.load.image('title-art', 'assets/images/title-art.png');
 
-    // Load collectible images
-    this.load.image('burger', 'assets/images/objects/objects_two_0.png');
-    this.load.image('hamberder', 'assets/images/objects/objects_two_1.png');
-    this.load.image('dietcoke', 'assets/images/objects/objects_two_2.png');
-    this.load.image('dollar', 'assets/images/objects/objects_two_3.png');
-    this.load.image('covfefe', 'assets/images/objects/objects_two_4.png');
-    this.load.image('hairspray', 'assets/images/objects/objects_two_5.png');
-    this.load.image('twitter', 'assets/images/objects/objects_two_6.png');
-    this.load.image('trumpsteak', 'assets/images/objects/objects_two_7.png');
-    this.load.image('casinochip', 'assets/images/objects/objects_two_8.png');
-    this.load.image('magahat', 'assets/images/objects/objects_two_9.png');
-    this.load.image('nft', 'assets/images/objects/objects_two_10.png');
-    this.load.image('bitcoin', 'assets/images/objects/objects_two_11.png');
-    this.load.image('classifieddocs', 'assets/images/objects/objects_two_12.png');
-    this.load.image('goldentoilet', 'assets/images/objects/objects_two_13.png');
-    this.load.image('matryoshka', 'assets/images/objects/objects_two_14.png');
-    this.load.image('vodka', 'assets/images/objects/objects_two_15.png');
+    // Load collectible images (objects_one_0 through objects_one_15)
+    this.load.image('burger', 'assets/images/objects/objects_one_0.png');
+    this.load.image('hamberder', 'assets/images/objects/objects_one_1.png');
+    this.load.image('dietcoke', 'assets/images/objects/objects_one_2.png');
+    this.load.image('dollar', 'assets/images/objects/objects_one_3.png');
+    this.load.image('covfefe', 'assets/images/objects/objects_one_4.png');
+    this.load.image('hairspray', 'assets/images/objects/objects_one_5.png');
+    this.load.image('twitter', 'assets/images/objects/objects_one_6.png');
+    this.load.image('trumpsteak', 'assets/images/objects/objects_one_7.png');
+    this.load.image('casinochip', 'assets/images/objects/objects_one_8.png');
+    this.load.image('magahat', 'assets/images/objects/objects_one_9.png');
+    this.load.image('nft', 'assets/images/objects/objects_one_10.png');
+    this.load.image('bitcoin', 'assets/images/objects/objects_one_11.png');
     this.load.image('oligarchgold', 'assets/images/objects/objects_one_12.png');
     this.load.image('tansuit', 'assets/images/objects/objects_one_13.png');
     // Special power-up items
     this.load.image('trumptower', 'assets/images/objects/objects_one_14.png');
     this.load.image('redtie', 'assets/images/objects/objects_one_15.png');
+    // Additional items (objects_two_12 through objects_two_15)
+    this.load.image('classifieddocs', 'assets/images/objects/objects_two_12.png');
+    this.load.image('goldentoilet', 'assets/images/objects/objects_two_13.png');
+    this.load.image('matryoshka', 'assets/images/objects/objects_two_14.png');
+    this.load.image('vodka', 'assets/images/objects/objects_two_15.png');
+
+    // Load country buildings and landmarks
+    const countries = ['Washington', 'USA', 'UK', 'France', 'Germany', 'Poland', 'Russia'];
+    for (const country of countries) {
+      for (let i = 0; i < 16; i++) {
+        this.load.image(
+          `${country}_building_${i}`,
+          `assets/images/country_images/${country}_buildings/${country}_buildings_${i}.png`
+        );
+        this.load.image(
+          `${country}_landmark_${i}`,
+          `assets/images/country_images/${country}_landmarks/${country}_landmarks_${i}.png`
+        );
+      }
+    }
 
     // Generate graphics programmatically (shuttle, particles, etc.)
     this.createGameGraphics();

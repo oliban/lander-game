@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { COLLECTIBLE_TYPES } from '../constants';
+import { CountryDecoration } from './CountryDecoration';
 
 export type CollectibleType = keyof typeof COLLECTIBLE_TYPES;
 
@@ -153,13 +154,31 @@ export function spawnCollectibles(
   scene: Phaser.Scene,
   startX: number,
   endX: number,
-  getTerrainHeight: (x: number) => number
+  getTerrainHeight: (x: number) => number,
+  decorations: CountryDecoration[] = []
 ): Collectible[] {
   const collectibles: Collectible[] = [];
   const spacing = 250; // Average spacing between collectibles
 
   // Russian zone starts at x = 12000 (Poland onwards)
   const russianZoneStart = 12000;
+
+  // Helper to check if a position overlaps with any building (with margin)
+  const isNearBuilding = (px: number, py: number, margin: number = 50): boolean => {
+    for (const decoration of decorations) {
+      const bounds = decoration.getCollisionBounds();
+      // Check if point is within bounds + margin
+      if (
+        px >= bounds.x - margin &&
+        px <= bounds.x + bounds.width + margin &&
+        py >= bounds.y - margin &&
+        py <= bounds.y + bounds.height + margin
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   for (let x = startX + 200; x < endX - 200; x += spacing + Math.random() * spacing) {
     const isInRussianZone = x >= russianZoneStart;
@@ -202,6 +221,11 @@ export function spawnCollectibles(
     // Position above terrain
     const terrainY = getTerrainHeight(x);
     const y = terrainY - 50 - Math.random() * 150;
+
+    // Skip if this position is near a building
+    if (isNearBuilding(x, y)) {
+      continue;
+    }
 
     const collectible = new Collectible(scene, x, y, selectedType);
     collectibles.push(collectible);
