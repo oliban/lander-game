@@ -8,7 +8,7 @@ interface TradingSceneData {
   inventorySystem: InventorySystem;
   fuelSystem: FuelSystem;
   padName: string;
-  landingQuality: 'perfect' | 'good';
+  landingQuality: 'perfect' | 'good' | 'rough';
   onScoreChange?: (delta: number) => void;
   onComplete: () => void;
 }
@@ -44,7 +44,8 @@ export class TradingScene extends Phaser.Scene {
     this.fuelSystem = data.fuelSystem;
     this.onComplete = data.onComplete;
     this.onScoreChange = data.onScoreChange;
-    this.landingBonus = data.landingQuality === 'perfect' ? 1.5 : 1.2;
+    // Landing bonus: perfect = 25%, good = 10%, rough = no bonus
+    this.landingBonus = data.landingQuality === 'perfect' ? 1.25 : data.landingQuality === 'good' ? 1.1 : 1.0;
 
     // Reset selection
     this.selectedItems.clear();
@@ -104,9 +105,18 @@ export class TradingScene extends Phaser.Scene {
 
     // Landing quality badge
     const badgeY = bannerY + 60;
-    const isPerfect = data.landingQuality === 'perfect';
-    const badgeColor = isPerfect ? 0x228B22 : 0xDAA520;
-    const badgeText = isPerfect ? '★ PERFECT LANDING +50% ★' : '✓ Good Landing +20%';
+    let badgeColor: number;
+    let badgeText: string;
+    if (data.landingQuality === 'perfect') {
+      badgeColor = 0x228B22;
+      badgeText = '★ PERFECT LANDING +25% ★';
+    } else if (data.landingQuality === 'good') {
+      badgeColor = 0xDAA520;
+      badgeText = '✓ Good Landing +10%';
+    } else {
+      badgeColor = 0x888888;
+      badgeText = '⚠ Rough Landing (No Bonus)';
+    }
 
     const badge = this.add.graphics();
     badge.fillStyle(badgeColor, 0.9);

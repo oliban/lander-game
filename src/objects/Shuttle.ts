@@ -221,7 +221,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     return this.debugModeUsed;
   }
 
-  checkLandingSafety(): { safe: boolean; quality: 'perfect' | 'good' | 'crash'; reason?: string } {
+  checkLandingSafety(): { safe: boolean; quality: 'perfect' | 'good' | 'rough' | 'crash'; reason?: string } {
     const velocity = this.getVelocity();
     const angle = Math.abs(Phaser.Math.Angle.Wrap(this.rotation));
 
@@ -235,21 +235,23 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       return { safe: false, quality: 'crash', reason: 'Bad angle!' };
     }
 
-    // Check velocity - more forgiving thresholds
-    if (velocity.total > MAX_SAFE_LANDING_VELOCITY * 2.0) {
+    // Check velocity - crash only at very high speeds
+    if (velocity.total > MAX_SAFE_LANDING_VELOCITY * 3.0) {
       return { safe: false, quality: 'crash', reason: 'Too fast!' };
     }
 
-    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 0.6) {
+    // Perfect landing requires very gentle touchdown (≤ 25% of max)
+    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 0.25) {
       return { safe: true, quality: 'perfect' };
     }
 
-    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 1.5) {
+    // Good landing up to 70% of max safe velocity
+    if (velocity.total <= MAX_SAFE_LANDING_VELOCITY * 0.7) {
       return { safe: true, quality: 'good' };
     }
 
-    // Between 1.5x and 2x is still a safe but rough landing
-    return { safe: true, quality: 'good' };
+    // Rough landing (no bonus) - still survivable but sloppy
+    return { safe: true, quality: 'rough' };
   }
 
   explode(): void {

@@ -7,7 +7,7 @@ export const GRAVITY = 0.45; // Lighter feel
 export const THRUST_POWER = 0.006; // Balanced thrust
 export const ROTATION_SPEED = 0.04; // Slightly slower rotation for heavier feel
 export const MAX_SAFE_LANDING_VELOCITY = 5.0; // More forgiving landing speed
-export const MAX_SAFE_LANDING_ANGLE = 0.5; // radians (~29 degrees) - more forgiving angle
+export const MAX_SAFE_LANDING_ANGLE = 0.45; // radians (~26 degrees) - reasonably forgiving angle
 
 // Fuel
 export const INITIAL_FUEL = 100;
