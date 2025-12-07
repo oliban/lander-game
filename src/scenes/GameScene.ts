@@ -70,7 +70,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.gameState = 'playing';
-    this.gameStartTime = this.time.now;
+    this.gameStartTime = Date.now(); // Use Date.now() for reliable timing across scene restarts
 
     // Reset all game object arrays (Phaser may reuse scene instances)
     this.landingPads = [];
@@ -99,6 +99,23 @@ export class GameScene extends Phaser.Scene {
     // Reset score and destroyed buildings
     this.destructionScore = 0;
     this.destroyedBuildings = [];
+
+    // Reset power-up states (Phaser may reuse scene instances)
+    this.cannonsBribed = false;
+    this.bribeEndTime = 0;
+    this.hasSpeedBoost = false;
+    this.speedBoostEndTime = 0;
+    this.bribeGraphics = null;
+    this.speedBoostTrail = null;
+
+    // Reset other state
+    this.medalAngle = 0;
+    this.medalAngularVelocity = 0;
+    this.lastShuttleVelX = 0;
+    this.lastShuttleVelY = 0;
+    this.sittingDuckStartTime = 0;
+    this.isSittingDuck = false;
+    this.bombCooldown = false;
 
     // Create landing pads
     this.createLandingPads();
@@ -1660,7 +1677,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getElapsedTime(): number {
-    return this.time.now - this.gameStartTime;
+    return Date.now() - this.gameStartTime;
   }
 
   private checkSittingDuck(): void {

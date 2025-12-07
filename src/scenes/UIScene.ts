@@ -58,6 +58,13 @@ export class UIScene extends Phaser.Scene {
     this.getElapsedTime = data.getElapsedTime;
     this.hasPeaceMedal = data.hasPeaceMedal || (() => false);
 
+    // Reset state variables (Phaser may reuse scene instances)
+    this.lastVelocity = -1;
+    this.lastLegsState = false;
+    this.lastTime = -1;
+    this.lastMedalState = false;
+    this.currentScore = 0;
+
     this.createFuelGauge();
     this.createVelocityMeter();
     this.createGearIndicator();
