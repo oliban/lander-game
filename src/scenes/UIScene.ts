@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem, InventoryItem } from '../systems/InventorySystem';
-import { GAME_WIDTH, GAME_HEIGHT, COLORS, MAX_SAFE_LANDING_VELOCITY } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, COLORS, MAX_SAFE_LANDING_VELOCITY, BOMB_DROPPABLE_TYPES } from '../constants';
 
 interface UISceneData {
   fuelSystem: FuelSystem;
@@ -186,19 +186,15 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createInventoryDisplay(): void {
-    this.inventoryContainer = this.add.container(GAME_WIDTH - 150, 80);
+    this.inventoryContainer = this.add.container(GAME_WIDTH - 90, 80);
 
-    // Background panel
+    // Background panel will be redrawn dynamically based on content
     const bg = this.add.graphics();
-    bg.fillStyle(0xFFFFFF, 0.9);
-    bg.fillRoundedRect(-70, -10, 140, 130, 10);
-    bg.lineStyle(2, 0x333333);
-    bg.strokeRoundedRect(-70, -10, 140, 130, 10);
     this.inventoryContainer.add(bg);
 
     const title = this.add.text(0, 0, 'CARGO', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '14px',
+      fontSize: '12px',
       color: '#333333',
       fontStyle: 'bold',
     });
@@ -207,32 +203,103 @@ export class UIScene extends Phaser.Scene {
     this.inventoryContainer.add(title);
   }
 
+  // Short abbreviations for item display
+  private getItemAbbrev(type: string): string {
+    const abbrevs: Record<string, string> = {
+      'COVFEFE': 'COV',
+      'BRIBE': 'BRB',
+      'PEACE_MEDAL': '🏅',
+      'BURGER': '🍔',
+      'HAMBERDER': '🍔',
+      'DIET_COKE': '🥤',
+      'TRUMP_STEAK': '🥩',
+      'VODKA': '🍸',
+    };
+    return abbrevs[type] || type.substring(0, 3);
+  }
+
   private updateInventoryDisplay(items: InventoryItem[]): void {
     // Clear existing items (except background and title)
     while (this.inventoryContainer.length > 2) {
       this.inventoryContainer.removeAt(2, true);
     }
 
-    let yOffset = 25;
-    for (const item of items) {
-      if (item.count > 0) {
+    // Split items into regular cargo and contrabands
+    const regularItems = items.filter(item => item.count > 0 && !BOMB_DROPPABLE_TYPES.includes(item.type));
+    const contrabandItems = items.filter(item => item.count > 0 && BOMB_DROPPABLE_TYPES.includes(item.type));
+
+    let yOffset = 18;
+    const panelWidth = 160;
+    const colWidth = 75;
+
+    // Regular cargo items - 2 column grid
+    if (regularItems.length > 0) {
+      for (let i = 0; i < regularItems.length; i++) {
+        const item = regularItems[i];
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const xPos = col === 0 ? -colWidth / 2 - 5 : colWidth / 2 - 5;
+        const yPos = yOffset + row * 18;
+
         const colorHex = '#' + item.color.toString(16).padStart(6, '0');
-        const text = this.add.text(0, yOffset, `${item.name}: ${item.count}`, {
+        const abbrev = this.getItemAbbrev(item.type);
+        const text = this.add.text(xPos, yPos, `${abbrev}×${item.count}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '12px',
+          fontSize: '11px',
           color: colorHex,
           fontStyle: 'bold',
         });
         text.setOrigin(0.5, 0);
         this.inventoryContainer.add(text);
-        yOffset += 18;
       }
+      yOffset += Math.ceil(regularItems.length / 2) * 18 + 4;
     }
 
-    // Total fuel value
+    // Contrabands section - more compact with emoji grid
+    if (contrabandItems.length > 0) {
+      // Separator line
+      const sep = this.add.graphics();
+      sep.lineStyle(1, 0xCC0000, 0.5);
+      sep.lineBetween(-panelWidth / 2 + 10, yOffset, panelWidth / 2 - 10, yOffset);
+      this.inventoryContainer.add(sep);
+      yOffset += 6;
+
+      // Contrabands header
+      const contrabandHeader = this.add.text(0, yOffset, '💣 BOMBS', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '10px',
+        color: '#8B0000',
+        fontStyle: 'bold',
+      });
+      contrabandHeader.setOrigin(0.5, 0);
+      this.inventoryContainer.add(contrabandHeader);
+      yOffset += 14;
+
+      // Contraband items in 2-column grid
+      for (let i = 0; i < contrabandItems.length; i++) {
+        const item = contrabandItems[i];
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const xPos = col === 0 ? -colWidth / 2 - 5 : colWidth / 2 - 5;
+        const yPos = yOffset + row * 18;
+
+        const abbrev = this.getItemAbbrev(item.type);
+        const text = this.add.text(xPos, yPos, `${abbrev}×${item.count}`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '11px',
+          color: '#CC3333',
+          fontStyle: 'bold',
+        });
+        text.setOrigin(0.5, 0);
+        this.inventoryContainer.add(text);
+      }
+      yOffset += Math.ceil(contrabandItems.length / 2) * 18 + 2;
+    }
+
+    // Total fuel value - compact
     const totalValue = this.inventorySystem.getTotalFuelValue();
     if (totalValue > 0) {
-      const totalText = this.add.text(0, yOffset + 5, `= ${totalValue} fuel`, {
+      const totalText = this.add.text(0, yOffset, `⛽ ${totalValue}`, {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '11px',
         color: '#2E7D32',
@@ -240,7 +307,18 @@ export class UIScene extends Phaser.Scene {
       });
       totalText.setOrigin(0.5, 0);
       this.inventoryContainer.add(totalText);
+      yOffset += 16;
     }
+
+    // Redraw background to fit content
+    const bg = this.inventoryContainer.getAt(0) as Phaser.GameObjects.Graphics;
+    const hasContent = regularItems.length > 0 || contrabandItems.length > 0 || totalValue > 0;
+    const panelHeight = hasContent ? yOffset + 8 : 30;
+    bg.clear();
+    bg.fillStyle(0xFFFFFF, 0.9);
+    bg.fillRoundedRect(-panelWidth / 2, -10, panelWidth, panelHeight, 10);
+    bg.lineStyle(2, 0x333333);
+    bg.strokeRoundedRect(-panelWidth / 2, -10, panelWidth, panelHeight, 10);
   }
 
   private createProgressBar(): void {

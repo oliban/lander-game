@@ -5,6 +5,7 @@ import { LandingPad } from '../objects/LandingPad';
 import { Cannon } from '../objects/Cannon';
 import { Collectible, spawnCollectibles } from '../objects/Collectible';
 import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
+import { Bomb } from '../objects/Bomb';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import {
@@ -14,6 +15,8 @@ import {
   WORLD_START_X,
   COUNTRIES,
   LANDING_PADS,
+  BOMB_DROPPABLE_TYPES,
+  FOOD_PICKUP_AMOUNT,
 } from '../constants';
 
 type GameState = 'playing' | 'landed' | 'crashed' | 'victory';
@@ -54,6 +57,11 @@ export class GameScene extends Phaser.Scene {
   // Sitting duck detection
   private sittingDuckStartTime: number = 0;
   private isSittingDuck: boolean = false;
+
+  // Bomb system
+  private bombs: Bomb[] = [];
+  private bombCooldown: boolean = false;
+  private destructionScore: number = 0;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -255,7 +263,7 @@ export class GameScene extends Phaser.Scene {
         if (tooCloseTopad) continue;
 
         const y = this.terrain.getHeightAt(x) - 15;
-        const cannon = new Cannon(this, x, y);
+        const cannon = new Cannon(this, x, y, country.name);
         this.cannons.push(cannon);
       }
     }
@@ -800,8 +808,53 @@ export class GameScene extends Phaser.Scene {
       this.activateBribeCannons();
     } else if (collectible.special === 'speed_boost') {
       this.activateSpeedBoost();
+    } else if (collectible.collectibleType === 'COVFEFE') {
+      // Covfefe gives instant 10% fuel
+      const fuelToAdd = this.fuelSystem.getMaxFuel() * 0.1;
+      this.fuelSystem.add(fuelToAdd);
+
+      // Show "+10% FUEL" popup
+      const fuelText = this.add.text(this.shuttle.x, this.shuttle.y - 50, '+10% FUEL!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '20px',
+        color: '#8B4513',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 3,
+      });
+      fuelText.setOrigin(0.5, 0.5);
+
+      this.tweens.add({
+        targets: fuelText,
+        y: fuelText.y - 40,
+        alpha: 0,
+        duration: 1500,
+        onComplete: () => fuelText.destroy(),
+      });
+    } else if (BOMB_DROPPABLE_TYPES.includes(collectible.collectibleType)) {
+      // Food items give +10 to inventory
+      this.inventorySystem.add(collectible.collectibleType, FOOD_PICKUP_AMOUNT);
+
+      // Show "+10" popup
+      const amountText = this.add.text(this.shuttle.x, this.shuttle.y - 50, `+${FOOD_PICKUP_AMOUNT}!`, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '18px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2,
+      });
+      amountText.setOrigin(0.5, 0.5);
+
+      this.tweens.add({
+        targets: amountText,
+        y: amountText.y - 30,
+        alpha: 0,
+        duration: 1000,
+        onComplete: () => amountText.destroy(),
+      });
     } else {
-      // Regular collectible - add to inventory
+      // Regular collectible - add 1 to inventory
       this.inventorySystem.add(collectible.collectibleType);
     }
 
@@ -924,6 +977,232 @@ export class GameScene extends Phaser.Scene {
 
     // Flash effect
     this.cameras.main.flash(300, 220, 20, 60);
+  }
+
+  private dropBomb(): void {
+    // Find a droppable food item in inventory
+    let foodType: string | null = null;
+
+    for (const type of BOMB_DROPPABLE_TYPES) {
+      const count = this.inventorySystem.getCount(type as any);
+      if (count > 0) {
+        foodType = type;
+        break;
+      }
+    }
+
+    if (!foodType) {
+      // No food to drop
+      return;
+    }
+
+    // Consume 1 from inventory
+    this.inventorySystem.remove(foodType as any, 1);
+
+    // Create bomb at shuttle position
+    const bomb = new Bomb(this, this.shuttle.x, this.shuttle.y + 20, foodType);
+
+    // Give it the shuttle's velocity plus some downward motion
+    const shuttleVel = this.shuttle.getVelocity();
+    bomb.setVelocity(shuttleVel.x * 0.5, shuttleVel.y + 2);
+
+    this.bombs.push(bomb);
+  }
+
+  private updateBombs(): void {
+    // Check bomb collisions with buildings, cannons, and terrain
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      const bomb = this.bombs[i];
+
+      if (bomb.hasExploded || !bomb.active) {
+        this.bombs.splice(i, 1);
+        continue;
+      }
+
+      const bombX = bomb.x;
+      const bombY = bomb.y;
+      let bombDestroyed = false;
+
+      // Check collision with buildings FIRST (before terrain, since buildings sit on terrain)
+      for (let j = this.decorations.length - 1; j >= 0; j--) {
+        const decoration = this.decorations[j];
+        if (decoration.isDestroyed || !decoration.visible) continue;
+
+        // Check if bomb is within horizontal range first (optimization)
+        if (Math.abs(bombX - decoration.x) > 150) continue;
+
+        const bounds = decoration.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit a building!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Get building info and destroy it
+          const { name, points } = decoration.explode();
+          this.destructionScore += points;
+
+          // Show points popup
+          this.showDestructionPoints(decoration.x, decoration.y - 50, points, name);
+
+          // Remove decoration from array
+          this.decorations.splice(j, 1);
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+          break;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
+      // Check collision with cannons
+      for (let j = this.cannons.length - 1; j >= 0; j--) {
+        const cannon = this.cannons[j];
+        const bounds = cannon.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit a cannon!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+          cannon.explode();
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Show points popup
+          this.destructionScore += 200;
+          this.showDestructionPoints(cannon.x, cannon.y - 30, 200, 'Cannon');
+
+          // Destroy cannon
+          cannon.destroy();
+          this.cannons.splice(j, 1);
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+          break;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
+      // Check collision with terrain (LAST, after checking buildings and cannons)
+      const terrainY = this.terrain.getHeightAt(bombX);
+      if (bombY >= terrainY - 5) {
+        const explosionX = bombX;
+        const explosionY = bombY;
+        bomb.explode(this);
+
+        // Apply shockwave to shuttle
+        this.applyExplosionShockwave(explosionX, explosionY);
+
+        this.bombs.splice(i, 1);
+        continue;
+      }
+
+      // Remove bombs that fall off screen
+      if (bombY > GAME_HEIGHT + 200) {
+        bomb.destroy();
+        this.bombs.splice(i, 1);
+      }
+    }
+  }
+
+  private showDestructionPoints(x: number, y: number, points: number, name: string): void {
+    // Show building name
+    const nameText = this.add.text(x, y - 20, name, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '16px',
+      color: '#FF6600',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 3,
+    });
+    nameText.setOrigin(0.5, 0.5);
+    nameText.setDepth(150);
+
+    // Show points
+    const pointsText = this.add.text(x, y + 10, `+${points} POINTS!`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '24px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    pointsText.setOrigin(0.5, 0.5);
+    pointsText.setDepth(150);
+
+    // Animate both texts - stay visible longer then fade
+    this.tweens.add({
+      targets: [nameText, pointsText],
+      y: '-=80',
+      alpha: 0,
+      duration: 3500,
+      delay: 500, // Hold for half a second before starting to fade
+      ease: 'Power1',
+      onComplete: () => {
+        nameText.destroy();
+        pointsText.destroy();
+      },
+    });
+
+    // Emit event to UIScene to update score display
+    this.events.emit('destructionScore', this.destructionScore);
+  }
+
+  private applyExplosionShockwave(explosionX: number, explosionY: number): void {
+    if (!this.shuttle || !this.shuttle.body) return;
+
+    const shuttleX = this.shuttle.x;
+    const shuttleY = this.shuttle.y;
+
+    // Calculate distance from explosion to shuttle
+    const dx = shuttleX - explosionX;
+    const dy = shuttleY - explosionY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Shockwave radius and strength
+    const maxRadius = 300; // Max distance for shockwave effect
+    const maxForce = 8; // Maximum force at epicenter
+
+    if (distance < maxRadius) {
+      // Force decreases with distance (inverse square-ish falloff)
+      const falloff = 1 - (distance / maxRadius);
+      const force = maxForce * falloff * falloff;
+
+      // Normalize direction and apply force
+      const dirX = dx / (distance || 1);
+      const dirY = dy / (distance || 1);
+
+      // Apply velocity change to shuttle
+      const currentVelocity = this.shuttle.body.velocity as { x: number; y: number };
+      this.shuttle.setVelocity(
+        currentVelocity.x + dirX * force,
+        currentVelocity.y + dirY * force - force * 0.5 // Add slight upward boost
+      );
+
+      // Add some angular velocity for tumble effect
+      const angularForce = (Math.random() - 0.5) * force * 0.02;
+      this.shuttle.setAngularVelocity(
+        (this.shuttle.body as MatterJS.BodyType).angularVelocity + angularForce
+      );
+    }
   }
 
   private updatePowerUps(): void {
@@ -1077,6 +1356,18 @@ export class GameScene extends Phaser.Scene {
 
     // Update shuttle
     this.shuttle.update(this.cursors);
+
+    // Handle bomb drop (arrow down)
+    if (this.cursors.down.isDown && !this.bombCooldown) {
+      this.dropBomb();
+      this.bombCooldown = true;
+      this.time.delayedCall(300, () => {
+        this.bombCooldown = false;
+      });
+    }
+
+    // Update bombs
+    this.updateBombs();
 
     // Update peace medal graphics if carrying
     this.updatePeaceMedalGraphics();

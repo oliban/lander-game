@@ -3,8 +3,8 @@ export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
 
 // Physics
-export const GRAVITY = 0.6; // Increased for heavier feel
-export const THRUST_POWER = 0.006; // Balanced with higher gravity
+export const GRAVITY = 0.45; // Lighter feel
+export const THRUST_POWER = 0.006; // Balanced thrust
 export const ROTATION_SPEED = 0.04; // Slightly slower rotation for heavier feel
 export const MAX_SAFE_LANDING_VELOCITY = 5.0; // More forgiving landing speed
 export const MAX_SAFE_LANDING_ANGLE = 0.5; // radians (~29 degrees) - more forgiving angle
@@ -83,6 +83,10 @@ export const COLLECTIBLE_TYPES = {
 // Cannons
 export const CANNON_FIRE_RATE = 2000; // ms between shots
 export const PROJECTILE_SPEED = 5;
+
+// Bombs (droppable food items)
+export const BOMB_DROPPABLE_TYPES = ['BURGER', 'HAMBERDER', 'DIET_COKE', 'TRUMP_STEAK', 'VODKA'];
+export const FOOD_PICKUP_AMOUNT = 10; // How many of each food item you get when picking up
 
 // Colors (cartoon colorful theme)
 export const COLORS = {

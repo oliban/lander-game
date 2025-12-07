@@ -1,6 +1,16 @@
 import Phaser from 'phaser';
 import { CANNON_FIRE_RATE, PROJECTILE_SPEED } from '../constants';
 
+// Country-specific projectile sprite keys
+// Map countries to arrays of possible projectile sprites (randomly selected when firing)
+export const COUNTRY_PROJECTILES: { [key: string]: string[] } = {
+  'United Kingdom': ['teacup', 'doubledecker', 'blackcab', 'guardhat'],
+  'France': ['baguette', 'wine', 'croissant'],
+  'Germany': ['pretzel', 'beer'],
+  'Poland': ['pierogi', 'pottery'],
+  'Russia': ['proj_matryoshka', 'balalaika', 'borscht', 'samovar'],
+};
+
 export class Cannon extends Phaser.GameObjects.Container {
   private cannonScene: Phaser.Scene;
   private base: Phaser.GameObjects.Graphics;
@@ -8,11 +18,14 @@ export class Cannon extends Phaser.GameObjects.Container {
   private lastFireTime: number = 0;
   private target: { x: number; y: number } | null = null;
   private projectiles: Projectile[] = [];
+  private isDestroyed: boolean = false;
+  private projectileSprites: string[];
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, country: string = '') {
     super(scene, x, y);
 
     this.cannonScene = scene;
+    this.projectileSprites = COUNTRY_PROJECTILES[country] || ['cannonball'];
 
     // Create base (cartoon military green)
     this.base = scene.add.graphics();
@@ -43,7 +56,7 @@ export class Cannon extends Phaser.GameObjects.Container {
   }
 
   update(time: number): void {
-    if (!this.target) return;
+    if (!this.target || this.isDestroyed) return;
 
     // Aim at target
     const angle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
@@ -69,11 +82,15 @@ export class Cannon extends Phaser.GameObjects.Container {
   }
 
   private fire(angle: number): void {
+    // Randomly select a projectile sprite from this cannon's country options
+    const spriteKey = this.projectileSprites[Math.floor(Math.random() * this.projectileSprites.length)];
+
     const projectile = new Projectile(
       this.cannonScene,
       this.x + Math.cos(angle) * 25,
       this.y + Math.sin(angle) * 25,
-      angle
+      angle,
+      spriteKey
     );
     this.projectiles.push(projectile);
 
@@ -100,6 +117,61 @@ export class Cannon extends Phaser.GameObjects.Container {
     return this.projectiles;
   }
 
+  getCollisionBounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.x - 18,
+      y: this.y - 18,
+      width: 36,
+      height: 36,
+    };
+  }
+
+  explode(): void {
+    // Mark as destroyed immediately to stop firing
+    this.isDestroyed = true;
+
+    // Create explosion effect
+    const scene = this.cannonScene;
+    const x = this.x;
+    const y = this.y;
+
+    // Explosion flash
+    const flash = scene.add.graphics();
+    flash.fillStyle(0xFF6600, 1);
+    flash.fillCircle(x, y, 30);
+    flash.fillStyle(0xFFFF00, 1);
+    flash.fillCircle(x, y, 20);
+    flash.fillStyle(0xFFFFFF, 1);
+    flash.fillCircle(x, y, 10);
+
+    scene.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 2,
+      duration: 300,
+      onComplete: () => flash.destroy(),
+    });
+
+    // Flying debris
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const debris = scene.add.graphics();
+      debris.fillStyle(0x556B2F, 1);
+      debris.fillRect(-4, -4, 8, 8);
+      debris.setPosition(x, y);
+
+      scene.tweens.add({
+        targets: debris,
+        x: x + Math.cos(angle) * 50,
+        y: y + Math.sin(angle) * 50 + 20,
+        angle: Math.random() * 360,
+        alpha: 0,
+        duration: 400,
+        onComplete: () => debris.destroy(),
+      });
+    }
+  }
+
   destroy(): void {
     for (const projectile of this.projectiles) {
       projectile.destroy();
@@ -112,29 +184,37 @@ export class Cannon extends Phaser.GameObjects.Container {
 export class Projectile extends Phaser.GameObjects.Container {
   private projectileScene: Phaser.Scene;
   private matterBody: MatterJS.BodyType;
-  private graphics: Phaser.GameObjects.Graphics;
+  private graphics: Phaser.GameObjects.Graphics | null = null;
+  private sprite: Phaser.GameObjects.Sprite | null = null;
   private velocityX: number;
   private velocityY: number;
+  private spriteKey: string;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, angle: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, angle: number, spriteKey: string = 'cannonball') {
     super(scene, x, y);
 
     this.projectileScene = scene;
+    this.spriteKey = spriteKey;
     this.velocityX = Math.cos(angle) * PROJECTILE_SPEED;
     this.velocityY = Math.sin(angle) * PROJECTILE_SPEED;
 
-    // Create visual (cartoon cannonball)
-    this.graphics = scene.add.graphics();
-    // Main ball (dark gray/black)
-    this.graphics.fillStyle(0x333333, 1);
-    this.graphics.fillCircle(0, 0, 7);
-    // Outline
-    this.graphics.lineStyle(2, 0x111111);
-    this.graphics.strokeCircle(0, 0, 7);
-    // Highlight for cartoon 3D effect
-    this.graphics.fillStyle(0x555555, 0.8);
-    this.graphics.fillCircle(-2, -2, 3);
-    this.add(this.graphics);
+    // Try to use sprite if available, otherwise fall back to graphics
+    if (scene.textures.exists(spriteKey)) {
+      this.sprite = scene.add.sprite(0, 0, spriteKey);
+      this.sprite.setScale(0.075); // Scale down the sprite (50% larger than 0.05)
+      this.sprite.setRotation(angle);
+      this.add(this.sprite);
+    } else {
+      // Fall back to graphics-based projectile (cannonball)
+      this.graphics = scene.add.graphics();
+      this.graphics.fillStyle(0x333333, 1);
+      this.graphics.fillCircle(0, 0, 7);
+      this.graphics.lineStyle(2, 0x111111);
+      this.graphics.strokeCircle(0, 0, 7);
+      this.graphics.fillStyle(0x555555, 0.8);
+      this.graphics.fillCircle(-2, -2, 3);
+      this.add(this.graphics);
+    }
 
     scene.add.existing(this);
 
@@ -156,18 +236,18 @@ export class Projectile extends Phaser.GameObjects.Container {
 
     // Update physics body position
     const matterScene = this.projectileScene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
-    matterScene.matter.body.setPosition(this.matterBody, { x: this.x, y: this.y });
+    matterScene.matter.body.setPosition(this.matterBody, { x: this.x, y: this.y }, false);
   }
 
   isOutOfBounds(): boolean {
     const camera = this.projectileScene.cameras.main;
-    const margin = 100;
 
+    // Only remove if gone above the screen or very far horizontally
     return (
-      this.x < camera.scrollX - margin ||
-      this.x > camera.scrollX + camera.width + margin ||
-      this.y < -margin ||
-      this.y > camera.height + margin
+      this.y < -100 ||
+      this.x < camera.scrollX - 500 ||
+      this.x > camera.scrollX + camera.width + 500 ||
+      this.y > camera.height + 200
     );
   }
 
@@ -178,7 +258,8 @@ export class Projectile extends Phaser.GameObjects.Container {
   destroy(): void {
     const matterScene = this.projectileScene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
     matterScene.matter.world.remove(this.matterBody);
-    this.graphics.destroy();
+    if (this.graphics) this.graphics.destroy();
+    if (this.sprite) this.sprite.destroy();
     super.destroy();
   }
 }

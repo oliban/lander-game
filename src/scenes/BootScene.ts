@@ -61,6 +61,28 @@ export class BootScene extends Phaser.Scene {
     this.load.image('matryoshka', 'assets/images/objects/objects_two_14.png');
     this.load.image('vodka', 'assets/images/objects/objects_two_15.png');
 
+    // Load country-specific projectile images
+    // UK projectiles
+    this.load.image('teacup', 'assets/teacup.png');
+    this.load.image('doubledecker', 'assets/doubledecker.png');
+    this.load.image('blackcab', 'assets/blackcab.png');
+    this.load.image('guardhat', 'assets/guardhat.png');
+    // France projectiles
+    this.load.image('baguette', 'assets/baguette.png');
+    this.load.image('wine', 'assets/wine.png');
+    this.load.image('croissant', 'assets/croissant.png');
+    // Germany projectiles
+    this.load.image('pretzel', 'assets/pretzel.png');
+    this.load.image('beer', 'assets/beer.png');
+    // Poland projectiles
+    this.load.image('pierogi', 'assets/pierogi.png');
+    this.load.image('pottery', 'assets/pottery.png');
+    // Russia projectiles
+    this.load.image('proj_matryoshka', 'assets/matryoshka.png');
+    this.load.image('balalaika', 'assets/balalaika.png');
+    this.load.image('borscht', 'assets/borscht.png');
+    this.load.image('samovar', 'assets/samovar.png');
+
     // Load country buildings and landmarks
     const countries = ['Washington', 'USA', 'UK', 'France', 'Germany', 'Poland', 'Russia'];
     for (const country of countries) {

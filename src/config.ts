@@ -13,6 +13,10 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   height: GAME_HEIGHT,
   parent: 'game-container',
   backgroundColor: COLORS.BACKGROUND,
+  fps: {
+    target: 60,
+    forceSetTimeOut: true,
+  },
   physics: {
     default: 'matter',
     matter: {
