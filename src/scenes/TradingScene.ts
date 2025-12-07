@@ -652,60 +652,93 @@ export class TradingScene extends Phaser.Scene {
 
     if (fuelNeeded <= 0) return [];
 
-    const result: string[] = [];
-    const sortedItems = [...items].filter(item =>
+    const tradeableItems = [...items].filter(item =>
       item.count > 0 &&
       (item.fuelValue > 0 || item.isMystery) &&
       !BOMB_DROPPABLE_TYPES.includes(item.type)
-    ).sort((a, b) => {
+    );
+
+    if (tradeableItems.length === 0) return [];
+
+    // Sort by fuel value ascending (cheapest first)
+    const sortedAsc = [...tradeableItems].sort((a, b) => {
       if (a.isMystery && !b.isMystery) return 1;
       if (!a.isMystery && b.isMystery) return -1;
       return a.fuelValue - b.fuelValue;
     });
 
-    let fuelGained = 0;
     const casinoChipValues = this.inventorySystem.getCasinoChipValues();
-    let casinoChipIndex = 0;
 
-    for (const item of sortedItems) {
+    // Strategy 1: Accumulate from cheapest items
+    const strategyCheap: { type: string; name: string; count: number }[] = [];
+    let sumCheap = 0;
+    let chipIdx1 = 0;
+    for (const item of sortedAsc) {
+      if (sumCheap >= fuelNeeded) break;
       let countToSell = 0;
       for (let i = 0; i < item.count; i++) {
-        if (fuelGained >= fuelNeeded) break;
+        if (sumCheap >= fuelNeeded) break;
         countToSell++;
         if (item.type === 'CASINO_CHIP') {
-          fuelGained += Math.floor((casinoChipValues[casinoChipIndex] || 0) * this.landingBonus);
-          casinoChipIndex++;
+          sumCheap += Math.floor((casinoChipValues[chipIdx1] || 0) * this.landingBonus);
+          chipIdx1++;
         } else {
-          fuelGained += Math.floor(item.fuelValue * this.landingBonus);
+          sumCheap += Math.floor(item.fuelValue * this.landingBonus);
         }
       }
       if (countToSell > 0) {
-        result.push(`${item.name} ×${countToSell}`);
+        strategyCheap.push({ type: item.type, name: item.name, count: countToSell });
       }
-      if (fuelGained >= fuelNeeded) break;
     }
 
-    return result;
+    // Strategy 2: Find cheapest single item type that alone can fill the tank
+    let strategySingle: { type: string; name: string; count: number }[] | null = null;
+    let sumSingle = Infinity;
+    for (const item of sortedAsc) {
+      let fuel = 0;
+      let countNeeded = 0;
+      let chipIdx2 = 0;
+      for (let i = 0; i < item.count; i++) {
+        countNeeded++;
+        if (item.type === 'CASINO_CHIP') {
+          fuel += Math.floor((casinoChipValues[chipIdx2] || 0) * this.landingBonus);
+          chipIdx2++;
+        } else {
+          fuel += Math.floor(item.fuelValue * this.landingBonus);
+        }
+        if (fuel >= fuelNeeded) break;
+      }
+      if (fuel >= fuelNeeded && fuel < sumSingle) {
+        sumSingle = fuel;
+        strategySingle = [{ type: item.type, name: item.name, count: countNeeded }];
+        break; // Sorted ascending, so this is cheapest single-type option
+      }
+    }
+
+    // Pick strategy with minimum waste (smaller total fuel)
+    const useStrategy = (strategySingle && sumSingle <= sumCheap) ? strategySingle : strategyCheap;
+
+    return useStrategy.map(s => `${s.name} ×${s.count}`);
   }
 
   private autoTrade(): void {
     const items = this.inventorySystem.getAllItems();
     const currentFuel = this.fuelSystem.getFuel();
     const maxFuel = this.fuelSystem.getMaxFuel();
-    const targetFuel = maxFuel;
-    const fuelNeeded = targetFuel - currentFuel;
+    const fuelNeeded = maxFuel - currentFuel;
 
     if (fuelNeeded <= 0) {
       this.close();
       return;
     }
 
-    const hasItems = items.some(item =>
+    const tradeableItems = [...items].filter(item =>
       item.count > 0 &&
       (item.fuelValue > 0 || item.isMystery) &&
       !BOMB_DROPPABLE_TYPES.includes(item.type)
     );
-    if (!hasItems) {
+
+    if (tradeableItems.length === 0) {
       this.close();
       return;
     }
@@ -715,45 +748,71 @@ export class TradingScene extends Phaser.Scene {
       this.selectedItems.set(item.type, 0);
     }
 
-    // Filter tradeable items (exclude bombs), sort by value (mystery items go last since we don't know value)
-    const sortedItems = [...items].filter(item =>
-      item.count > 0 &&
-      (item.fuelValue > 0 || item.isMystery) &&
-      !BOMB_DROPPABLE_TYPES.includes(item.type)
-    ).sort((a, b) => {
-      // Non-mystery items first, sorted by value
+    // Sort by fuel value ascending (cheapest first)
+    const sortedAsc = [...tradeableItems].sort((a, b) => {
       if (a.isMystery && !b.isMystery) return 1;
       if (!a.isMystery && b.isMystery) return -1;
       return a.fuelValue - b.fuelValue;
     });
 
-    let fuelGained = 0;
     const casinoChipValues = this.inventorySystem.getCasinoChipValues();
-    let casinoChipIndex = 0;
 
-    for (const item of sortedItems) {
-      const available = item.count;
-
-      for (let i = 0; i < available; i++) {
-        if (fuelGained >= fuelNeeded) break;
-        const currentCount = this.selectedItems.get(item.type) || 0;
-        this.selectedItems.set(item.type, currentCount + 1);
-
-        // Calculate value per item
-        let valuePerItem: number;
+    // Strategy 1: Accumulate from cheapest items
+    const strategyCheap: Map<CollectibleType, number> = new Map();
+    let sumCheap = 0;
+    let chipIdx1 = 0;
+    for (const item of sortedAsc) {
+      if (sumCheap >= fuelNeeded) break;
+      let countToSell = 0;
+      for (let i = 0; i < item.count; i++) {
+        if (sumCheap >= fuelNeeded) break;
+        countToSell++;
         if (item.type === 'CASINO_CHIP') {
-          valuePerItem = Math.floor((casinoChipValues[casinoChipIndex] || 0) * this.landingBonus);
-          casinoChipIndex++;
+          sumCheap += Math.floor((casinoChipValues[chipIdx1] || 0) * this.landingBonus);
+          chipIdx1++;
         } else {
-          valuePerItem = Math.floor(item.fuelValue * this.landingBonus);
+          sumCheap += Math.floor(item.fuelValue * this.landingBonus);
         }
-        fuelGained += valuePerItem;
       }
-
-      if (fuelGained >= fuelNeeded) break;
+      if (countToSell > 0) {
+        strategyCheap.set(item.type, countToSell);
+      }
     }
 
-    if (fuelGained === 0) {
+    // Strategy 2: Find cheapest single item type that alone can fill the tank
+    let strategySingle: Map<CollectibleType, number> | null = null;
+    let sumSingle = Infinity;
+    for (const item of sortedAsc) {
+      let fuel = 0;
+      let countNeeded = 0;
+      let chipIdx2 = 0;
+      for (let i = 0; i < item.count; i++) {
+        countNeeded++;
+        if (item.type === 'CASINO_CHIP') {
+          fuel += Math.floor((casinoChipValues[chipIdx2] || 0) * this.landingBonus);
+          chipIdx2++;
+        } else {
+          fuel += Math.floor(item.fuelValue * this.landingBonus);
+        }
+        if (fuel >= fuelNeeded) break;
+      }
+      if (fuel >= fuelNeeded && fuel < sumSingle) {
+        sumSingle = fuel;
+        strategySingle = new Map([[item.type, countNeeded]]);
+        break; // Sorted ascending, so this is cheapest single-type option
+      }
+    }
+
+    // Pick strategy with minimum waste (smaller total fuel)
+    const useStrategy = (strategySingle && sumSingle <= sumCheap) ? strategySingle : strategyCheap;
+
+    // Apply selected strategy
+    for (const [type, count] of useStrategy) {
+      this.selectedItems.set(type, count);
+    }
+
+    const totalSelected = Array.from(useStrategy.values()).reduce((a, b) => a + b, 0);
+    if (totalSelected === 0) {
       this.close();
       return;
     }

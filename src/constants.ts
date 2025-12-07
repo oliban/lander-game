@@ -16,7 +16,7 @@ export const FUEL_CONSUMPTION_RATE = 0.15; // per frame when thrusting
 // Terrain
 export const TERRAIN_SEGMENT_WIDTH = 20;
 export const TERRAIN_ROUGHNESS = 0.5;
-export const WORLD_WIDTH = 20000; // Total journey length (eastward)
+export const WORLD_WIDTH = 21500; // Total journey length (eastward)
 export const WORLD_START_X = -2800; // Washington is 2+ screen widths to the left
 
 // Countries (x positions where they start) - cartoon colors
@@ -40,7 +40,7 @@ export const LANDING_PADS = [
   { x: 8500, width: 80, name: 'Berlin Gas Station' },
   { x: 11500, width: 70, name: 'Warsaw Depot' },
   { x: 15500, width: 60, name: 'Border Station' },
-  { x: 19500, width: 250, name: "Putino's Palace" }, // Much larger final pad
+  { x: 20875, width: 250, name: "Putino's Palace" }, // Much larger final pad
 ];
 
 // Collectibles - organized by category and value
@@ -51,11 +51,11 @@ export const LANDING_PADS = [
 //   - Mystery items (purple): unknown value
 export const COLLECTIBLE_TYPES = {
   // BOMB items - bright orange to indicate they're droppable explosives (not tradeable!)
-  BURGER: { name: 'Burger', fuelValue: 10, rarity: 0.15, color: 0xFF6B35 },
-  HAMBERDER: { name: 'Hamberder', fuelValue: 12, rarity: 0.12, color: 0xFF6B35 },
-  DIET_COKE: { name: 'Diet Coke', fuelValue: 15, rarity: 0.12, color: 0xFF6B35 },
-  TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 55, rarity: 0.05, color: 0xFF6B35 },
-  VODKA: { name: 'Vodka', fuelValue: 45, rarity: 0.05, color: 0xFF6B35, russianOnly: true },
+  BURGER: { name: 'Burger', fuelValue: 3, rarity: 0.15, color: 0xFF6B35 },
+  HAMBERDER: { name: 'Hamberder', fuelValue: 4, rarity: 0.12, color: 0xFF6B35 },
+  DIET_COKE: { name: 'Diet Coke', fuelValue: 5, rarity: 0.12, color: 0xFF6B35 },
+  TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 18, rarity: 0.05, color: 0xFF6B35 },
+  VODKA: { name: 'Vodka', fuelValue: 15, rarity: 0.05, color: 0xFF6B35, russianOnly: true },
 
   // Tradeable items - various colors
   DOLLAR: { name: 'Dollar', fuelValue: 25, rarity: 0.10, color: 0x228B22 }, // Green for money
@@ -66,7 +66,7 @@ export const COLLECTIBLE_TYPES = {
   // Rare tradeable items
   CASINO_CHIP: { name: 'Casino Chip', fuelValue: 0, rarity: 0.04, color: 0x9932CC, mystery: true }, // Purple mystery
   MAGA_HAT: { name: 'MAGA Hat', fuelValue: 100, rarity: 0.03, color: 0xFF0000 }, // Red
-  NFT: { name: 'NFT', fuelValue: 5, rarity: 0.04, color: 0xFF69B4 }, // Pink - worthless but funny
+  NFT: { name: 'NFT', fuelValue: 0, rarity: 0.04, color: 0xFF69B4 }, // Pink - worthless but funny
   BITCOIN: { name: 'Bitcoin', fuelValue: 80, rarity: 0.03, color: 0xF7931A }, // Bitcoin orange
 
   // Very rare tradeable items
@@ -74,14 +74,14 @@ export const COLLECTIBLE_TYPES = {
   GOLDEN_TOILET: { name: 'Golden Toilet', fuelValue: 200, rarity: 0.01, color: 0xFFD700 }, // Gold
 
   // Russian tradeable items (spawn more frequently in later zones)
-  MATRYOSHKA: { name: 'Matryoshka', fuelValue: 60, rarity: 0.04, color: 0xFF6347, russianOnly: true }, // Tomato red
-  OLIGARCH_GOLD: { name: 'Oligarch Gold', fuelValue: 150, rarity: 0.015, color: 0xFFD700, russianOnly: true }, // Gold
+  MATRYOSHKA: { name: 'Matryoshka', fuelValue: 60, rarity: 0.05, color: 0xFF6347, russianOnly: true }, // Tomato red
+  OLIGARCH_GOLD: { name: 'Oligarch Gold', fuelValue: 150, rarity: 0.05, color: 0xFFD700, russianOnly: true }, // Gold
 
   // Easter egg
   TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C }, // Tan
 
   // Special power-ups (gold tint to stand out)
-  TRUMP_TOWER: { name: 'Trump Tower', fuelValue: 0, rarity: 0.008, color: 0xFFD700, special: 'bribe_cannons' },
+  TRUMP_TOWER: { name: 'Trump Tower', fuelValue: 0, rarity: 0.01, color: 0xFFD700, special: 'bribe_cannons' },
   RED_TIE: { name: 'Red Tie', fuelValue: 0, rarity: 0.01, color: 0xDC143C, special: 'speed_boost' },
 };
 

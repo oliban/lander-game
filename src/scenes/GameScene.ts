@@ -818,7 +818,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleProjectileHit(projectileSpriteKey?: string): void {
     if (this.gameState !== 'playing') return;
-    if (this.cannonsBribed) return; // Bribed cannons shoot dollar signs - they don't hurt!
+    // Note: Bribed cannons stand down and don't fire, but existing projectiles can still hit!
 
     console.log('CRASH: Hit by projectile at', { x: this.shuttle.x, y: this.shuttle.y }, 'type:', projectileSpriteKey);
 
@@ -1296,7 +1296,7 @@ export class GameScene extends Phaser.Scene {
   private updatePowerUps(): void {
     const now = this.time.now;
 
-    // Update bribe effect
+    // Update bribe effect - subtle green outline when cannons are standing down
     if (this.cannonsBribed) {
       if (now >= this.bribeEndTime) {
         this.cannonsBribed = false;
@@ -1304,15 +1304,17 @@ export class GameScene extends Phaser.Scene {
           this.bribeGraphics.clear();
         }
       } else {
-        // Draw dollar sign indicator above shuttle
+        // Draw subtle glow outline around shuttle
         if (this.bribeGraphics) {
           this.bribeGraphics.clear();
           const timeLeft = this.bribeEndTime - now;
-          const alpha = timeLeft < 2000 ? (Math.sin(now * 0.02) * 0.3 + 0.5) : 0.8;
+          const pulseSpeed = timeLeft < 2000 ? 0.015 : 0.006;
+          const baseAlpha = timeLeft < 2000 ? 0.3 : 0.5;
+          const alpha = baseAlpha + Math.sin(now * pulseSpeed) * 0.15;
 
-          // Pulsing green aura
-          this.bribeGraphics.lineStyle(3, 0x228B22, alpha * 0.5);
-          this.bribeGraphics.strokeCircle(this.shuttle.x, this.shuttle.y, 30 + Math.sin(now * 0.008) * 5);
+          // Simple thin green outline around shuttle
+          this.bribeGraphics.lineStyle(2, 0x32CD32, alpha);
+          this.bribeGraphics.strokeCircle(this.shuttle.x, this.shuttle.y, 32 + Math.sin(now * 0.008) * 2);
         }
       }
     }
@@ -1437,6 +1439,91 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private checkProjectileCollisions(): void {
+    // Collect all projectiles from all cannons
+    const allProjectiles: { projectile: any; cannonIndex: number }[] = [];
+    for (let i = 0; i < this.cannons.length; i++) {
+      for (const projectile of this.cannons[i].getProjectiles()) {
+        allProjectiles.push({ projectile, cannonIndex: i });
+      }
+    }
+
+    // Check each pair of projectiles for collision
+    const collisionRadius = 15; // Collision detection radius
+    const toDestroy: Set<any> = new Set();
+
+    for (let i = 0; i < allProjectiles.length; i++) {
+      for (let j = i + 1; j < allProjectiles.length; j++) {
+        const p1 = allProjectiles[i].projectile;
+        const p2 = allProjectiles[j].projectile;
+
+        // Skip if already marked for destruction
+        if (toDestroy.has(p1) || toDestroy.has(p2)) continue;
+
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < collisionRadius) {
+          // Collision! Mark both for destruction
+          toDestroy.add(p1);
+          toDestroy.add(p2);
+
+          // Create small explosion at midpoint
+          this.createProjectileExplosion((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+        }
+      }
+    }
+
+    // Remove destroyed projectiles from their cannons
+    for (const cannon of this.cannons) {
+      const projectiles = cannon.getProjectiles();
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        if (toDestroy.has(projectiles[i])) {
+          projectiles[i].destroy();
+          projectiles.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  private createProjectileExplosion(x: number, y: number): void {
+    // Small explosion flash
+    const flash = this.add.graphics();
+    flash.fillStyle(0xFF6600, 0.8);
+    flash.fillCircle(x, y, 12);
+    flash.fillStyle(0xFFFF00, 1);
+    flash.fillCircle(x, y, 8);
+    flash.fillStyle(0xFFFFFF, 1);
+    flash.fillCircle(x, y, 4);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.5,
+      duration: 200,
+      onComplete: () => flash.destroy(),
+    });
+
+    // Small debris particles
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2;
+      const debris = this.add.graphics();
+      debris.fillStyle(0x888888, 1);
+      debris.fillCircle(0, 0, 2);
+      debris.setPosition(x, y);
+
+      this.tweens.add({
+        targets: debris,
+        x: x + Math.cos(angle) * 20,
+        y: y + Math.sin(angle) * 20,
+        alpha: 0,
+        duration: 300,
+        onComplete: () => debris.destroy(),
+      });
+    }
+  }
+
   update(time: number): void {
     if (this.gameState !== 'playing') return;
 
@@ -1471,9 +1558,13 @@ export class GameScene extends Phaser.Scene {
       const isOnScreen = cannon.x >= cameraLeft && cannon.x <= cameraRight;
       const hasProjectiles = cannon.getProjectiles().length > 0;
 
-      // Only set target and allow firing if cannon is on-screen and active
-      if (isOnScreen && cannon.isActive()) {
+      // Only set target and allow firing if cannon is on-screen, active, AND not bribed
+      // Bribed cannons stand down completely - they won't fire new projectiles
+      if (isOnScreen && cannon.isActive() && !this.cannonsBribed) {
         cannon.setTarget({ x: this.shuttle.x, y: this.shuttle.y });
+      } else if (this.cannonsBribed) {
+        // Clear target so cannons stop aiming/firing
+        cannon.setTarget(null as any);
       }
 
       // ALWAYS update cannons that have projectiles in flight, even if off-screen
@@ -1493,6 +1584,9 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // Check projectile-to-projectile collisions
+    this.checkProjectileCollisions();
 
     // Update country display
     const country = this.getCurrentCountry();
