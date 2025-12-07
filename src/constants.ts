@@ -44,38 +44,43 @@ export const LANDING_PADS = [
 ];
 
 // Collectibles - organized by category and value
+// Color coding:
+//   - BOMB items (orange/red tint): 0xFF6B35 - droppable as bombs, not tradeable
+//   - Tradeable items: various colors based on theme
+//   - Power-ups (gold): special abilities
+//   - Mystery items (purple): unknown value
 export const COLLECTIBLE_TYPES = {
-  // Common items (high spawn rate)
-  BURGER: { name: 'Burger', fuelValue: 10, rarity: 0.15, color: 0xD2691E },
-  HAMBERDER: { name: 'Hamberder', fuelValue: 12, rarity: 0.12, color: 0xCD853F },
-  DIET_COKE: { name: 'Diet Coke', fuelValue: 15, rarity: 0.12, color: 0xDC143C },
+  // BOMB items - bright orange to indicate they're droppable explosives (not tradeable!)
+  BURGER: { name: 'Burger', fuelValue: 10, rarity: 0.15, color: 0xFF6B35 },
+  HAMBERDER: { name: 'Hamberder', fuelValue: 12, rarity: 0.12, color: 0xFF6B35 },
+  DIET_COKE: { name: 'Diet Coke', fuelValue: 15, rarity: 0.12, color: 0xFF6B35 },
+  TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 55, rarity: 0.05, color: 0xFF6B35 },
+  VODKA: { name: 'Vodka', fuelValue: 45, rarity: 0.05, color: 0xFF6B35, russianOnly: true },
 
-  // Uncommon items
-  DOLLAR: { name: 'Dollar', fuelValue: 25, rarity: 0.10, color: 0x228B22 },
-  COVFEFE: { name: 'Covfefe', fuelValue: 30, rarity: 0.08, color: 0x8B4513 },
-  HAIR_SPRAY: { name: 'Hair Spray', fuelValue: 35, rarity: 0.07, color: 0xFFD700 },
-  TWITTER: { name: 'Twitter Bird', fuelValue: 50, rarity: 0.06, color: 0x1DA1F2 },
-  TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 55, rarity: 0.05, color: 0x8B0000 },
+  // Tradeable items - various colors
+  DOLLAR: { name: 'Dollar', fuelValue: 25, rarity: 0.10, color: 0x228B22 }, // Green for money
+  COVFEFE: { name: 'Covfefe', fuelValue: 30, rarity: 0.08, color: 0x8B4513 }, // Brown for coffee
+  HAIR_SPRAY: { name: 'Hair Spray', fuelValue: 35, rarity: 0.07, color: 0xFFD700 }, // Gold
+  TWITTER: { name: 'Twitter Bird', fuelValue: 50, rarity: 0.06, color: 0x1DA1F2 }, // Twitter blue
 
-  // Rare items
-  CASINO_CHIP: { name: 'Casino Chip', fuelValue: 0, rarity: 0.04, color: 0x9932CC, mystery: true },
-  MAGA_HAT: { name: 'MAGA Hat', fuelValue: 100, rarity: 0.03, color: 0xFF0000 },
-  NFT: { name: 'NFT', fuelValue: 5, rarity: 0.04, color: 0xFF69B4 }, // Worthless but funny
-  BITCOIN: { name: 'Bitcoin', fuelValue: 80, rarity: 0.03, color: 0xF7931A },
+  // Rare tradeable items
+  CASINO_CHIP: { name: 'Casino Chip', fuelValue: 0, rarity: 0.04, color: 0x9932CC, mystery: true }, // Purple mystery
+  MAGA_HAT: { name: 'MAGA Hat', fuelValue: 100, rarity: 0.03, color: 0xFF0000 }, // Red
+  NFT: { name: 'NFT', fuelValue: 5, rarity: 0.04, color: 0xFF69B4 }, // Pink - worthless but funny
+  BITCOIN: { name: 'Bitcoin', fuelValue: 80, rarity: 0.03, color: 0xF7931A }, // Bitcoin orange
 
-  // Very rare items
-  CLASSIFIED_DOCS: { name: 'Classified Docs', fuelValue: 120, rarity: 0.02, color: 0x4169E1 },
-  GOLDEN_TOILET: { name: 'Golden Toilet', fuelValue: 200, rarity: 0.01, color: 0xFFD700 },
+  // Very rare tradeable items
+  CLASSIFIED_DOCS: { name: 'Classified Docs', fuelValue: 120, rarity: 0.02, color: 0x4169E1 }, // Royal blue
+  GOLDEN_TOILET: { name: 'Golden Toilet', fuelValue: 200, rarity: 0.01, color: 0xFFD700 }, // Gold
 
-  // Russian items (spawn more frequently in later zones)
-  MATRYOSHKA: { name: 'Matryoshka', fuelValue: 60, rarity: 0.04, color: 0xFF6347, russianOnly: true },
-  VODKA: { name: 'Vodka', fuelValue: 45, rarity: 0.05, color: 0x87CEEB, russianOnly: true },
-  OLIGARCH_GOLD: { name: 'Oligarch Gold', fuelValue: 150, rarity: 0.015, color: 0xFFD700, russianOnly: true },
+  // Russian tradeable items (spawn more frequently in later zones)
+  MATRYOSHKA: { name: 'Matryoshka', fuelValue: 60, rarity: 0.04, color: 0xFF6347, russianOnly: true }, // Tomato red
+  OLIGARCH_GOLD: { name: 'Oligarch Gold', fuelValue: 150, rarity: 0.015, color: 0xFFD700, russianOnly: true }, // Gold
 
   // Easter egg
-  TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C },
+  TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C }, // Tan
 
-  // Special power-ups (rare, gives temporary effects instead of fuel)
+  // Special power-ups (gold tint to stand out)
   TRUMP_TOWER: { name: 'Trump Tower', fuelValue: 0, rarity: 0.008, color: 0xFFD700, special: 'bribe_cannons' },
   RED_TIE: { name: 'Red Tie', fuelValue: 0, rarity: 0.01, color: 0xDC143C, special: 'speed_boost' },
 };

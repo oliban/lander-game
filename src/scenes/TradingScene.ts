@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { InventorySystem } from '../systems/InventorySystem';
 import { FuelSystem } from '../systems/FuelSystem';
-import { GAME_WIDTH, GAME_HEIGHT, COLLECTIBLE_TYPES } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, COLLECTIBLE_TYPES, BOMB_DROPPABLE_TYPES } from '../constants';
 import { CollectibleType } from '../objects/Collectible';
 
 interface TradingSceneData {
@@ -152,40 +152,73 @@ export class TradingScene extends Phaser.Scene {
     const itemsY = itemsHeaderY + 20;
     const itemsBg = this.add.graphics();
     itemsBg.fillStyle(0xFFFAF0, 0.8); // Floral white
-    itemsBg.fillRoundedRect(panelX + 30, itemsY, panelW - 60, 320, 8);
+    itemsBg.fillRoundedRect(panelX + 30, itemsY, panelW - 60, 280, 8);
     itemsBg.lineStyle(1, 0xDEB887);
-    itemsBg.strokeRoundedRect(panelX + 30, itemsY, panelW - 60, 320, 8);
+    itemsBg.strokeRoundedRect(panelX + 30, itemsY, panelW - 60, 280, 8);
 
     // Create item selectors
     this.createItemSelectors(itemsY + 15);
 
     // Fuel preview with fancy styling
-    const previewY = itemsY + 335;
+    const previewY = itemsY + 295;
     const previewBg = this.add.graphics();
     previewBg.fillStyle(0x2F4F4F, 0.9);
-    previewBg.fillRoundedRect(GAME_WIDTH / 2 - 200, previewY, 400, 40, 8);
+    previewBg.fillRoundedRect(GAME_WIDTH / 2 - 200, previewY, 400, 35, 8);
 
-    this.fuelPreview = this.add.text(GAME_WIDTH / 2, previewY + 20, 'Select items to trade', {
+    this.fuelPreview = this.add.text(GAME_WIDTH / 2, previewY + 17, 'Select items to trade', {
       fontFamily: 'Arial, sans-serif',
-      fontSize: '18px',
+      fontSize: '16px',
       color: '#90EE90',
       fontStyle: 'bold',
     });
     this.fuelPreview.setOrigin(0.5, 0.5);
 
-    // Action buttons
-    const btnY = previewY + 55;
-    this.createFancyButton(GAME_WIDTH / 2 - 170, btnY, 'AUTO-SELL', 0x1E90FF, 0x4169E1, () => this.autoTrade());
-    this.createFancyButton(GAME_WIDTH / 2, btnY, 'TRADE', 0x32CD32, 0x228B22, () => this.executeTrade());
-    this.createFancyButton(GAME_WIDTH / 2 + 170, btnY, 'SKIP', 0xFFA500, 0xFF8C00, () => this.close());
+    // Auto-sell section: "Will sell" list inside panel with button below
+    const autoSellItems = this.getAutoSellItemsList();
+    const autoSellBoxY = previewY + 45;
 
-    // Keyboard shortcuts hint
-    const hint = this.add.text(GAME_WIDTH / 2, btnY + 45, 'Press ENTER to auto-sell • ESC to skip', {
+    // Auto-sell box background
+    const autoSellBg = this.add.graphics();
+    autoSellBg.fillStyle(0x1a3a5c, 0.9);
+    autoSellBg.fillRoundedRect(panelX + 35, autoSellBoxY, 160, 75, 8);
+    autoSellBg.lineStyle(2, 0x1E90FF, 0.6);
+    autoSellBg.strokeRoundedRect(panelX + 35, autoSellBoxY, 160, 75, 8);
+
+    const listTitle = this.add.text(panelX + 115, autoSellBoxY + 8, 'Auto-sell will trade:', {
       fontFamily: 'Arial, sans-serif',
-      fontSize: '11px',
-      color: '#666666',
+      fontSize: '10px',
+      color: '#AAAAAA',
     });
-    hint.setOrigin(0.5, 0.5);
+    listTitle.setOrigin(0.5, 0);
+
+    if (autoSellItems.length > 0) {
+      const autoSellList = this.add.text(panelX + 115, autoSellBoxY + 22, autoSellItems.slice(0, 3).join('\n'), {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '11px',
+        color: '#90EE90',
+        lineSpacing: 2,
+        align: 'center',
+      });
+      autoSellList.setOrigin(0.5, 0);
+    } else {
+      const noItems = this.add.text(panelX + 115, autoSellBoxY + 30, '(nothing needed)', {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '11px',
+        color: '#666666',
+        fontStyle: 'italic',
+      });
+      noItems.setOrigin(0.5, 0);
+    }
+
+    // Action buttons
+    const btnY = autoSellBoxY + 95;
+
+    // Auto-sell button under the auto-sell box
+    this.createFancyButton(panelX + 115, btnY, 'AUTO-SELL [Enter]', 0x1E90FF, 0x4169E1, 150, () => this.autoTrade());
+
+    // Trade and Skip buttons on the right
+    this.createFancyButton(GAME_WIDTH / 2 + 80, btnY, 'TRADE', 0x32CD32, 0x228B22, 100, () => this.executeTrade());
+    this.createFancyButton(GAME_WIDTH / 2 + 210, btnY, 'SKIP [Esc]', 0xFFA500, 0xFF8C00, 110, () => this.close());
 
     // Keyboard handlers
     this.input.keyboard!.on('keydown-ENTER', () => {
@@ -318,13 +351,18 @@ export class TradingScene extends Phaser.Scene {
   private createItemSelectors(startY: number): void {
     const items = this.inventorySystem.getAllItems();
     // Include mystery items (casino chips) even with 0 fuelValue
-    const displayItems = items.filter(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery));
+    // Filter out bomb items - they're for dropping, not trading
+    const displayItems = items.filter(item =>
+      item.count > 0 &&
+      (item.fuelValue > 0 || item.isMystery) &&
+      !BOMB_DROPPABLE_TYPES.includes(item.type)
+    );
 
     const cols = 2;
     const spacing = 38;
-    const colWidth = 290; // Narrower columns to fit in panel
+    const colWidth = 290;
     const totalWidth = colWidth * cols;
-    const leftColX = GAME_WIDTH / 2 - totalWidth / 2 + 15; // Center both columns
+    const leftColX = GAME_WIDTH / 2 - totalWidth / 2 + 15;
 
     for (let i = 0; i < displayItems.length; i++) {
       const item = displayItems[i];
@@ -333,50 +371,53 @@ export class TradingScene extends Phaser.Scene {
       const x = leftColX + col * colWidth;
       const y = startY + row * spacing;
 
-      // Item row background (alternating)
+      // Item row background (alternating with good contrast)
       const rowBg = this.add.graphics();
-      rowBg.fillStyle(row % 2 === 0 ? 0xFFFFFF : 0xFFF8DC, 0.5);
+      rowBg.fillStyle(row % 2 === 0 ? 0xF5F5DC : 0xE8E8D0, 0.9);
       rowBg.fillRoundedRect(x - 10, y - 2, colWidth - 25, 32, 4);
+      rowBg.lineStyle(1, 0xCCCCCC, 0.5);
+      rowBg.strokeRoundedRect(x - 10, y - 2, colWidth - 25, 32, 4);
 
-      // Colored item indicator dot
+      // Colored item indicator square (more visible than dot)
       const dot = this.add.graphics();
       dot.fillStyle(item.color, 1);
-      dot.fillCircle(x + 6, y + 14, 7);
-      dot.lineStyle(2, 0x333333);
-      dot.strokeCircle(x + 6, y + 14, 7);
+      dot.fillRoundedRect(x - 2, y + 6, 14, 14, 3);
+      dot.lineStyle(2, 0x222222);
+      dot.strokeRoundedRect(x - 2, y + 6, 14, 14, 3);
 
-      // Item name (truncate very long names only)
+      // Item name - left aligned, dark text for readability
       let displayName = item.name;
-      if (displayName.length > 15) {
-        displayName = displayName.substring(0, 14) + '…';
+      if (displayName.length > 14) {
+        displayName = displayName.substring(0, 13) + '…';
       }
-      const nameText = this.add.text(x + 18, y + 4, displayName, {
+      const nameText = this.add.text(x + 18, y + 6, displayName, {
         fontFamily: 'Arial, sans-serif',
-        fontSize: '12px',
-        color: '#333333',
+        fontSize: '13px',
+        color: '#1a1a1a',
         fontStyle: 'bold',
       });
 
       // Fuel value badge - show "?" for mystery items
       const valueBadge = this.add.graphics();
       const isMystery = item.isMystery;
-      valueBadge.fillStyle(isMystery ? 0x9932CC : 0x228B22, 0.8);
-      valueBadge.fillRoundedRect(x + 105, y + 2, 40, 20, 4);
+      valueBadge.fillStyle(isMystery ? 0x6B21A8 : 0x166534, 1);
+      valueBadge.fillRoundedRect(x + 108, y + 4, 38, 20, 4);
 
-      const valueDisplay = isMystery ? '?' : `+${item.fuelValue}`;
-      const valueText = this.add.text(x + 125, y + 12, valueDisplay, {
+      const valueDisplay = isMystery ? '???' : `+${item.fuelValue}`;
+      const valueText = this.add.text(x + 127, y + 14, valueDisplay, {
         fontFamily: 'Arial, sans-serif',
-        fontSize: isMystery ? '14px' : '10px',
+        fontSize: '11px',
         color: '#FFFFFF',
         fontStyle: 'bold',
       });
       valueText.setOrigin(0.5, 0.5);
 
-      // Have count
-      const haveText = this.add.text(x + 152, y + 12, `×${item.count}`, {
+      // Have count - darker for readability
+      const haveText = this.add.text(x + 152, y + 14, `×${item.count}`, {
         fontFamily: 'Arial, sans-serif',
-        fontSize: '12px',
-        color: '#666666',
+        fontSize: '13px',
+        color: '#333333',
+        fontStyle: 'bold',
       });
       haveText.setOrigin(0, 0.5);
 
@@ -384,7 +425,7 @@ export class TradingScene extends Phaser.Scene {
       this.selectedItems.set(item.type, 0);
 
       // Minus button
-      this.createRoundButton(x + 185, y + 12, '-', 0xFF6B6B, () => {
+      this.createRoundButton(x + 185, y + 12, '-', 0xDC2626, () => {
         const current = this.selectedItems.get(item.type) || 0;
         if (current > 0) {
           this.selectedItems.set(item.type, current - 1);
@@ -395,12 +436,12 @@ export class TradingScene extends Phaser.Scene {
 
       // Selected count display
       const countBg = this.add.graphics();
-      countBg.fillStyle(0x333333, 0.9);
+      countBg.fillStyle(0x1e293b, 1);
       countBg.fillRoundedRect(x + 200, y + 2, 28, 24, 4);
 
       const countText = this.add.text(x + 214, y + 14, '0', {
         fontFamily: 'Arial, sans-serif',
-        fontSize: '13px',
+        fontSize: '14px',
         color: '#FFD700',
         fontStyle: 'bold',
       });
@@ -408,7 +449,7 @@ export class TradingScene extends Phaser.Scene {
       this.countTexts.set(item.type, countText);
 
       // Plus button
-      this.createRoundButton(x + 243, y + 12, '+', 0x6BCB77, () => {
+      this.createRoundButton(x + 243, y + 12, '+', 0x16A34A, () => {
         const current = this.selectedItems.get(item.type) || 0;
         if (current < item.count) {
           this.selectedItems.set(item.type, current + 1);
@@ -457,29 +498,30 @@ export class TradingScene extends Phaser.Scene {
     });
   }
 
-  private createFancyButton(x: number, y: number, label: string, color: number, darkColor: number, callback: () => void): void {
+  private createFancyButton(x: number, y: number, label: string, color: number, darkColor: number, width: number, callback: () => void): void {
     const container = this.add.container(x, y);
+    const halfW = width / 2;
 
     // Shadow
     const shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.3);
-    shadow.fillRoundedRect(-62, -16, 124, 38, 8);
+    shadow.fillRoundedRect(-halfW - 2, -16, width + 4, 38, 8);
 
     // Main button
     const bg = this.add.graphics();
     bg.fillStyle(color, 1);
-    bg.fillRoundedRect(-60, -18, 120, 36, 8);
+    bg.fillRoundedRect(-halfW, -18, width, 36, 8);
     bg.lineStyle(3, darkColor);
-    bg.strokeRoundedRect(-60, -18, 120, 36, 8);
+    bg.strokeRoundedRect(-halfW, -18, width, 36, 8);
 
     // Shine effect
     const shine = this.add.graphics();
     shine.fillStyle(0xFFFFFF, 0.3);
-    shine.fillRoundedRect(-56, -16, 112, 12, 6);
+    shine.fillRoundedRect(-halfW + 4, -16, width - 8, 12, 6);
 
     const text = this.add.text(0, 0, label, {
       fontFamily: 'Arial, sans-serif',
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#FFFFFF',
       fontStyle: 'bold',
     });
@@ -487,24 +529,24 @@ export class TradingScene extends Phaser.Scene {
     text.setShadow(1, 1, '#000000', 2);
 
     container.add([shadow, bg, shine, text]);
-    container.setInteractive(new Phaser.Geom.Rectangle(-60, -18, 120, 36), Phaser.Geom.Rectangle.Contains);
+    container.setInteractive(new Phaser.Geom.Rectangle(-halfW, -18, width, 36), Phaser.Geom.Rectangle.Contains);
 
     container.on('pointerover', () => {
       container.setScale(1.05);
       bg.clear();
       bg.fillStyle(darkColor, 1);
-      bg.fillRoundedRect(-60, -18, 120, 36, 8);
+      bg.fillRoundedRect(-halfW, -18, width, 36, 8);
       bg.lineStyle(3, color);
-      bg.strokeRoundedRect(-60, -18, 120, 36, 8);
+      bg.strokeRoundedRect(-halfW, -18, width, 36, 8);
     });
 
     container.on('pointerout', () => {
       container.setScale(1);
       bg.clear();
       bg.fillStyle(color, 1);
-      bg.fillRoundedRect(-60, -18, 120, 36, 8);
+      bg.fillRoundedRect(-halfW, -18, width, 36, 8);
       bg.lineStyle(3, darkColor);
-      bg.strokeRoundedRect(-60, -18, 120, 36, 8);
+      bg.strokeRoundedRect(-halfW, -18, width, 36, 8);
     });
 
     container.on('pointerdown', callback);
@@ -589,55 +631,61 @@ export class TradingScene extends Phaser.Scene {
 
     this.fuelSystem.add(fuelGain);
 
-    // Epic success animation
-    const successBg = this.add.graphics();
-    successBg.fillStyle(0x000000, 0.7);
-    successBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
-    const success = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, `+${fuelGain} FUEL!`, {
-      fontFamily: 'Georgia, serif',
-      fontSize: '64px',
-      color: '#FFD700',
-      fontStyle: 'bold',
-    });
-    success.setOrigin(0.5, 0.5);
-    success.setShadow(4, 4, '#000000', 8);
-
-    // Starburst effect
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const star = this.add.graphics();
-      star.fillStyle(0xFFD700, 1);
-      this.drawStar(star, GAME_WIDTH / 2, GAME_HEIGHT / 2, 5, 10, 5);
-
-      this.tweens.add({
-        targets: star,
-        x: Math.cos(angle) * 150,
-        y: Math.sin(angle) * 150,
-        alpha: 0,
-        scale: 0.5,
-        duration: 600,
-        onComplete: () => star.destroy(),
-      });
-    }
-
-    this.tweens.add({
-      targets: success,
-      scale: { from: 0.5, to: 1.2 },
-      alpha: { from: 1, to: 0 },
-      duration: 1200,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        successBg.destroy();
-        success.destroy();
-        this.close();
-      },
-    });
+    // Close immediately - no delay
+    this.close();
   }
 
   private hasItemsToTrade(): boolean {
     const items = this.inventorySystem.getAllItems();
-    return items.some(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery));
+    return items.some(item =>
+      item.count > 0 &&
+      (item.fuelValue > 0 || item.isMystery) &&
+      !BOMB_DROPPABLE_TYPES.includes(item.type)
+    );
+  }
+
+  private getAutoSellItemsList(): string[] {
+    const items = this.inventorySystem.getAllItems();
+    const currentFuel = this.fuelSystem.getFuel();
+    const maxFuel = this.fuelSystem.getMaxFuel();
+    const fuelNeeded = maxFuel - currentFuel;
+
+    if (fuelNeeded <= 0) return [];
+
+    const result: string[] = [];
+    const sortedItems = [...items].filter(item =>
+      item.count > 0 &&
+      (item.fuelValue > 0 || item.isMystery) &&
+      !BOMB_DROPPABLE_TYPES.includes(item.type)
+    ).sort((a, b) => {
+      if (a.isMystery && !b.isMystery) return 1;
+      if (!a.isMystery && b.isMystery) return -1;
+      return a.fuelValue - b.fuelValue;
+    });
+
+    let fuelGained = 0;
+    const casinoChipValues = this.inventorySystem.getCasinoChipValues();
+    let casinoChipIndex = 0;
+
+    for (const item of sortedItems) {
+      let countToSell = 0;
+      for (let i = 0; i < item.count; i++) {
+        if (fuelGained >= fuelNeeded) break;
+        countToSell++;
+        if (item.type === 'CASINO_CHIP') {
+          fuelGained += Math.floor((casinoChipValues[casinoChipIndex] || 0) * this.landingBonus);
+          casinoChipIndex++;
+        } else {
+          fuelGained += Math.floor(item.fuelValue * this.landingBonus);
+        }
+      }
+      if (countToSell > 0) {
+        result.push(`${item.name} ×${countToSell}`);
+      }
+      if (fuelGained >= fuelNeeded) break;
+    }
+
+    return result;
   }
 
   private autoTrade(): void {
@@ -652,7 +700,11 @@ export class TradingScene extends Phaser.Scene {
       return;
     }
 
-    const hasItems = items.some(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery));
+    const hasItems = items.some(item =>
+      item.count > 0 &&
+      (item.fuelValue > 0 || item.isMystery) &&
+      !BOMB_DROPPABLE_TYPES.includes(item.type)
+    );
     if (!hasItems) {
       this.close();
       return;
@@ -663,14 +715,17 @@ export class TradingScene extends Phaser.Scene {
       this.selectedItems.set(item.type, 0);
     }
 
-    // Filter tradeable items, sort by value (mystery items go last since we don't know value)
-    const sortedItems = [...items].filter(item => item.count > 0 && (item.fuelValue > 0 || item.isMystery))
-      .sort((a, b) => {
-        // Non-mystery items first, sorted by value
-        if (a.isMystery && !b.isMystery) return 1;
-        if (!a.isMystery && b.isMystery) return -1;
-        return a.fuelValue - b.fuelValue;
-      });
+    // Filter tradeable items (exclude bombs), sort by value (mystery items go last since we don't know value)
+    const sortedItems = [...items].filter(item =>
+      item.count > 0 &&
+      (item.fuelValue > 0 || item.isMystery) &&
+      !BOMB_DROPPABLE_TYPES.includes(item.type)
+    ).sort((a, b) => {
+      // Non-mystery items first, sorted by value
+      if (a.isMystery && !b.isMystery) return 1;
+      if (!a.isMystery && b.isMystery) return -1;
+      return a.fuelValue - b.fuelValue;
+    });
 
     let fuelGained = 0;
     const casinoChipValues = this.inventorySystem.getCasinoChipValues();

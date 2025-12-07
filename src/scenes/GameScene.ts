@@ -577,6 +577,9 @@ export class GameScene extends Phaser.Scene {
       // Pick up the Peace Medal at Washington!
       this.hasPeaceMedal = true;
 
+      // Hide the medal model on the landing pad
+      pad.hidePeaceMedal();
+
       // Create the medal graphics that will hang under the shuttle
       this.createPeaceMedalGraphics();
 
@@ -1463,17 +1466,19 @@ export class GameScene extends Phaser.Scene {
 
     // Update cannons
     for (const cannon of this.cannons) {
-      // Only update cannons that are visible (or have projectiles to update)
       const cameraLeft = this.cameras.main.scrollX - 200;
       const cameraRight = this.cameras.main.scrollX + GAME_WIDTH + 200;
+      const isOnScreen = cannon.x >= cameraLeft && cannon.x <= cameraRight;
+      const hasProjectiles = cannon.getProjectiles().length > 0;
 
-      if (cannon.x >= cameraLeft && cannon.x <= cameraRight) {
-        // Only set target if cannon is still active
-        if (cannon.isActive()) {
-          cannon.setTarget({ x: this.shuttle.x, y: this.shuttle.y });
-        }
+      // Only set target and allow firing if cannon is on-screen and active
+      if (isOnScreen && cannon.isActive()) {
+        cannon.setTarget({ x: this.shuttle.x, y: this.shuttle.y });
+      }
 
-        // Always update (handles projectiles even for destroyed cannons)
+      // ALWAYS update cannons that have projectiles in flight, even if off-screen
+      // This ensures projectiles keep moving after player scrolls away from cannon
+      if (isOnScreen || hasProjectiles) {
         cannon.update(time);
 
         // Check projectile collisions manually

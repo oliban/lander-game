@@ -5,6 +5,7 @@ export class LandingPad {
   private padScene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
   private matterBody: MatterJS.BodyType;
+  private peaceMedalGraphics: Phaser.GameObjects.Graphics | null = null;
 
   public x: number;
   public y: number;
@@ -321,29 +322,38 @@ export class LandingPad {
     this.graphics.fillRect(flagX, flagY + 11, 25, 2);
 
     // Peace Medal on display stand (what the player will pick up)
+    // Draw on separate graphics so it can be hidden when collected
+    this.peaceMedalGraphics = this.padScene.add.graphics();
     const medalX = whX + mainWidth + 30;
     const medalY = whY - 30;
 
     // Display stand
-    this.graphics.fillStyle(0x8B4513, 1);
-    this.graphics.fillRect(medalX - 15, medalY + 20, 30, 10);
-    this.graphics.fillRect(medalX - 10, medalY, 20, 20);
+    this.peaceMedalGraphics.fillStyle(0x8B4513, 1);
+    this.peaceMedalGraphics.fillRect(medalX - 15, medalY + 20, 30, 10);
+    this.peaceMedalGraphics.fillRect(medalX - 10, medalY, 20, 20);
 
     // The Peace Medal (gold with ribbon)
-    this.graphics.fillStyle(0x0000AA, 1); // Blue ribbon
-    this.graphics.fillRect(medalX - 3, medalY - 30, 6, 35);
-    this.graphics.fillStyle(0xFFD700, 1); // Gold medal
-    this.graphics.fillCircle(medalX, medalY - 40, 18);
-    this.graphics.lineStyle(2, 0xB8860B, 1);
-    this.graphics.strokeCircle(medalX, medalY - 40, 18);
+    this.peaceMedalGraphics.fillStyle(0x0000AA, 1); // Blue ribbon
+    this.peaceMedalGraphics.fillRect(medalX - 3, medalY - 30, 6, 35);
+    this.peaceMedalGraphics.fillStyle(0xFFD700, 1); // Gold medal
+    this.peaceMedalGraphics.fillCircle(medalX, medalY - 40, 18);
+    this.peaceMedalGraphics.lineStyle(2, 0xB8860B, 1);
+    this.peaceMedalGraphics.strokeCircle(medalX, medalY - 40, 18);
     // Peace symbol on medal
-    this.graphics.fillStyle(0xFFFFFF, 1);
-    this.graphics.fillCircle(medalX, medalY - 40, 8);
-    this.graphics.lineStyle(2, 0xFFD700, 1);
-    this.graphics.strokeCircle(medalX, medalY - 40, 8);
+    this.peaceMedalGraphics.fillStyle(0xFFFFFF, 1);
+    this.peaceMedalGraphics.fillCircle(medalX, medalY - 40, 8);
+    this.peaceMedalGraphics.lineStyle(2, 0xFFD700, 1);
+    this.peaceMedalGraphics.strokeCircle(medalX, medalY - 40, 8);
     // Dove silhouette (simplified)
-    this.graphics.fillStyle(0xFFD700, 1);
-    this.graphics.fillTriangle(medalX - 5, medalY - 40, medalX + 5, medalY - 42, medalX + 5, medalY - 38);
+    this.peaceMedalGraphics.fillStyle(0xFFD700, 1);
+    this.peaceMedalGraphics.fillTriangle(medalX - 5, medalY - 40, medalX + 5, medalY - 42, medalX + 5, medalY - 38);
+  }
+
+  hidePeaceMedal(): void {
+    if (this.peaceMedalGraphics) {
+      this.peaceMedalGraphics.destroy();
+      this.peaceMedalGraphics = null;
+    }
   }
 
   getBody(): MatterJS.BodyType {
@@ -352,6 +362,9 @@ export class LandingPad {
 
   destroy(): void {
     this.graphics.destroy();
+    if (this.peaceMedalGraphics) {
+      this.peaceMedalGraphics.destroy();
+    }
     const matterScene = this.padScene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
     matterScene.matter.world.remove(this.matterBody);
   }

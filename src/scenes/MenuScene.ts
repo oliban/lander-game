@@ -7,83 +7,181 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Solid sky background (failsafe)
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x87CEEB);
+    // Dark navy background for maximum contrast
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0d1b2a);
 
-    // Sky gradient background
+    // Subtle gradient overlay
     const graphics = this.add.graphics();
-
-    // Draw gradient from light blue to darker blue
     for (let y = 0; y < GAME_HEIGHT; y++) {
       const ratio = y / GAME_HEIGHT;
-      const r = Math.floor(135 - ratio * 50);
-      const g = Math.floor(206 - ratio * 80);
-      const b = Math.floor(235 - ratio * 50);
-      graphics.fillStyle((r << 16) | (g << 8) | b);
+      const alpha = 0.3 * (1 - ratio);
+      graphics.fillStyle(0x1b3a5c, alpha);
       graphics.fillRect(0, y, GAME_WIDTH, 1);
     }
 
-    // Fluffy clouds
-    this.drawCloud(200, 100, 1.2);
-    this.drawCloud(600, 150, 0.8);
-    this.drawCloud(1000, 80, 1.0);
-    this.drawCloud(400, 200, 0.6);
+    // Title art image at top
+    const titleArt = this.add.image(GAME_WIDTH / 2, 150, 'title-art');
+    titleArt.setScale(0.45);
 
-    // Title art image - hero element at top
-    const titleArt = this.add.image(GAME_WIDTH / 2, 180, 'title-art');
-    titleArt.setScale(0.55);
+    // Main title panel - dark box for contrast
+    const titlePanel = this.add.graphics();
+    titlePanel.fillStyle(0x000000, 0.7);
+    titlePanel.fillRoundedRect(GAME_WIDTH / 2 - 250, 290, 500, 90, 12);
 
-    // Title with shadow - below the image
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 363, 'PEACE SHUTTLE', {
+    // Title - bright gold on dark
+    const title = this.add.text(GAME_WIDTH / 2, 320, 'PEACE SHUTTLE', {
       fontSize: '48px',
-      color: '#666666',
+      color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
-    });
-    titleShadow.setOrigin(0.5, 0.5);
-
-    const title = this.add.text(GAME_WIDTH / 2, 360, 'PEACE SHUTTLE', {
-      fontSize: '48px',
-      color: '#FF6B35',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
     });
     title.setOrigin(0.5, 0.5);
 
     // Subtitle
-    const subtitle = this.add.text(GAME_WIDTH / 2, 400, "Trumpleton's Mission to Russia", {
+    const subtitle = this.add.text(GAME_WIDTH / 2, 358, "Trumpleton's Mission to Russia", {
       fontSize: '20px',
-      color: '#D4380D',
+      color: '#FFFFFF',
       fontFamily: 'Arial, Helvetica, sans-serif',
     });
     subtitle.setOrigin(0.5, 0.5);
 
-    // Brief story text
-    const story = [
-      'Deliver "peace" to Putino in Russia!',
-      'Dodge cannons, collect cargo, refuel at stops.',
+    // MISSION BRIEFING - clear objective
+    const missionPanel = this.add.graphics();
+    missionPanel.fillStyle(0xCC0000, 0.9);
+    missionPanel.fillRoundedRect(GAME_WIDTH / 2 - 300, 395, 600, 50, 8);
+    missionPanel.lineStyle(3, 0xFFD700);
+    missionPanel.strokeRoundedRect(GAME_WIDTH / 2 - 300, 395, 600, 50, 8);
+
+    const missionText = this.add.text(GAME_WIDTH / 2, 420,
+      'MISSION: Deliver PEACE to Putino in Russia!', {
+      fontSize: '22px',
+      color: '#FFFFFF',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    missionText.setOrigin(0.5, 0.5);
+
+    // Trump quote box - dark background
+    const quoteBox = this.add.graphics();
+    quoteBox.fillStyle(0x000000, 0.6);
+    quoteBox.fillRoundedRect(GAME_WIDTH / 2 - 290, 455, 580, 55, 8);
+
+    // Trump quotes - authentic style (10 quotes)
+    const quotes = [
+      '"These are numbers that nobody has seen. They don\'t even believe it."',
+      '"The charts are at a level that nobody even thought possible."',
+      '"Nobody knew peace could be so complicated. I have to tell you."',
+      '"These numbers are incredible. Nobody thought these numbers!"',
+      '"A lot of people don\'t know this about Russia. A lot of people."',
+      '"It\'s coming back at a level far greater than anybody anticipated."',
+      '"This peace deal? There\'s never been anything like it. Believe me."',
+      '"We\'re seeing things at levels that nobody thought was possible."',
+      '"People are saying it\'s the best mission ever. Many people."',
+      '"The numbers are so good. You saw the numbers. Incredible."',
+    ];
+    const selectedQuote = quotes[Math.floor(Math.random() * quotes.length)];
+
+    const quoteText = this.add.text(GAME_WIDTH / 2, 472, selectedQuote, {
+      fontSize: '16px',
+      color: '#FFD700',
+      fontFamily: 'Georgia, serif',
+      fontStyle: 'italic',
+    });
+    quoteText.setOrigin(0.5, 0);
+
+    const quoteAttrib = this.add.text(GAME_WIDTH / 2, 492, '- President Trumpleton', {
+      fontSize: '12px',
+      color: '#AAAAAA',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    quoteAttrib.setOrigin(0.5, 0);
+
+    // HIGH SCORES panel on the left
+    const scoresPanelX = 100;
+    const scoresPanelY = 520;
+    const scoresPanelW = 180;
+    const scoresPanelH = 130;
+
+    const scoresPanel = this.add.graphics();
+    scoresPanel.fillStyle(0x000000, 0.6);
+    scoresPanel.fillRoundedRect(scoresPanelX - scoresPanelW / 2, scoresPanelY, scoresPanelW, scoresPanelH, 8);
+    scoresPanel.lineStyle(2, 0xFFD700, 0.5);
+    scoresPanel.strokeRoundedRect(scoresPanelX - scoresPanelW / 2, scoresPanelY, scoresPanelW, scoresPanelH, 8);
+
+    const scoresTitle = this.add.text(scoresPanelX, scoresPanelY + 15, 'TOP SCORES', {
+      fontSize: '14px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    scoresTitle.setOrigin(0.5, 0);
+
+    // Load and display high scores
+    const highScores = this.loadHighScores();
+    for (let i = 0; i < 5; i++) {
+      const score = highScores[i];
+      const yPos = scoresPanelY + 38 + i * 18;
+      const rank = i + 1;
+      const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
+
+      if (score) {
+        const scoreText = this.add.text(scoresPanelX, yPos,
+          `${rank}. ${score.name.substring(0, 10)} - ${score.score}`, {
+          fontSize: '12px',
+          color: color,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+        });
+        scoreText.setOrigin(0.5, 0);
+      } else {
+        const emptyText = this.add.text(scoresPanelX, yPos, `${rank}. ---`, {
+          fontSize: '12px',
+          color: '#555555',
+          fontFamily: 'Arial, Helvetica, sans-serif',
+        });
+        emptyText.setOrigin(0.5, 0);
+      }
+    }
+
+    // CONTROLS panel on the right
+    const controlsPanelX = GAME_WIDTH - 100;
+    const controlsPanelY = 520;
+    const controlsPanelW = 180;
+    const controlsPanelH = 130;
+
+    const controlsPanel = this.add.graphics();
+    controlsPanel.fillStyle(0x000000, 0.6);
+    controlsPanel.fillRoundedRect(controlsPanelX - controlsPanelW / 2, controlsPanelY, controlsPanelW, controlsPanelH, 8);
+    controlsPanel.lineStyle(2, 0x4CAF50, 0.5);
+    controlsPanel.strokeRoundedRect(controlsPanelX - controlsPanelW / 2, controlsPanelY, controlsPanelW, controlsPanelH, 8);
+
+    const controlsTitle = this.add.text(controlsPanelX, controlsPanelY + 15, 'CONTROLS', {
+      fontSize: '14px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    controlsTitle.setOrigin(0.5, 0);
+
+    const controlsList = [
+      'UP = Thrust',
+      'LEFT/RIGHT = Rotate',
+      'SPACE = Landing Gear',
+      'DOWN = Drop Bomb',
     ];
 
-    const storyText = this.add.text(GAME_WIDTH / 2, 440, story.join('\n'), {
-      fontSize: '16px',
-      color: '#444444',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      align: 'center',
-      lineSpacing: 6,
-    });
-    storyText.setOrigin(0.5, 0);
+    for (let i = 0; i < controlsList.length; i++) {
+      const controlText = this.add.text(controlsPanelX, controlsPanelY + 40 + i * 20, controlsList[i], {
+        fontSize: '12px',
+        color: '#FFFFFF',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+      });
+      controlText.setOrigin(0.5, 0);
+    }
 
-    // Controls
-    const controls = this.add.text(GAME_WIDTH / 2, 500,
-      'UP = Thrust    LEFT/RIGHT = Rotate    SPACE = Landing Gear', {
-      fontSize: '16px',
-      color: '#555555',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-    });
-    controls.setOrigin(0.5, 0.5);
-
-    // Start button
-    const startButton = this.createButton(GAME_WIDTH / 2, 560, 'START MISSION', () => {
+    // Start button - centered between the two panels
+    const startButton = this.createButton(GAME_WIDTH / 2, 580, 'START MISSION', () => {
       this.startGame();
     });
 
@@ -98,9 +196,9 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Press Enter hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, 605, 'Press ENTER to start', {
+    const enterHint = this.add.text(GAME_WIDTH / 2, 625, 'Press ENTER to start', {
       fontSize: '14px',
-      color: '#888888',
+      color: '#666666',
       fontFamily: 'Arial, Helvetica, sans-serif',
     });
     enterHint.setOrigin(0.5, 0.5);
@@ -111,10 +209,10 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Version/credits
-    const credits = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 20,
+    const credits = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
       'A satirical comedy game - All in good fun!', {
-      fontSize: '12px',
-      color: '#666666',
+      fontSize: '11px',
+      color: '#555555',
       fontFamily: 'Arial, Helvetica, sans-serif',
     });
     credits.setOrigin(0.5, 1);
@@ -124,9 +222,22 @@ export class MenuScene extends Phaser.Scene {
     this.scene.start('GameScene');
   }
 
+  private loadHighScores(): { name: string; score: number; date: string }[] {
+    const STORAGE_KEY = 'peaceShuttle_highScores';
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load high scores:', e);
+    }
+    return [];
+  }
+
   private drawCloud(x: number, y: number, scale: number): void {
     const graphics = this.add.graphics();
-    graphics.fillStyle(0xFFFFFF, 0.9);
+    graphics.fillStyle(0xFFFFFF, 0.2); // More subtle clouds for dark background
 
     // Draw overlapping circles to make cloud shape
     graphics.fillCircle(x, y, 30 * scale);
