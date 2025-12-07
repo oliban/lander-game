@@ -9,6 +9,7 @@ interface TradingSceneData {
   fuelSystem: FuelSystem;
   padName: string;
   landingQuality: 'perfect' | 'good';
+  onScoreChange?: (delta: number) => void;
   onComplete: () => void;
 }
 
@@ -26,6 +27,7 @@ export class TradingScene extends Phaser.Scene {
   private inventorySystem!: InventorySystem;
   private fuelSystem!: FuelSystem;
   private onComplete!: () => void;
+  private onScoreChange?: (delta: number) => void;
   private landingBonus: number = 1;
   private selectedItems: Map<CollectibleType, number> = new Map();
   private fuelPreview!: Phaser.GameObjects.Text;
@@ -41,6 +43,7 @@ export class TradingScene extends Phaser.Scene {
     this.inventorySystem = data.inventorySystem;
     this.fuelSystem = data.fuelSystem;
     this.onComplete = data.onComplete;
+    this.onScoreChange = data.onScoreChange;
     this.landingBonus = data.landingQuality === 'perfect' ? 1.5 : 1.2;
 
     // Reset selection
@@ -557,10 +560,18 @@ export class TradingScene extends Phaser.Scene {
       return;
     }
 
+    // Calculate points lost from selling items (base fuel value, not with bonus)
+    let pointsLost = 0;
     for (const [type, count] of this.selectedItems) {
       if (count > 0) {
+        pointsLost += count * COLLECTIBLE_TYPES[type].fuelValue;
         this.inventorySystem.remove(type, count);
       }
+    }
+
+    // Deduct points for selling
+    if (this.onScoreChange && pointsLost > 0) {
+      this.onScoreChange(-pointsLost);
     }
 
     this.fuelSystem.add(fuelGain);

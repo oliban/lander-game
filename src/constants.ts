@@ -86,7 +86,7 @@ export const PROJECTILE_SPEED = 5;
 
 // Bombs (droppable food items)
 export const BOMB_DROPPABLE_TYPES = ['BURGER', 'HAMBERDER', 'DIET_COKE', 'TRUMP_STEAK', 'VODKA'];
-export const FOOD_PICKUP_AMOUNT = 10; // How many of each food item you get when picking up
+export const FOOD_PICKUP_AMOUNT = 3; // How many of each food item you get when picking up
 
 // Colors (cartoon colorful theme)
 export const COLORS = {

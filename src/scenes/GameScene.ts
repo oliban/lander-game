@@ -88,6 +88,9 @@ export class GameScene extends Phaser.Scene {
     this.hasPeaceMedal = false;
     this.peaceMedalGraphics = null;
 
+    // Reset score
+    this.destructionScore = 0;
+
     // Create landing pads
     this.createLandingPads();
 
@@ -429,7 +432,7 @@ export class GameScene extends Phaser.Scene {
         this.scene.start('GameOverScene', {
           victory: false,
           message: 'You splashed into the Atlantic Ocean!',
-          score: 0,
+          score: this.destructionScore,
         });
       });
       return;
@@ -455,7 +458,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.start('GameOverScene', {
         victory: false,
         message: 'You crashed into the terrain!',
-        score: 0,
+        score: this.destructionScore,
       });
     });
   }
@@ -514,7 +517,7 @@ export class GameScene extends Phaser.Scene {
         this.scene.start('GameOverScene', {
           victory: false,
           message: `Crash landing! ${landingResult.reason}`,
-          score: 0,
+          score: this.destructionScore,
         });
       });
       return;
@@ -590,6 +593,10 @@ export class GameScene extends Phaser.Scene {
           fuelSystem: this.fuelSystem,
           padName: pad.name,
           landingQuality: landingResult.quality,
+          onScoreChange: (delta: number) => {
+            this.destructionScore += delta;
+            this.events.emit('destructionScore', this.destructionScore);
+          },
           onComplete: () => {
             this.scene.resume();
             this.gameState = 'playing';
@@ -605,6 +612,10 @@ export class GameScene extends Phaser.Scene {
           fuelSystem: this.fuelSystem,
           padName: pad.name,
           landingQuality: landingResult.quality,
+          onScoreChange: (delta: number) => {
+            this.destructionScore += delta;
+            this.events.emit('destructionScore', this.destructionScore);
+          },
           onComplete: () => {
             this.scene.resume();
             this.gameState = 'playing';
@@ -795,13 +806,20 @@ export class GameScene extends Phaser.Scene {
       this.scene.start('GameOverScene', {
         victory: false,
         message: 'Shot down by enemy cannons!',
-        score: 0,
+        score: this.destructionScore,
       });
     });
   }
 
   private handleCollectiblePickup(collectible: Collectible): void {
     if (collectible.collected) return;
+
+    // Add score based on fuel value (points for collecting)
+    const pointsGained = collectible.fuelValue;
+    if (pointsGained > 0) {
+      this.destructionScore += pointsGained;
+      this.events.emit('destructionScore', this.destructionScore);
+    }
 
     // Check for special power-ups
     if (collectible.special === 'bribe_cannons') {
@@ -1068,6 +1086,10 @@ export class GameScene extends Phaser.Scene {
       // Check collision with cannons
       for (let j = this.cannons.length - 1; j >= 0; j--) {
         const cannon = this.cannons[j];
+
+        // Skip already destroyed cannons
+        if (!cannon.isActive()) continue;
+
         const bounds = cannon.getCollisionBounds();
 
         if (
@@ -1089,9 +1111,8 @@ export class GameScene extends Phaser.Scene {
           this.destructionScore += 200;
           this.showDestructionPoints(cannon.x, cannon.y - 30, 200, 'Cannon');
 
-          // Destroy cannon
-          cannon.destroy();
-          this.cannons.splice(j, 1);
+          // Don't remove cannon from array yet - let its projectiles finish
+          // The cannon.explode() already hides it and stops firing
 
           this.bombs.splice(i, 1);
           bombDestroyed = true;
@@ -1343,7 +1364,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.start('GameOverScene', {
         victory: false,
         message: message,
-        score: 0,
+        score: this.destructionScore,
       });
     });
   }
@@ -1377,12 +1398,17 @@ export class GameScene extends Phaser.Scene {
 
     // Update cannons
     for (const cannon of this.cannons) {
-      // Only update cannons that are visible
+      // Only update cannons that are visible (or have projectiles to update)
       const cameraLeft = this.cameras.main.scrollX - 200;
       const cameraRight = this.cameras.main.scrollX + GAME_WIDTH + 200;
 
       if (cannon.x >= cameraLeft && cannon.x <= cameraRight) {
-        cannon.setTarget({ x: this.shuttle.x, y: this.shuttle.y });
+        // Only set target if cannon is still active
+        if (cannon.isActive()) {
+          cannon.setTarget({ x: this.shuttle.x, y: this.shuttle.y });
+        }
+
+        // Always update (handles projectiles even for destroyed cannons)
         cannon.update(time);
 
         // Check projectile collisions manually
@@ -1418,7 +1444,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.start('GameOverScene', {
         victory: false,
         message: 'Lost in the void!',
-        score: 0,
+        score: this.destructionScore,
       });
     }
   }

@@ -25,6 +25,7 @@ export class Terrain {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.oceanGraphics = scene.add.graphics();
+    this.oceanGraphics.setDepth(-1); // Render ocean behind terrain
 
     this.generateTerrain(startX, endX);
     this.createPhysicsBodies();
@@ -35,23 +36,49 @@ export class Terrain {
     const numPoints = Math.ceil((endX - startX) / TERRAIN_SEGMENT_WIDTH) + 1;
     const baseHeight = GAME_HEIGHT * 0.7;
 
-    // Initialize with random heights
+    // Use layered sine waves (Perlin-like noise) for smooth natural terrain
     const heights: number[] = [];
+
     for (let i = 0; i < numPoints; i++) {
-      heights[i] = baseHeight + (Math.random() - 0.5) * GAME_HEIGHT * 0.3;
+      const x = startX + i * TERRAIN_SEGMENT_WIDTH;
+
+      // Layer multiple sine waves at different frequencies for natural look
+      let height = baseHeight;
+
+      // Large rolling hills (very slow frequency)
+      height += Math.sin(x * 0.0008) * GAME_HEIGHT * 0.12;
+      height += Math.cos(x * 0.0005 + 1.5) * GAME_HEIGHT * 0.08;
+
+      // Medium undulations
+      height += Math.sin(x * 0.002 + 0.7) * GAME_HEIGHT * 0.06;
+      height += Math.cos(x * 0.003 + 2.1) * GAME_HEIGHT * 0.04;
+
+      // Small variations for texture (subtle)
+      height += Math.sin(x * 0.008 + 3.2) * GAME_HEIGHT * 0.02;
+      height += Math.cos(x * 0.012 + 1.1) * GAME_HEIGHT * 0.015;
+
+      heights[i] = height;
     }
 
-    // Midpoint displacement for natural terrain
-    let displacement = GAME_HEIGHT * 0.2;
-    for (let step = Math.floor(numPoints / 2); step > 1; step = Math.floor(step / 2)) {
-      for (let i = step; i < numPoints - 1; i += step * 2) {
-        if (i - step >= 0 && i + step < numPoints) {
-          const left = heights[i - step];
-          const right = heights[i + step];
-          heights[i] = (left + right) / 2 + (Math.random() - 0.5) * displacement;
+    // Smooth the terrain with a moving average
+    const smoothedHeights: number[] = [];
+    const smoothRadius = 3;
+    for (let i = 0; i < heights.length; i++) {
+      let sum = 0;
+      let count = 0;
+      for (let j = -smoothRadius; j <= smoothRadius; j++) {
+        const idx = i + j;
+        if (idx >= 0 && idx < heights.length) {
+          sum += heights[idx];
+          count++;
         }
       }
-      displacement *= TERRAIN_ROUGHNESS;
+      smoothedHeights[i] = sum / count;
+    }
+
+    // Copy smoothed heights back
+    for (let i = 0; i < heights.length; i++) {
+      heights[i] = smoothedHeights[i];
     }
 
     // Flatten landing pad areas
@@ -196,39 +223,112 @@ export class Terrain {
   private draw(): void {
     this.graphics.clear();
 
+    const BLEND_WIDTH = 150; // Width of gradient transition between countries
+
     // Draw filled terrain for each country section
     for (let countryIdx = 0; countryIdx < COUNTRIES.length; countryIdx++) {
       const country = COUNTRIES[countryIdx];
       const nextCountry = COUNTRIES[countryIdx + 1];
       const endX = nextCountry ? nextCountry.startX : Infinity;
+      const isOcean = country.name === 'Atlantic Ocean';
 
-      // Collect vertices for this country
+      // Collect vertices for this country (include one extra vertex past the boundary to ensure overlap)
       const countryVertices: TerrainVertex[] = [];
-      for (const vertex of this.vertices) {
-        if (vertex.x >= country.startX && vertex.x < endX) {
+      for (let i = 0; i < this.vertices.length; i++) {
+        const vertex = this.vertices[i];
+        if (vertex.x >= country.startX && vertex.x <= endX + TERRAIN_SEGMENT_WIDTH) {
           countryVertices.push(vertex);
         }
       }
 
       if (countryVertices.length < 2) continue;
 
-      // Draw filled terrain
-      this.graphics.fillStyle(country.color, 1);
+      // Skip detailed drawing for ocean (handled separately)
+      if (isOcean) continue;
+
+      // Draw underground dirt/rock layers
+      const dirtColor = this.darkenColor(country.color, 0.5);
+      const rockColor = this.darkenColor(country.color, 0.35);
+
+      // FIRST: Draw a solid base fill from terrain surface to bottom of screen
+      // This ensures no gaps can appear
+      this.graphics.fillStyle(rockColor, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
-
       for (let i = 1; i < countryVertices.length; i++) {
         this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
       }
-
-      // Close the shape at the bottom
-      this.graphics.lineTo(countryVertices[countryVertices.length - 1].x, GAME_HEIGHT + 50);
-      this.graphics.lineTo(countryVertices[0].x, GAME_HEIGHT + 50);
+      this.graphics.lineTo(countryVertices[countryVertices.length - 1].x, GAME_HEIGHT + 100);
+      this.graphics.lineTo(countryVertices[0].x, GAME_HEIGHT + 100);
       this.graphics.closePath();
       this.graphics.fillPath();
 
-      // Draw darker outline on top
-      this.graphics.lineStyle(3, this.darkenColor(country.color, 0.6), 1);
+      // Middle dirt layer (on top of rock)
+      this.graphics.fillStyle(dirtColor, 1);
+      this.graphics.beginPath();
+      this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
+      for (let i = 1; i < countryVertices.length; i++) {
+        this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
+      }
+      this.graphics.lineTo(countryVertices[countryVertices.length - 1].x, countryVertices[countryVertices.length - 1].y + 60);
+      this.graphics.lineTo(countryVertices[0].x, countryVertices[0].y + 60);
+      this.graphics.closePath();
+      this.graphics.fillPath();
+
+      // Top grass/surface layer
+      this.graphics.fillStyle(country.color, 1);
+      this.graphics.beginPath();
+      this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
+      for (let i = 1; i < countryVertices.length; i++) {
+        this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
+      }
+      this.graphics.lineTo(countryVertices[countryVertices.length - 1].x, countryVertices[countryVertices.length - 1].y + 30);
+      this.graphics.lineTo(countryVertices[0].x, countryVertices[0].y + 30);
+      this.graphics.closePath();
+      this.graphics.fillPath();
+
+      // Draw grass tufts on top
+      const grassColor = this.lightenColor(country.color, 1.3);
+      const darkGrassColor = this.darkenColor(country.color, 0.8);
+
+      for (let i = 0; i < countryVertices.length - 1; i += 2) {
+        const v = countryVertices[i];
+        const seed = Math.sin(v.x * 0.1) * 10000;
+
+        // Draw grass blades
+        for (let g = 0; g < 3; g++) {
+          const grassX = v.x + (seed % 15) - 7 + g * 5;
+          const grassY = v.y;
+          const grassHeight = 6 + (seed % 6);
+          const lean = Math.sin(seed + g) * 3;
+
+          this.graphics.lineStyle(2, grassColor, 0.9);
+          this.graphics.beginPath();
+          this.graphics.moveTo(grassX, grassY);
+          this.graphics.lineTo(grassX + lean, grassY - grassHeight);
+          this.graphics.strokePath();
+        }
+      }
+
+      // Draw small rocks/pebbles along the dirt layer edge
+      for (let i = 0; i < countryVertices.length - 1; i += 8) {
+        const v = countryVertices[i];
+        const seed = Math.cos(v.x * 0.05) * 10000;
+
+        // Small rocks
+        this.graphics.fillStyle(this.darkenColor(dirtColor, 0.7), 0.8);
+        const rockX = v.x + (seed % 20) - 10;
+        const rockY = v.y + 20 + (seed % 10);
+        const rockSize = 3 + (seed % 4);
+        this.graphics.fillCircle(rockX, rockY, rockSize);
+
+        // Highlight on rock
+        this.graphics.fillStyle(this.lightenColor(dirtColor, 1.2), 0.5);
+        this.graphics.fillCircle(rockX - 1, rockY - 1, rockSize * 0.5);
+      }
+
+      // Draw darker outline on terrain edge
+      this.graphics.lineStyle(2, this.darkenColor(country.color, 0.5), 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
@@ -236,17 +336,113 @@ export class Terrain {
       }
       this.graphics.strokePath();
 
-      // Draw grass/surface detail on top edge
-      this.graphics.lineStyle(5, this.lightenColor(country.color, 1.2), 1);
+      // Draw lighter highlight just below the edge
+      this.graphics.lineStyle(3, this.lightenColor(country.color, 1.15), 0.7);
       this.graphics.beginPath();
-      this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
+      this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y + 3);
       for (let i = 1; i < countryVertices.length; i++) {
-        this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
+        this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y + 3);
       }
       this.graphics.strokePath();
+
+      // Add small bushes/shrubs randomly
+      for (let i = 0; i < countryVertices.length - 1; i += 15) {
+        const v = countryVertices[i];
+        const seed = Math.sin(v.x * 0.03) * 10000;
+
+        if (Math.abs(seed % 10) < 4) { // ~40% chance
+          this.drawBush(v.x + (seed % 30) - 15, v.y, country.color, seed);
+        }
+      }
+
+      // Add small trees occasionally (not too many)
+      for (let i = 0; i < countryVertices.length - 1; i += 40) {
+        const v = countryVertices[i];
+        const seed = Math.cos(v.x * 0.02) * 10000;
+
+        if (Math.abs(seed % 10) < 2) { // ~20% chance
+          this.drawSmallTree(v.x + (seed % 20) - 10, v.y, country.color, seed);
+        }
+      }
+
+      // Draw gradient transition to next country
+      if (nextCountry && nextCountry.name !== 'Atlantic Ocean' && country.name !== 'Atlantic Ocean') {
+        this.drawCountryTransition(country.color, nextCountry.color, nextCountry.startX, BLEND_WIDTH);
+      }
     }
+  }
 
-    // No glow effect for cartoon style
+  private drawCountryTransition(fromColor: number, toColor: number, borderX: number, width: number): void {
+    const steps = 10;
+    const stepWidth = width / steps;
+
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps;
+      const alpha = t; // Fade in the next country's color
+
+      // Get height at this position
+      const x = borderX - width / 2 + i * stepWidth;
+      const height = this.getHeightAt(x);
+
+      // Draw a vertical strip with blended color
+      this.graphics.fillStyle(toColor, alpha * 0.7);
+      this.graphics.fillRect(x, height, stepWidth + 1, GAME_HEIGHT - height + 50);
+
+      // Also blend the dirt layer
+      const dirtColor = this.darkenColor(toColor, 0.5);
+      this.graphics.fillStyle(dirtColor, alpha * 0.5);
+      this.graphics.fillRect(x, height + 25, stepWidth + 1, GAME_HEIGHT - height + 25);
+    }
+  }
+
+  private drawBush(x: number, y: number, baseColor: number, seed: number): void {
+    const bushColor = this.darkenColor(baseColor, 0.75);
+    const highlightColor = this.lightenColor(baseColor, 1.1);
+    const size = 8 + (seed % 6);
+
+    // Bush shadow
+    this.graphics.fillStyle(this.darkenColor(bushColor, 0.6), 0.5);
+    this.graphics.fillEllipse(x + 2, y + 2, size * 1.2, size * 0.7);
+
+    // Main bush body (multiple overlapping circles)
+    this.graphics.fillStyle(bushColor, 1);
+    this.graphics.fillCircle(x - size * 0.3, y - size * 0.3, size * 0.6);
+    this.graphics.fillCircle(x + size * 0.3, y - size * 0.3, size * 0.55);
+    this.graphics.fillCircle(x, y - size * 0.5, size * 0.7);
+
+    // Highlights
+    this.graphics.fillStyle(highlightColor, 0.6);
+    this.graphics.fillCircle(x - size * 0.2, y - size * 0.6, size * 0.3);
+  }
+
+  private drawSmallTree(x: number, y: number, baseColor: number, seed: number): void {
+    const trunkColor = 0x8B4513; // Saddle brown
+    const leafColor = this.darkenColor(baseColor, 0.7);
+    const highlightColor = this.lightenColor(baseColor, 1.2);
+    const height = 20 + (seed % 15);
+
+    // Tree shadow
+    this.graphics.fillStyle(0x000000, 0.2);
+    this.graphics.fillEllipse(x + 3, y + 2, 12, 5);
+
+    // Trunk
+    this.graphics.fillStyle(trunkColor, 1);
+    this.graphics.fillRect(x - 2, y - height * 0.4, 4, height * 0.4);
+
+    // Trunk highlight
+    this.graphics.fillStyle(0xA0522D, 0.7);
+    this.graphics.fillRect(x - 2, y - height * 0.4, 2, height * 0.4);
+
+    // Foliage (layered circles)
+    this.graphics.fillStyle(leafColor, 1);
+    this.graphics.fillCircle(x, y - height * 0.6, height * 0.35);
+    this.graphics.fillCircle(x - height * 0.2, y - height * 0.5, height * 0.25);
+    this.graphics.fillCircle(x + height * 0.2, y - height * 0.5, height * 0.25);
+    this.graphics.fillCircle(x, y - height * 0.8, height * 0.25);
+
+    // Foliage highlights
+    this.graphics.fillStyle(highlightColor, 0.5);
+    this.graphics.fillCircle(x - height * 0.1, y - height * 0.7, height * 0.15);
   }
 
   private darkenColor(color: number, factor: number): number {

@@ -35,12 +35,15 @@ export class UIScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private timerBg!: Phaser.GameObjects.Graphics;
   private medalIndicator!: Phaser.GameObjects.Container;
+  private scoreText!: Phaser.GameObjects.Text;
+  private scoreBg!: Phaser.GameObjects.Graphics;
 
   private lastProgress: number = -1;
   private lastVelocity: number = -1;
   private lastLegsState: boolean = false;
   private lastTime: number = -1;
   private lastMedalState: boolean = false;
+  private currentScore: number = 0;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -59,6 +62,7 @@ export class UIScene extends Phaser.Scene {
     this.createVelocityMeter();
     this.createGearIndicator();
     this.createTimer();
+    this.createScoreCounter();
     this.createMedalIndicator();
     this.createInventoryDisplay();
     this.createProgressBar();
@@ -72,6 +76,12 @@ export class UIScene extends Phaser.Scene {
     // Listen for fuel changes
     this.fuelSystem.setOnFuelChange((fuel, max) => {
       this.updateFuelBar(fuel, max);
+    });
+
+    // Listen for destruction score updates from GameScene
+    const gameScene = this.scene.get('GameScene');
+    gameScene.events.on('destructionScore', (score: number) => {
+      this.updateScore(score);
     });
   }
 
@@ -186,7 +196,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createInventoryDisplay(): void {
-    this.inventoryContainer = this.add.container(GAME_WIDTH - 90, 80);
+    this.inventoryContainer = this.add.container(GAME_WIDTH - 90, 100);
 
     // Background panel will be redrawn dynamically based on content
     const bg = this.add.graphics();
@@ -487,9 +497,72 @@ export class UIScene extends Phaser.Scene {
     this.timerText.setOrigin(0.5, 0.5);
   }
 
+  private createScoreCounter(): void {
+    // Score counter below timer (same width as timer)
+    this.scoreBg = this.add.graphics();
+    this.scoreBg.fillStyle(0xFFFFFF, 0.9);
+    this.scoreBg.fillRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+    this.scoreBg.lineStyle(2, 0x333333);
+    this.scoreBg.strokeRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+
+    this.scoreText = this.add.text(GAME_WIDTH - 60, 67, '0', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '14px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    this.scoreText.setOrigin(0.5, 0.5);
+  }
+
+  private updateScore(score: number): void {
+    const oldScore = this.currentScore;
+    this.currentScore = score;
+    const delta = score - oldScore;
+
+    // Animate the score text with a pop effect
+    this.tweens.add({
+      targets: this.scoreText,
+      scale: { from: 1.4, to: 1 },
+      duration: 300,
+      ease: 'Back.easeOut',
+    });
+
+    // Color based on increase/decrease
+    if (delta > 0) {
+      // Score increased - green flash
+      this.scoreText.setColor('#228B22');
+      this.scoreBg.clear();
+      this.scoreBg.fillStyle(0x90EE90, 0.95);
+      this.scoreBg.fillRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+      this.scoreBg.lineStyle(2, 0x228B22);
+      this.scoreBg.strokeRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+    } else if (delta < 0) {
+      // Score decreased - red flash
+      this.scoreText.setColor('#DC143C');
+      this.scoreBg.clear();
+      this.scoreBg.fillStyle(0xFFB6C1, 0.95);
+      this.scoreBg.fillRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+      this.scoreBg.lineStyle(2, 0xDC143C);
+      this.scoreBg.strokeRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+    }
+
+    // Update text
+    this.scoreText.setText(score.toString());
+
+    // Return to normal after brief flash
+    this.time.delayedCall(400, () => {
+      this.scoreText.setColor('#333333');
+      this.scoreBg.clear();
+      this.scoreBg.fillStyle(0xFFFFFF, 0.9);
+      this.scoreBg.fillRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+      this.scoreBg.lineStyle(2, 0x333333);
+      this.scoreBg.strokeRoundedRect(GAME_WIDTH - 110, 55, 100, 25, 8);
+    });
+  }
+
   private createMedalIndicator(): void {
     // Medal indicator (hidden by default, shows when medal is acquired)
-    this.medalIndicator = this.add.container(GAME_WIDTH - 60, 60);
+    this.medalIndicator = this.add.container(GAME_WIDTH - 60, 92);
     this.medalIndicator.setVisible(false);
 
     // Background

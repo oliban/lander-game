@@ -56,6 +56,19 @@ export class Cannon extends Phaser.GameObjects.Container {
   }
 
   update(time: number): void {
+    // Always update existing projectiles, even if cannon is destroyed
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const projectile = this.projectiles[i];
+      projectile.update();
+
+      // Remove if out of bounds
+      if (projectile.isOutOfBounds()) {
+        projectile.destroy();
+        this.projectiles.splice(i, 1);
+      }
+    }
+
+    // Don't aim or fire if destroyed or no target
     if (!this.target || this.isDestroyed) return;
 
     // Aim at target
@@ -67,21 +80,12 @@ export class Cannon extends Phaser.GameObjects.Container {
       this.fire(angle);
       this.lastFireTime = time;
     }
-
-    // Update projectiles
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const projectile = this.projectiles[i];
-      projectile.update();
-
-      // Remove if out of bounds
-      if (projectile.isOutOfBounds()) {
-        projectile.destroy();
-        this.projectiles.splice(i, 1);
-      }
-    }
   }
 
   private fire(angle: number): void {
+    // Double-check we're not destroyed before firing
+    if (this.isDestroyed) return;
+
     // Randomly select a projectile sprite from this cannon's country options
     const spriteKey = this.projectileSprites[Math.floor(Math.random() * this.projectileSprites.length)];
 
@@ -126,9 +130,19 @@ export class Cannon extends Phaser.GameObjects.Container {
     };
   }
 
+  isActive(): boolean {
+    return !this.isDestroyed;
+  }
+
   explode(): void {
     // Mark as destroyed immediately to stop firing
     this.isDestroyed = true;
+
+    // Hide the cannon graphics immediately
+    this.base.setVisible(false);
+    this.barrel.setVisible(false);
+
+    // Note: Don't destroy projectiles - let them continue flying
 
     // Create explosion effect
     const scene = this.cannonScene;

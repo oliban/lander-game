@@ -10,7 +10,23 @@ interface GameOverData {
   inventory?: InventoryItem[];
   fuelRemaining?: number;
   hasPeaceMedal?: boolean;
+  skipHighScoreCheck?: boolean;
 }
+
+interface HighScoreEntry {
+  name: string;
+  score: number;
+  date: string;
+}
+
+const STORAGE_KEY = 'peaceShuttle_highScores';
+
+const SUGGESTED_NAMES = [
+  'Ivanka', 'Don Jr', 'Eric', 'Barron', 'Melania',
+  'Jared', 'Tiffany', 'MAGA Mike', 'Bigly Winner',
+  'Stable Genius', 'Very Smart', 'Tremendous',
+  'The Best', 'Covfefe King', 'Deal Maker',
+];
 
 const CRASH_QUOTES = [
   "\"That was a perfect crash. Nobody crashes better than me.\"",
@@ -29,8 +45,75 @@ const VICTORY_QUOTES = [
 ];
 
 export class GameOverScene extends Phaser.Scene {
+  private currentScore: number = 0;
+  private isNewHighScore: boolean = false;
+  private highScoreRank: number = -1;
+  private nameEntryActive: boolean = false;
+  private playerName: string = '';
+  private nameInputText!: Phaser.GameObjects.Text;
+  private cursorBlink!: Phaser.Time.TimerEvent;
+
   constructor() {
     super({ key: 'GameOverScene' });
+  }
+
+  private loadHighScores(): HighScoreEntry[] {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Failed to load high scores:', e);
+    }
+    return [];
+  }
+
+  private saveHighScores(scores: HighScoreEntry[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+    } catch (e) {
+      console.error('Failed to save high scores:', e);
+    }
+  }
+
+  private isHighScore(score: number): { isHigh: boolean; rank: number } {
+    const highScores = this.loadHighScores();
+    if (highScores.length < 5) {
+      return { isHigh: true, rank: highScores.length };
+    }
+    for (let i = 0; i < highScores.length; i++) {
+      if (score > highScores[i].score) {
+        return { isHigh: true, rank: i };
+      }
+    }
+    return { isHigh: false, rank: -1 };
+  }
+
+  private addHighScore(name: string, score: number): void {
+    const highScores = this.loadHighScores();
+    const newEntry: HighScoreEntry = {
+      name: name.substring(0, 12),
+      score,
+      date: new Date().toLocaleDateString(),
+    };
+
+    // Find position to insert
+    let inserted = false;
+    for (let i = 0; i < highScores.length; i++) {
+      if (score > highScores[i].score) {
+        highScores.splice(i, 0, newEntry);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      highScores.push(newEntry);
+    }
+
+    // Keep only top 5
+    const topFive = highScores.slice(0, 5);
+    this.saveHighScores(topFive);
   }
 
   create(data: GameOverData): void {
@@ -71,33 +154,40 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   private createVictoryScreen(data: GameOverData): void {
+    // Calculate score first
+    const scoreDetails = this.calculateScore(data);
+    const finalScore = scoreDetails.total + (data.score || 0); // Add destruction score
+    this.currentScore = finalScore;
+
+    // Check if this is a high score
+    const highScoreCheck = this.isHighScore(finalScore);
+    this.isNewHighScore = highScoreCheck.isHigh;
+    this.highScoreRank = highScoreCheck.rank;
+
     // Title with shadow (cartoon style)
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 63, 'MISSION COMPLETE!', {
+    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 53, 'MISSION COMPLETE!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '48px',
+      fontSize: '42px',
       color: '#2E7D32',
       fontStyle: 'bold',
     });
     titleShadow.setOrigin(0.5, 0.5);
 
-    const title = this.add.text(GAME_WIDTH / 2, 60, 'MISSION COMPLETE!', {
+    const title = this.add.text(GAME_WIDTH / 2, 50, 'MISSION COMPLETE!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '48px',
+      fontSize: '42px',
       color: '#4CAF50',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0.5);
 
     // Message
-    const message = this.add.text(GAME_WIDTH / 2, 110, data.message, {
+    const message = this.add.text(GAME_WIDTH / 2, 90, data.message, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '18px',
+      fontSize: '16px',
       color: '#333333',
     });
     message.setOrigin(0.5, 0.5);
-
-    // Calculate score
-    const scoreDetails = this.calculateScore(data);
 
     // Score Report Panel
     const panel = this.add.graphics();
@@ -204,30 +294,52 @@ export class GameOverScene extends Phaser.Scene {
     divider.lineBetween(GAME_WIDTH / 2 - 200, yPos, GAME_WIDTH / 2 + 200, yPos);
     yPos += 15;
 
-    // Total Score
-    const totalScoreShadow = this.add.text(GAME_WIDTH / 2 + 2, yPos + 2, `TOTAL SCORE: ${scoreDetails.total}`, {
+    // Destruction score bonus (if any)
+    if (data.score && data.score > 0) {
+      this.add.text(GAME_WIDTH / 2 - 200, yPos, 'Destruction Bonus:', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+        color: '#333333',
+      });
+      this.add.text(GAME_WIDTH / 2 + 150, yPos, `+${data.score} pts`, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '16px',
+        color: '#FF6600',
+        fontStyle: 'bold',
+      }).setOrigin(1, 0);
+      yPos += 25;
+    }
+
+    // Divider before total
+    const divider2 = this.add.graphics();
+    divider2.lineStyle(2, 0xCCCCCC);
+    divider2.lineBetween(GAME_WIDTH / 2 - 200, yPos, GAME_WIDTH / 2 + 200, yPos);
+    yPos += 15;
+
+    // Total Score (including destruction bonus)
+    const totalScoreShadow = this.add.text(GAME_WIDTH / 2 + 2, yPos + 2, `TOTAL SCORE: ${finalScore}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
+      fontSize: '24px',
       color: '#B8860B',
       fontStyle: 'bold',
     });
     totalScoreShadow.setOrigin(0.5, 0);
 
-    this.add.text(GAME_WIDTH / 2, yPos, `TOTAL SCORE: ${scoreDetails.total}`, {
+    this.add.text(GAME_WIDTH / 2, yPos, `TOTAL SCORE: ${finalScore}`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
+      fontSize: '24px',
       color: '#FFD700',
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
     // Random quote
     const quote = VICTORY_QUOTES[Math.floor(Math.random() * VICTORY_QUOTES.length)];
-    const quoteText = this.add.text(GAME_WIDTH / 2, 480, quote, {
+    const quoteText = this.add.text(GAME_WIDTH / 2 - 250, 480, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '14px',
+      fontSize: '12px',
       color: '#666666',
       fontStyle: 'italic',
-      wordWrap: { width: 500 },
+      wordWrap: { width: 300 },
       align: 'center',
     });
     quoteText.setOrigin(0.5, 0);
@@ -235,27 +347,37 @@ export class GameOverScene extends Phaser.Scene {
     // Celebration confetti
     this.createCelebrationParticles();
 
-    // Buttons
-    this.createButton(GAME_WIDTH / 2 - 110, 560, 'PLAY AGAIN', 0x4CAF50, () => {
-      this.scene.start('GameScene');
-    });
+    // Show name entry or leaderboard on the right side
+    if (this.isNewHighScore) {
+      this.createNameEntryUI(GAME_WIDTH / 2 + 150, 460, finalScore);
+    } else {
+      // Show leaderboard on the right
+      this.createLeaderboard(GAME_WIDTH / 2 + 150, 460, finalScore);
 
-    this.createButton(GAME_WIDTH / 2 + 110, 560, 'MAIN MENU', 0x607D8B, () => {
-      this.scene.start('MenuScene');
-    });
+      // Buttons
+      this.createButton(GAME_WIDTH / 2 - 200, 620, 'PLAY AGAIN', 0x4CAF50, () => {
+        this.scene.start('GameScene');
+      });
 
-    // Enter key hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, 620, 'Press ENTER to play again', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '12px',
-      color: '#888888',
-    });
-    enterHint.setOrigin(0.5, 0.5);
+      this.createButton(GAME_WIDTH / 2, 620, 'MAIN MENU', 0x607D8B, () => {
+        this.scene.start('MenuScene');
+      });
 
-    // Enter key to play again
-    this.input.keyboard!.on('keydown-ENTER', () => {
-      this.scene.start('GameScene');
-    });
+      // Enter key hint
+      const enterHint = this.add.text(GAME_WIDTH / 2 - 100, 670, 'Press ENTER to play again', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '12px',
+        color: '#888888',
+      });
+      enterHint.setOrigin(0.5, 0.5);
+
+      // Enter key to play again
+      this.input.keyboard!.on('keydown-ENTER', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene');
+        }
+      });
+    }
   }
 
   private calculateScore(data: GameOverData): { timeBonus: number; itemsTotal: number; peaceMedalBonus: number; total: number } {
@@ -301,18 +423,31 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   private createCrashScreen(data: GameOverData): void {
+    const score = data.score || 0;
+    this.currentScore = score;
+
+    // Check if this is a high score (skip if we just saved)
+    if (data.skipHighScoreCheck) {
+      this.isNewHighScore = false;
+      this.highScoreRank = -1;
+    } else {
+      const highScoreCheck = this.isHighScore(score);
+      this.isNewHighScore = highScoreCheck.isHigh && score > 0;
+      this.highScoreRank = highScoreCheck.rank;
+    }
+
     // Title with shadow (cartoon style)
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 123, 'MISSION FAILED', {
+    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 73, 'MISSION FAILED', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '56px',
+      fontSize: '48px',
       color: '#8B0000',
       fontStyle: 'bold',
     });
     titleShadow.setOrigin(0.5, 0.5);
 
-    const title = this.add.text(GAME_WIDTH / 2, 120, 'MISSION FAILED', {
+    const title = this.add.text(GAME_WIDTH / 2, 70, 'MISSION FAILED', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '56px',
+      fontSize: '48px',
       color: '#F44336',
       fontStyle: 'bold',
     });
@@ -322,46 +457,64 @@ export class GameOverScene extends Phaser.Scene {
     this.cameras.main.shake(500, 0.01);
 
     // Message
-    const message = this.add.text(GAME_WIDTH / 2, 200, data.message, {
+    const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '24px',
+      fontSize: '20px',
       color: '#333333',
     });
     message.setOrigin(0.5, 0.5);
 
+    // Show score
+    this.add.text(GAME_WIDTH / 2, 160, `SCORE: ${score}`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '28px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0.5);
+
     // Random quote
     const quote = CRASH_QUOTES[Math.floor(Math.random() * CRASH_QUOTES.length)];
-    const quoteText = this.add.text(GAME_WIDTH / 2, 300, quote, {
+    const quoteText = this.add.text(GAME_WIDTH / 2, 210, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '18px',
+      fontSize: '14px',
       color: '#666666',
       fontStyle: 'italic',
-      wordWrap: { width: 600 },
+      wordWrap: { width: 500 },
       align: 'center',
     });
     quoteText.setOrigin(0.5, 0.5);
 
-    // Buttons
-    this.createButton(GAME_WIDTH / 2, 420, 'TRY AGAIN', 0xFF9800, () => {
-      this.scene.start('GameScene');
-    });
+    // Show name entry or leaderboard
+    if (this.isNewHighScore) {
+      this.createNameEntryUI(GAME_WIDTH / 2, 240, score);
+    } else {
+      // Show leaderboard
+      this.createLeaderboard(GAME_WIDTH / 2, 250, score);
 
-    this.createButton(GAME_WIDTH / 2, 490, 'MAIN MENU', 0x607D8B, () => {
-      this.scene.start('MenuScene');
-    });
+      // Buttons below leaderboard
+      this.createButton(GAME_WIDTH / 2 - 110, 480, 'TRY AGAIN', 0xFF9800, () => {
+        this.scene.start('GameScene');
+      });
 
-    // Enter key hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, 550, 'Press ENTER to try again', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '14px',
-      color: '#888888',
-    });
-    enterHint.setOrigin(0.5, 0.5);
+      this.createButton(GAME_WIDTH / 2 + 110, 480, 'MAIN MENU', 0x607D8B, () => {
+        this.scene.start('MenuScene');
+      });
 
-    // Enter key to try again
-    this.input.keyboard!.on('keydown-ENTER', () => {
-      this.scene.start('GameScene');
-    });
+      // Enter key hint
+      const enterHint = this.add.text(GAME_WIDTH / 2, 540, 'Press ENTER to try again', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '14px',
+        color: '#888888',
+      });
+      enterHint.setOrigin(0.5, 0.5);
+
+      // Enter key to try again
+      this.input.keyboard!.on('keydown-ENTER', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene');
+        }
+      });
+    }
   }
 
   private createCelebrationParticles(): void {
@@ -458,5 +611,279 @@ export class GameOverScene extends Phaser.Scene {
     const g = Math.min(255, Math.floor(((color >> 8) & 0xFF) * factor));
     const b = Math.min(255, Math.floor((color & 0xFF) * factor));
     return (r << 16) | (g << 8) | b;
+  }
+
+  private createNameEntryUI(x: number, y: number, score: number): void {
+    this.nameEntryActive = true;
+    this.playerName = '';
+
+    // Background panel
+    const panel = this.add.graphics();
+    panel.fillStyle(0x2F4F4F, 0.95);
+    panel.fillRoundedRect(x - 200, y, 400, 180, 12);
+    panel.lineStyle(3, 0xFFD700);
+    panel.strokeRoundedRect(x - 200, y, 400, 180, 12);
+
+    // Title
+    this.add.text(x, y + 20, '🏆 NEW HIGH SCORE! 🏆', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '22px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    // Instruction
+    this.add.text(x, y + 50, 'Enter your name:', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '14px',
+      color: '#FFFFFF',
+    }).setOrigin(0.5, 0);
+
+    // Name input field background
+    const inputBg = this.add.graphics();
+    inputBg.fillStyle(0xFFFFFF, 1);
+    inputBg.fillRoundedRect(x - 100, y + 70, 200, 35, 6);
+    inputBg.lineStyle(2, 0x333333);
+    inputBg.strokeRoundedRect(x - 100, y + 70, 200, 35, 6);
+
+    // Name input text
+    this.nameInputText = this.add.text(x, y + 87, '|', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '18px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    this.nameInputText.setOrigin(0.5, 0.5);
+
+    // Cursor blinking
+    this.cursorBlink = this.time.addEvent({
+      delay: 500,
+      callback: () => {
+        const current = this.nameInputText.text;
+        if (current.endsWith('|')) {
+          this.nameInputText.setText(this.playerName);
+        } else {
+          this.nameInputText.setText(this.playerName + '|');
+        }
+      },
+      loop: true,
+    });
+
+    // Suggested names - show 5 random ones
+    const shuffled = [...SUGGESTED_NAMES].sort(() => Math.random() - 0.5);
+    const suggestions = shuffled.slice(0, 5);
+    const chipStartX = x - 180;
+
+    this.add.text(x, y + 115, 'Quick picks:', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '11px',
+      color: '#AAAAAA',
+    }).setOrigin(0.5, 0);
+
+    let chipX = chipStartX;
+    for (const name of suggestions) {
+      const chipWidth = Math.max(60, name.length * 8 + 16);
+      const chip = this.add.container(chipX + chipWidth / 2, y + 145);
+
+      const chipBg = this.add.graphics();
+      chipBg.fillStyle(0x4169E1, 1);
+      chipBg.fillRoundedRect(-chipWidth / 2, -12, chipWidth, 24, 12);
+
+      const chipText = this.add.text(0, 0, name, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '11px',
+        color: '#FFFFFF',
+      });
+      chipText.setOrigin(0.5, 0.5);
+
+      chip.add([chipBg, chipText]);
+      chip.setInteractive(new Phaser.Geom.Rectangle(-chipWidth / 2, -12, chipWidth, 24), Phaser.Geom.Rectangle.Contains);
+
+      chip.on('pointerover', () => {
+        chipBg.clear();
+        chipBg.fillStyle(0x6495ED, 1);
+        chipBg.fillRoundedRect(-chipWidth / 2, -12, chipWidth, 24, 12);
+      });
+
+      chip.on('pointerout', () => {
+        chipBg.clear();
+        chipBg.fillStyle(0x4169E1, 1);
+        chipBg.fillRoundedRect(-chipWidth / 2, -12, chipWidth, 24, 12);
+      });
+
+      chip.on('pointerdown', () => {
+        this.playerName = name;
+        this.nameInputText.setText(name + '|');
+      });
+
+      chipX += chipWidth + 8;
+    }
+
+    // Keyboard input
+    this.input.keyboard!.on('keydown', (event: KeyboardEvent) => {
+      if (!this.nameEntryActive) return;
+
+      if (event.key === 'Enter' && this.playerName.length > 0) {
+        this.submitHighScore(score);
+      } else if (event.key === 'Backspace') {
+        this.playerName = this.playerName.slice(0, -1);
+        this.nameInputText.setText(this.playerName + '|');
+      } else if (event.key.length === 1 && this.playerName.length < 12) {
+        this.playerName += event.key;
+        this.nameInputText.setText(this.playerName + '|');
+      }
+    });
+
+    // Save button - positioned inside the panel
+    const saveBtn = this.add.container(x, y + 160);
+
+    const saveBtnBg = this.add.graphics();
+    saveBtnBg.fillStyle(0x32CD32, 1);
+    saveBtnBg.fillRoundedRect(-60, -15, 120, 30, 8);
+    saveBtnBg.lineStyle(2, 0x228B22);
+    saveBtnBg.strokeRoundedRect(-60, -15, 120, 30, 8);
+
+    const saveBtnText = this.add.text(0, 0, 'SAVE SCORE', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '14px',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+    });
+    saveBtnText.setOrigin(0.5, 0.5);
+
+    saveBtn.add([saveBtnBg, saveBtnText]);
+    saveBtn.setInteractive(new Phaser.Geom.Rectangle(-60, -15, 120, 30), Phaser.Geom.Rectangle.Contains);
+
+    saveBtn.on('pointerover', () => {
+      saveBtnBg.clear();
+      saveBtnBg.fillStyle(0x28a428, 1);
+      saveBtnBg.fillRoundedRect(-60, -15, 120, 30, 8);
+      saveBtnBg.lineStyle(2, 0x228B22);
+      saveBtnBg.strokeRoundedRect(-60, -15, 120, 30, 8);
+    });
+
+    saveBtn.on('pointerout', () => {
+      saveBtnBg.clear();
+      saveBtnBg.fillStyle(0x32CD32, 1);
+      saveBtnBg.fillRoundedRect(-60, -15, 120, 30, 8);
+      saveBtnBg.lineStyle(2, 0x228B22);
+      saveBtnBg.strokeRoundedRect(-60, -15, 120, 30, 8);
+    });
+
+    saveBtn.on('pointerdown', () => {
+      if (this.playerName.length > 0) {
+        this.submitHighScore(score);
+      }
+    });
+  }
+
+  private submitHighScore(score: number): void {
+    if (!this.nameEntryActive) return;
+    this.nameEntryActive = false;
+
+    if (this.cursorBlink) {
+      this.cursorBlink.destroy();
+    }
+
+    this.addHighScore(this.playerName, score);
+
+    // Mark that we already saved, so we don't show name entry again
+    this.isNewHighScore = false;
+
+    // Restart scene - it will now show the leaderboard instead of name entry
+    this.scene.restart({
+      victory: false,
+      message: 'Score saved!',
+      score: score,
+      skipHighScoreCheck: true
+    });
+  }
+
+  private createLeaderboard(x: number, y: number, currentScore: number): void {
+    const highScores = this.loadHighScores();
+
+    // Panel background
+    const panel = this.add.graphics();
+    panel.fillStyle(0x000000, 0.7);
+    panel.fillRoundedRect(x - 120, y, 240, 200, 10);
+    panel.lineStyle(2, 0xFFD700);
+    panel.strokeRoundedRect(x - 120, y, 240, 200, 10);
+
+    // Title
+    this.add.text(x, y + 15, '🏆 HIGH SCORES 🏆', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '16px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    // Medal colors for top 3
+    const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32', '#FFFFFF', '#FFFFFF'];
+    const medalEmojis = ['🥇', '🥈', '🥉', '4.', '5.'];
+
+    let rowY = y + 45;
+
+    if (highScores.length === 0) {
+      this.add.text(x, rowY + 40, 'No scores yet!\nBe the first!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '14px',
+        color: '#AAAAAA',
+        align: 'center',
+      }).setOrigin(0.5, 0);
+    } else {
+      for (let i = 0; i < 5; i++) {
+        if (i < highScores.length) {
+          const entry = highScores[i];
+          const isCurrentScore = entry.score === currentScore && this.highScoreRank === i;
+
+          // Highlight if this is the player's new entry
+          if (isCurrentScore) {
+            const highlight = this.add.graphics();
+            highlight.fillStyle(0xFFD700, 0.2);
+            highlight.fillRoundedRect(x - 110, rowY - 2, 220, 26, 4);
+          }
+
+          // Rank/Medal
+          this.add.text(x - 100, rowY + 10, medalEmojis[i], {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: medalColors[i],
+          }).setOrigin(0, 0.5);
+
+          // Name
+          this.add.text(x - 70, rowY + 10, entry.name, {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: isCurrentScore ? '#FFD700' : '#FFFFFF',
+            fontStyle: isCurrentScore ? 'bold' : 'normal',
+          }).setOrigin(0, 0.5);
+
+          // Score
+          this.add.text(x + 100, rowY + 10, entry.score.toString(), {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: isCurrentScore ? '#FFD700' : '#90EE90',
+            fontStyle: 'bold',
+          }).setOrigin(1, 0.5);
+
+          rowY += 28;
+        } else {
+          // Empty slot
+          this.add.text(x - 100, rowY + 10, medalEmojis[i], {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: '#666666',
+          }).setOrigin(0, 0.5);
+
+          this.add.text(x - 70, rowY + 10, '---', {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '14px',
+            color: '#666666',
+          }).setOrigin(0, 0.5);
+
+          rowY += 28;
+        }
+      }
+    }
   }
 }
