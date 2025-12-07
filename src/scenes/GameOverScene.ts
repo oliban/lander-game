@@ -196,12 +196,21 @@ export class GameOverScene extends Phaser.Scene {
     });
     message.setOrigin(0.5, 0.5);
 
+    // Calculate panel height based on content
+    const itemCount = data.inventory ? data.inventory.filter(i => i.count > 0).length : 0;
+    const hasDestructionBonus = data.score && data.score > 0;
+    const baseHeight = 180; // Time, header, and total
+    const itemsHeight = Math.max(1, itemCount) * 22 + 35; // Items section
+    const peaceMedalHeight = data.hasPeaceMedal ? 50 : 0;
+    const destructionHeight = hasDestructionBonus ? 25 : 0;
+    const panelHeight = baseHeight + itemsHeight + peaceMedalHeight + destructionHeight;
+
     // Score Report Panel
     const panel = this.add.graphics();
     panel.fillStyle(0xFFFFFF, 0.95);
-    panel.fillRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, 320, 15);
+    panel.fillRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, panelHeight, 15);
     panel.lineStyle(3, 0x333333);
-    panel.strokeRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, 320, 15);
+    panel.strokeRoundedRect(GAME_WIDTH / 2 - 250, 140, 500, panelHeight, 15);
 
     // Score Report Title
     this.add.text(GAME_WIDTH / 2, 160, 'MISSION REPORT', {
@@ -339,9 +348,12 @@ export class GameOverScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
+    // Calculate position below the panel
+    const panelBottom = 140 + panelHeight;
+
     // Random quote
     const quote = VICTORY_QUOTES[Math.floor(Math.random() * VICTORY_QUOTES.length)];
-    const quoteText = this.add.text(GAME_WIDTH / 2 - 250, 480, quote, {
+    const quoteText = this.add.text(GAME_WIDTH / 2 - 250, panelBottom + 20, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '12px',
       color: '#666666',
@@ -356,22 +368,23 @@ export class GameOverScene extends Phaser.Scene {
 
     // Show name entry or leaderboard on the right side
     if (this.isNewHighScore) {
-      this.createNameEntryUI(GAME_WIDTH / 2 + 150, 460, finalScore);
+      this.createNameEntryUI(GAME_WIDTH / 2 + 150, panelBottom, finalScore);
     } else {
       // Show leaderboard on the right
-      this.createLeaderboard(GAME_WIDTH / 2 + 150, 460, finalScore);
+      this.createLeaderboard(GAME_WIDTH / 2 + 150, panelBottom, finalScore);
 
       // Buttons
-      this.createButton(GAME_WIDTH / 2 - 200, 620, 'PLAY AGAIN', 0x4CAF50, () => {
+      const buttonY = panelBottom + 220;
+      this.createButton(GAME_WIDTH / 2 - 200, buttonY, 'PLAY AGAIN', 0x4CAF50, () => {
         this.scene.start('GameScene');
       });
 
-      this.createButton(GAME_WIDTH / 2, 620, 'MAIN MENU', 0x607D8B, () => {
+      this.createButton(GAME_WIDTH / 2, buttonY, 'MAIN MENU', 0x607D8B, () => {
         this.scene.start('MenuScene');
       });
 
       // Enter key hint
-      const enterHint = this.add.text(GAME_WIDTH / 2 - 100, 670, 'Press ENTER to play again', {
+      const enterHint = this.add.text(GAME_WIDTH / 2 - 100, buttonY + 50, 'Press ENTER to play again', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '12px',
         color: '#888888',
