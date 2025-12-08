@@ -89,7 +89,10 @@ export class GameScene extends Phaser.Scene {
     // Create terrain (including Washington DC area to the left)
     this.terrain = new Terrain(this, WORLD_START_X, WORLD_WIDTH);
 
-    // Create country decorations (buildings and landmarks)
+    // Create cannons first (so decorations can avoid them)
+    this.createCannons();
+
+    // Create country decorations (buildings and landmarks) - skips areas near cannons
     this.createDecorations();
 
     // Reset peace medal state
@@ -120,9 +123,6 @@ export class GameScene extends Phaser.Scene {
     // Create landing pads
     this.createLandingPads();
 
-    // Create cannons
-    this.createCannons();
-
     // Create collectibles (throughout entire world including Washington area)
     // Pass decorations so collectibles don't spawn inside buildings
     this.collectibles = spawnCollectibles(
@@ -136,8 +136,8 @@ export class GameScene extends Phaser.Scene {
     // Create shuttle - start landed on NYC pad (index 1, since Washington is now index 0)
     const startPad = this.landingPads[1]; // NYC Fuel Stop
     this.startPadId = 1; // Remember we started on pad 1
-    // Position shuttle on the pad - adjust so feet visually touch the platform
-    const shuttleStartY = startPad.y - 28;
+    // Position shuttle on the pad - adjust so feet visually touch the platform (with legs down)
+    const shuttleStartY = startPad.y - 20;
     console.log('Starting shuttle at:', startPad.x, shuttleStartY, 'pad.y:', startPad.y);
     this.shuttle = new Shuttle(this, startPad.x, shuttleStartY);
     this.shuttle.setFuelSystem(this.fuelSystem);
@@ -321,6 +321,12 @@ export class GameScene extends Phaser.Scene {
 
       // Random chance to place a decoration (80%)
       if (Math.random() > 0.8) continue;
+
+      // Skip if too close to any cannon (within 80 pixels)
+      const tooCloseToCannon = this.cannons.some(
+        (cannon) => Math.abs(cannon.x - area.x) < 80
+      );
+      if (tooCloseToCannon) continue;
 
       // Choose building (70%) or landmark (30%)
       const isLandmark = Math.random() < 0.3;

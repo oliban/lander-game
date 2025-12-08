@@ -15,7 +15,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private thrusterParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private isThrusting: boolean = false;
   private fuelSystem: { consume: (amount: number) => boolean; isEmpty: () => boolean } | null = null;
-  private legsExtended: boolean = false;
+  private legsExtended: boolean = true;
   private legsKey: Phaser.Input.Keyboard.Key | null = null;
   private debugKey: Phaser.Input.Keyboard.Key | null = null;
   private debugMode: boolean = false;
@@ -24,7 +24,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private thrustMultiplier: number = 1.0; // For speed boost power-up
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene.matter.world, x, y, 'shuttle');
+    super(scene.matter.world, x, y, 'shuttle-legs');
 
     scene.add.existing(this);
 
@@ -76,11 +76,12 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       angle: { min: 80, max: 100 },
       scale: { start: 0.5, end: 0 },
       lifespan: { min: 200, max: 400 },
-      blendMode: Phaser.BlendModes.NORMAL, // Changed from ADD - was causing black screen
+      blendMode: Phaser.BlendModes.NORMAL,
       frequency: 20,
       emitting: false,
-      tint: [0xFF8800, 0xFFAA00, 0xFFCC00, 0xFFFFFF], // Orange/yellow flame colors
+      tint: [0xFF8800, 0xFFAA00, 0xFFCC00, 0xFFFFFF],
     });
+
   }
 
   update(cursors: Phaser.Types.Input.Keyboard.CursorKeys): void {
@@ -185,25 +186,64 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     if (!this.thrusterParticles) return;
 
     if (this.isThrusting) {
-      // Position emitter at bottom of shuttle
-      const angle = this.rotation + Math.PI / 2;
-      const offsetX = Math.cos(angle) * 20;
-      const offsetY = Math.sin(angle) * 20;
+      // Position emitter at bottom/back of shuttle
+      const backOfShipAngle = this.rotation + Math.PI / 2;
+      const offsetX = Math.cos(backOfShipAngle) * 20;
+      const offsetY = Math.sin(backOfShipAngle) * 20;
 
       this.thrusterParticles.setPosition(this.x + offsetX, this.y + offsetY);
-      this.thrusterParticles.particleAngle = {
-        min: Phaser.Math.RadToDeg(angle) - 15,
-        max: Phaser.Math.RadToDeg(angle) + 15,
-      };
+
+      // Particles shoot out from back of ship
+      const exhaustAngle = 90 + Phaser.Math.RadToDeg(this.rotation);
+
+      // Scale particle intensity with ship speed
+      const velocity = this.getVelocity();
+      const speed = velocity.total;
+
+      // Faster ship = faster particles
+      const baseSpeed = 100;
+      const speedBonus = Math.min(speed * 12, 120);
+      const particleSpeed = baseSpeed + speedBonus;
+
+      // Always emit particles, more at higher speeds (lower frequency = more particles)
+      const baseFrequency = 8; // At rest: emit every 8ms
+      const frequencyBonus = Math.min(speed * 0.4, 5);
+      const particleFrequency = Math.max(3, baseFrequency - frequencyBonus); // At high speed: every 3ms
+
+      // Longer trail at higher speeds (longer lifespan) - particles linger like chemtrails
+      const baseLifespan = 500;
+      const lifespanBonus = Math.min(speed * 50, 800);
+      const particleLifespan = baseLifespan + lifespanBonus;
+
+      // More particles per emission at higher speeds
+      const baseQuantity = 2;
+      const quantityBonus = Math.floor(Math.min(speed * 0.3, 3));
+      const particleQuantity = baseQuantity + quantityBonus;
+
+      // Update emitter config (must include texture)
+      this.thrusterParticles.setConfig({
+        texture: 'particle',
+        angle: { min: exhaustAngle - 15, max: exhaustAngle + 15 },
+        speed: { min: particleSpeed, max: particleSpeed + 80 },
+        frequency: particleFrequency,
+        scale: { start: 0.5, end: 0.15 },
+        alpha: { start: 1, end: 0.2 },
+        lifespan: { min: particleLifespan * 0.8, max: particleLifespan * 1.5 },
+        tint: [0xFF6600, 0xFF8800, 0xFFAA00, 0xFFCC00],
+        quantity: particleQuantity,
+      });
 
       if (!this.thrusterParticles.emitting) {
         this.thrusterParticles.start();
       }
+
     } else {
       if (this.thrusterParticles.emitting) {
-        this.thrusterParticles.stop();
+        // Stop emitting but let existing particles finish their lifespan
+        this.thrusterParticles.emitting = false;
       }
     }
+
   }
 
   getVelocity(): { x: number; y: number; total: number } {

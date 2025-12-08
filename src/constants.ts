@@ -16,31 +16,31 @@ export const FUEL_CONSUMPTION_RATE = 0.15; // per frame when thrusting
 // Terrain
 export const TERRAIN_SEGMENT_WIDTH = 20;
 export const TERRAIN_ROUGHNESS = 0.5;
-export const WORLD_WIDTH = 22600; // Total journey length (eastward) - Russia is 20% wider
+export const WORLD_WIDTH = 23600; // Total journey length (eastward) - Russia 20% wider, Atlantic 50% wider
 export const WORLD_START_X = -2800; // Washington is 2+ screen widths to the left
 
 // Countries (x positions where they start) - cartoon colors
 export const COUNTRIES = [
   { name: 'Washington DC', startX: -2800, color: 0x2E8B57, cannonDensity: 0 },  // Sea green
   { name: 'USA', startX: 0, color: 0x228B22, cannonDensity: 0 },  // Forest green
-  { name: 'Atlantic Ocean', startX: 2000, color: 0x4169E1, cannonDensity: 0 },  // Royal blue
-  { name: 'United Kingdom', startX: 4000, color: 0x9370DB, cannonDensity: 0.3 },  // Medium purple
-  { name: 'France', startX: 6000, color: 0x20B2AA, cannonDensity: 0.4 },  // Light sea green
-  { name: 'Germany', startX: 9000, color: 0xDAA520, cannonDensity: 0.5 },  // Goldenrod
-  { name: 'Poland', startX: 12000, color: 0xCD853F, cannonDensity: 0.6 },  // Peru
-  { name: 'Russia', startX: 16000, color: 0xDC143C, cannonDensity: 0.2 },  // Crimson
+  { name: 'Atlantic Ocean', startX: 2000, color: 0x4169E1, cannonDensity: 0 },  // Royal blue (50% wider)
+  { name: 'United Kingdom', startX: 5000, color: 0x9370DB, cannonDensity: 0.3 },  // Medium purple
+  { name: 'France', startX: 7000, color: 0x20B2AA, cannonDensity: 0.4 },  // Light sea green
+  { name: 'Germany', startX: 10000, color: 0xDAA520, cannonDensity: 0.5 },  // Goldenrod
+  { name: 'Poland', startX: 13000, color: 0xCD853F, cannonDensity: 0.6 },  // Peru
+  { name: 'Russia', startX: 17000, color: 0xDC143C, cannonDensity: 0.2 },  // Crimson
 ];
 
 // Landing pads between countries
 export const LANDING_PADS = [
   { x: -2500, width: 150, name: 'The White House', isWashington: true },
   { x: 1800, width: 120, name: 'NYC Fuel Stop' },
-  { x: 3800, width: 100, name: 'Mid-Atlantic Platform' },
-  { x: 5800, width: 80, name: 'Dover Cliffs' },
-  { x: 8500, width: 80, name: 'Berlin Gas Station' },
-  { x: 11500, width: 70, name: 'Warsaw Depot' },
-  { x: 15500, width: 60, name: 'Border Station' },
-  { x: 22000, width: 250, name: "Putino's Palace" }, // Much larger final pad - adjusted for 20% wider Russia
+  { x: 4300, width: 100, name: 'Mid-Atlantic Platform' },  // Shifted for wider Atlantic
+  { x: 6800, width: 80, name: 'Dover Cliffs' },
+  { x: 9500, width: 80, name: 'Berlin Gas Station' },
+  { x: 12500, width: 70, name: 'Warsaw Depot' },
+  { x: 16500, width: 60, name: 'Border Station' },
+  { x: 23000, width: 250, name: "Putino's Palace" }, // Adjusted for wider Atlantic and Russia
 ];
 
 // Collectibles - organized by category and value
