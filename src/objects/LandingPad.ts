@@ -249,82 +249,21 @@ export class LandingPad {
   }
 
   private drawWhiteHouse(): void {
-    const whX = this.x - this.width / 2 - 120; // To the left of landing pad
+    // Medal house is at x - 120 (created in GameScene as MedalHouse)
+    const houseX = this.x - 120;
     const whY = this.y;
 
-    // Lawn
+    // The medal house building is now created as a CountryDecoration in GameScene
+    // Just draw the lawn and peace medal here
+
+    // Lawn in front of the building
     this.graphics.fillStyle(0x228B22, 1);
-    this.graphics.fillRect(whX - 40, whY - 5, 200, 10);
+    this.graphics.fillRect(houseX - 100, whY - 5, 250, 10);
 
-    // Main building - neoclassical style
-    const mainWidth = 160;
-    const mainHeight = 70;
-
-    // Main building body (white)
-    this.graphics.fillStyle(0xFFFFF0, 1); // Ivory
-    this.graphics.fillRect(whX, whY - mainHeight, mainWidth, mainHeight);
-    this.graphics.lineStyle(2, 0xCCCCCC, 1);
-    this.graphics.strokeRect(whX, whY - mainHeight, mainWidth, mainHeight);
-
-    // Columns (6 columns)
-    this.graphics.fillStyle(0xFFFFFF, 1);
-    for (let i = 0; i < 6; i++) {
-      const colX = whX + 15 + i * 25;
-      this.graphics.fillRect(colX, whY - mainHeight + 15, 8, mainHeight - 15);
-      // Column capital
-      this.graphics.fillRect(colX - 2, whY - mainHeight + 12, 12, 6);
-    }
-
-    // Triangular pediment (roof)
-    this.graphics.fillStyle(0xF5F5F5, 1);
-    this.graphics.fillTriangle(
-      whX - 5, whY - mainHeight,
-      whX + mainWidth / 2, whY - mainHeight - 30,
-      whX + mainWidth + 5, whY - mainHeight
-    );
-    this.graphics.lineStyle(2, 0xCCCCCC, 1);
-    this.graphics.strokeTriangle(
-      whX - 5, whY - mainHeight,
-      whX + mainWidth / 2, whY - mainHeight - 30,
-      whX + mainWidth + 5, whY - mainHeight
-    );
-
-    // Windows (2 rows)
-    this.graphics.fillStyle(0x4682B4, 1);
-    for (let row = 0; row < 2; row++) {
-      for (let col = 0; col < 5; col++) {
-        const wx = whX + 18 + col * 28;
-        const wy = whY - mainHeight + 20 + row * 25;
-        this.graphics.fillRect(wx, wy, 12, 18);
-      }
-    }
-
-    // Central entrance with door
-    this.graphics.fillStyle(0xFFFFF0, 1);
-    this.graphics.fillRect(whX + mainWidth / 2 - 15, whY - 45, 30, 45);
-    this.graphics.fillStyle(0x4169E1, 1);
-    this.graphics.fillRect(whX + mainWidth / 2 - 10, whY - 35, 20, 35);
-
-    // American flag
-    const flagX = whX + mainWidth / 2;
-    const flagY = whY - mainHeight - 50;
-    // Flagpole
-    this.graphics.lineStyle(2, 0x888888, 1);
-    this.graphics.lineBetween(flagX, flagY + 25, flagX, flagY);
-    // Flag
-    this.graphics.fillStyle(0xBF0A30, 1); // Red
-    this.graphics.fillRect(flagX, flagY, 25, 15);
-    this.graphics.fillStyle(0x002868, 1); // Blue canton
-    this.graphics.fillRect(flagX, flagY, 10, 8);
-    this.graphics.fillStyle(0xFFFFFF, 1); // White stripes
-    this.graphics.fillRect(flagX, flagY + 3, 25, 2);
-    this.graphics.fillRect(flagX, flagY + 7, 25, 2);
-    this.graphics.fillRect(flagX, flagY + 11, 25, 2);
-
-    // Peace Medal on display stand (what the player will pick up)
+    // Peace Medal on display stand on the lawn (what the player will pick up)
     // Draw on separate graphics so it can be hidden when collected
     this.peaceMedalGraphics = this.padScene.add.graphics();
-    const medalX = whX + mainWidth + 30;
+    const medalX = houseX + 180; // On the lawn further to the right, away from the building
     const medalY = whY - 30;
 
     // Display stand

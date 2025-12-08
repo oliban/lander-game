@@ -5,6 +5,7 @@ import { LandingPad } from '../objects/LandingPad';
 import { Cannon } from '../objects/Cannon';
 import { Collectible, spawnCollectibles } from '../objects/Collectible';
 import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
+import { MedalHouse } from '../objects/MedalHouse';
 import { Bomb } from '../objects/Bomb';
 import { FisherBoat } from '../objects/FisherBoat';
 import { GolfCart } from '../objects/GolfCart';
@@ -29,7 +30,8 @@ export class GameScene extends Phaser.Scene {
   private landingPads: LandingPad[] = [];
   private cannons: Cannon[] = [];
   private collectibles: Collectible[] = [];
-  private decorations: CountryDecoration[] = [];
+  private decorations: (CountryDecoration | MedalHouse)[] = [];
+  private medalHouse: MedalHouse | null = null;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private fuelSystem!: FuelSystem;
   private inventorySystem!: InventorySystem;
@@ -86,6 +88,7 @@ export class GameScene extends Phaser.Scene {
     this.cannons = [];
     this.collectibles = [];
     this.decorations = [];
+    this.medalHouse = null;
     this.bombs = [];
 
     // Initialize systems
@@ -217,6 +220,11 @@ export class GameScene extends Phaser.Scene {
     this.events.on('update', launchHandler);
     this.currentCountryText.setScrollFactor(0);
     // Removed postFX glow - was causing black screen issues
+
+    // Stop rocket sound when scene shuts down
+    this.events.on('shutdown', () => {
+      this.shuttle.stopRocketSound();
+    });
   }
 
   private createStarfield(): void {
@@ -459,6 +467,16 @@ export class GameScene extends Phaser.Scene {
 
       this.decorations.push(decoration);
     }
+
+    // Create the medal house near the Washington DC landing pad
+    // Position it to the left of the landing pad
+    const washingtonPad = LANDING_PADS.find(p => p.isWashington);
+    if (washingtonPad) {
+      const medalHouseX = washingtonPad.x - 120; // To the left of the pad
+      const medalHouseY = this.terrain.getHeightAt(medalHouseX);
+      this.medalHouse = new MedalHouse(this, medalHouseX, medalHouseY);
+      this.decorations.push(this.medalHouse);
+    }
   }
 
   private setupCollisions(): void {
@@ -537,6 +555,24 @@ export class GameScene extends Phaser.Scene {
       console.log('CRASH: Splashed into the Atlantic Ocean at', { x: this.shuttle.x, y: this.shuttle.y });
 
       this.gameState = 'crashed';
+      this.shuttle.stopRocketSound();
+      this.sound.play('water_splash');
+
+      // Play bubbles sound after splash, fade out after 3 seconds
+      this.time.delayedCall(500, () => {
+        const bubbles = this.sound.add('water_bubbles');
+        bubbles.play();
+        // Fade out over 1 second, starting at 2 seconds
+        this.time.delayedCall(2000, () => {
+          this.tweens.add({
+            targets: bubbles,
+            volume: 0,
+            duration: 1000,
+            onComplete: () => bubbles.stop(),
+          });
+        });
+      });
+
       this.handleWaterSplash();
       return;
     }
@@ -555,6 +591,7 @@ export class GameScene extends Phaser.Scene {
 
     this.gameState = 'crashed';
     this.shuttle.explode();
+    this.sound.play('car_crash', { volume: 0.8 });
 
     this.time.delayedCall(500, () => {
       if (this.gameState !== 'crashed') return; // Don't show if we landed successfully
@@ -714,6 +751,17 @@ export class GameScene extends Phaser.Scene {
       duration: 3500,
       ease: 'Quad.easeIn',
     });
+
+    // If player has the peace medal, make it sink with the shuttle
+    if (this.hasPeaceMedal && this.peaceMedalGraphics) {
+      this.tweens.add({
+        targets: this.peaceMedalGraphics,
+        y: waterLevel + 200, // Sink slightly deeper than shuttle
+        alpha: 0.15,
+        duration: 3500,
+        ease: 'Quad.easeIn',
+      });
+    }
 
     // Bubbles rising as shuttle sinks (more bubbles over longer time)
     for (let i = 0; i < 25; i++) {
@@ -1107,6 +1155,11 @@ export class GameScene extends Phaser.Scene {
     this.gameState = 'crashed';
     this.shuttle.explode();
 
+    // Play crash and explosion sounds
+    this.sound.play('car_crash', { volume: 0.8 });
+    const explosionNum = Math.floor(Math.random() * 3) + 1;
+    this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
+
     // Generate death message based on projectile type
     const message = this.getProjectileDeathMessage(projectileSpriteKey);
 
@@ -1164,6 +1217,9 @@ export class GameScene extends Phaser.Scene {
 
   private handleCollectiblePickup(collectible: Collectible): void {
     if (collectible.collected) return;
+
+    // Play pickup sound based on collectible type
+    this.playPickupSound(collectible.collectibleType);
 
     // Add score based on fuel value (points for collecting)
     const pointsGained = collectible.fuelValue;
@@ -1241,6 +1297,8 @@ export class GameScene extends Phaser.Scene {
     this.cannonsBribed = true;
     this.bribeEndTime = this.time.now + duration;
 
+    // Sound is played by playPickupSound()
+
     // Create bribe graphics (dollar signs floating)
     if (!this.bribeGraphics) {
       this.bribeGraphics = this.add.graphics();
@@ -1316,6 +1374,8 @@ export class GameScene extends Phaser.Scene {
     this.hasSpeedBoost = true;
     this.speedBoostEndTime = this.time.now + duration;
 
+    // Sound is played by playPickupSound()
+
     // Modify shuttle thrust temporarily
     this.shuttle.setThrustMultiplier(1.8);
 
@@ -1365,6 +1425,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Play random bomb quote (only if not already playing)
+    const bombQuoteNum = Math.floor(Math.random() * 8) + 1;
+    this.playSoundIfNotPlaying(`bomb${bombQuoteNum}`);
+
     // Consume 1 from inventory
     this.inventorySystem.remove(foodType as any, 1);
 
@@ -1376,6 +1440,61 @@ export class GameScene extends Phaser.Scene {
     bomb.setVelocity(shuttleVel.x * 0.5, shuttleVel.y + 2);
 
     this.bombs.push(bomb);
+  }
+
+  // Play a sound only if it's not already playing (prevents overlap of same sound)
+  private playSoundIfNotPlaying(key: string): void {
+    // Check if this sound is already playing
+    const isPlaying = this.sound.getAllPlaying().some(
+      (sound) => sound.key === key
+    );
+    if (!isPlaying) {
+      this.sound.play(key);
+    }
+  }
+
+  // Generate and play a "boing" sound using Web Audio API
+  private playBoingSound(): void {
+    const audioContext = (this.sound as Phaser.Sound.WebAudioSoundManager).context;
+    if (!audioContext) return;
+
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Start at higher frequency and sweep down for "boing" effect
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(150, audioContext.currentTime + 0.15);
+    // Bounce back up slightly
+    oscillator.frequency.exponentialRampToValueAtTime(250, audioContext.currentTime + 0.2);
+    oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+
+    // Volume envelope
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  }
+
+  private playPickupSound(collectibleType: string): void {
+    // Power-ups have special voice sounds
+    const powerUpSounds: Record<string, string> = {
+      'TRUMP_TOWER': 'bribe1',
+      'RED_TIE': 'speedboost',
+      'COVFEFE': 'covfefe',
+    };
+
+    const soundKey = powerUpSounds[collectibleType];
+    if (soundKey) {
+      this.playSoundIfNotPlaying(soundKey);
+    } else {
+      // Regular collectibles get a "boing" sound
+      this.playBoingSound();
+    }
   }
 
   private updateBombs(): void {
@@ -1413,6 +1532,14 @@ export class GameScene extends Phaser.Scene {
           const explosionY = bombY;
           bomb.explode(this);
 
+          // Play explosion SFX (can overlap) and bomb hit quote (delayed 1.5s, no overlap)
+          const explosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
+          const bombHitNum = Math.floor(Math.random() * 5) + 1;
+          this.time.delayedCall(1500, () => {
+            this.playSoundIfNotPlaying(`bombhit${bombHitNum}`);
+          });
+
           // Apply shockwave to shuttle
           this.applyExplosionShockwave(explosionX, explosionY);
 
@@ -1420,6 +1547,13 @@ export class GameScene extends Phaser.Scene {
           const { name, points, textureKey, country } = decoration.explode();
           this.destructionScore += points;
           this.destroyedBuildings.push({ name, points, textureKey, country });
+
+          // Play special sound for FIFA Kennedy Center
+          if (decoration instanceof MedalHouse) {
+            this.time.delayedCall(500, () => {
+              this.sound.play('sorry_johnny');
+            });
+          }
 
           // Show points popup
           this.showDestructionPoints(decoration.x, decoration.y - 50, points, name);
@@ -1456,6 +1590,12 @@ export class GameScene extends Phaser.Scene {
           bomb.explode(this);
           cannon.explode();
 
+          // Play explosion SFX (can overlap) and bomb hit quote (no overlap)
+          const cannonExplosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${cannonExplosionNum}`, { volume: 0.5 });
+          const cannonHitNum = Math.floor(Math.random() * 5) + 1;
+          this.playSoundIfNotPlaying(`bombhit${cannonHitNum}`);
+
           // Apply shockwave to shuttle
           this.applyExplosionShockwave(explosionX, explosionY);
 
@@ -1488,6 +1628,10 @@ export class GameScene extends Phaser.Scene {
           const explosionX = bombX;
           const explosionY = bombY;
           bomb.explode(this);
+
+          // Play explosion sound
+          const explosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
 
           // Apply shockwave to shuttle
           this.applyExplosionShockwave(explosionX, explosionY);
@@ -1905,6 +2049,9 @@ export class GameScene extends Phaser.Scene {
       if (dist < pickupRadius && isLanded) {
         // Mark as collected
         file.setData('collected', true);
+
+        // Play boing sound
+        this.playBoingSound();
 
         // Add to cargo inventory
         this.inventorySystem.add('EPSTEIN_FILES');

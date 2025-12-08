@@ -98,6 +98,58 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
+    // Load voice quotes
+    for (let i = 1; i <= 5; i++) {
+      this.load.audio(`crash${i}`, `assets/audio/crash${i}.mp3`);
+      this.load.audio(`victory${i}`, `assets/audio/victory${i}.mp3`);
+    }
+    for (let i = 1; i <= 7; i++) {
+      this.load.audio(`trade${i}`, `assets/audio/trade${i}.mp3`);
+    }
+    for (let i = 1; i <= 8; i++) {
+      this.load.audio(`bomb${i}`, `assets/audio/bomb${i}.mp3`);
+    }
+    this.load.audio('bribe1', 'assets/audio/bribe1.mp3');
+    this.load.audio('speedboost', 'assets/audio/speedboost.mp3');
+    this.load.audio('sorry_johnny', 'assets/audio/sorry_johnny.mp3');
+    this.load.audio('car_crash', 'assets/audio/car-crash.mp3');
+    this.load.audio('water_splash', 'assets/audio/water-splash.mp3');
+    this.load.audio('water_bubbles', 'assets/audio/water-bubbles.mp3');
+    this.load.audio('covfefe', 'assets/audio/covfefe.mp3');
+    this.load.audio('rocket', 'assets/audio/rocket.mp3');
+
+    // Collectible pickup sounds
+    this.load.audio('pickup_burger', 'assets/audio/pickup_burger.mp3');
+    this.load.audio('pickup_dietcoke', 'assets/audio/pickup_dietcoke.mp3');
+    this.load.audio('pickup_steak', 'assets/audio/pickup_steak.mp3');
+    this.load.audio('pickup_dollar', 'assets/audio/pickup_dollar.mp3');
+    this.load.audio('pickup_hairspray', 'assets/audio/pickup_hairspray.mp3');
+    this.load.audio('pickup_twitter', 'assets/audio/pickup_twitter.mp3');
+    this.load.audio('pickup_casinochip', 'assets/audio/pickup_casinochip.mp3');
+    this.load.audio('pickup_magahat', 'assets/audio/pickup_magahat.mp3');
+    this.load.audio('pickup_nft', 'assets/audio/pickup_nft.mp3');
+    this.load.audio('pickup_bitcoin', 'assets/audio/pickup_bitcoin.mp3');
+    this.load.audio('pickup_classifieddocs', 'assets/audio/pickup_classifieddocs.mp3');
+    this.load.audio('pickup_goldentoilet', 'assets/audio/pickup_goldentoilet.mp3');
+    this.load.audio('pickup_vodka', 'assets/audio/pickup_vodka.mp3');
+    this.load.audio('pickup_russian', 'assets/audio/pickup_russian.mp3');
+    this.load.audio('pickup_tansuit', 'assets/audio/pickup_tansuit.mp3');
+
+    // Bomb hit sounds
+    for (let i = 1; i <= 5; i++) {
+      this.load.audio(`bombhit${i}`, `assets/audio/bombhit${i}.mp3`);
+    }
+
+    // Explosion sound effects
+    for (let i = 1; i <= 3; i++) {
+      this.load.audio(`explosion${i}`, `assets/audio/explosion${i}.mp3`);
+    }
+
+    // Medal house images (for the White House/medal location in Washington)
+    for (let i = 0; i < 16; i++) {
+      this.load.image(`medal_house_${i}`, `assets/images/medal_house/FIFA_buildings_${i}.png`);
+    }
+
     // Generate graphics programmatically (shuttle, particles, etc.)
     this.createGameGraphics();
   }

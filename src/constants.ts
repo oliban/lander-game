@@ -33,7 +33,7 @@ export const COUNTRIES = [
 
 // Landing pads between countries
 export const LANDING_PADS = [
-  { x: -2500, width: 150, name: 'The White House', isWashington: true },
+  { x: -2500, width: 350, name: 'The White House', isWashington: true },
   { x: 1800, width: 120, name: 'NYC Fuel Stop' },
   { x: 4300, width: 100, name: 'Mid-Atlantic Platform' },  // Shifted for wider Atlantic
   { x: 6800, width: 80, name: 'Dover Cliffs' },

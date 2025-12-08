@@ -180,7 +180,13 @@ export class GameOverScene extends Phaser.Scene {
     cloud.fillCircle(x + 5 * scale, y - 5 * scale, 12 * scale);
   }
 
+  private selectedVictoryQuoteIndex: number = 0;
+
   private createVictoryScreen(data: GameOverData): void {
+    // Play random victory quote (use same index for audio and text)
+    this.selectedVictoryQuoteIndex = Math.floor(Math.random() * VICTORY_QUOTES.length);
+    this.sound.play(`victory${this.selectedVictoryQuoteIndex + 1}`);
+
     // Calculate score first
     const scoreDetails = this.calculateScore(data);
     const finalScore = scoreDetails.total + (data.score || 0); // Add destruction score
@@ -547,8 +553,8 @@ export class GameOverScene extends Phaser.Scene {
     // Celebration confetti
     this.createCelebrationParticles();
 
-    // Random quote at bottom
-    const quote = VICTORY_QUOTES[Math.floor(Math.random() * VICTORY_QUOTES.length)];
+    // Quote at bottom (synced with audio)
+    const quote = VICTORY_QUOTES[this.selectedVictoryQuoteIndex];
     this.add.text(GAME_WIDTH / 2, panelTop + mainPanelHeight + 30, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '12px',
@@ -651,7 +657,13 @@ export class GameOverScene extends Phaser.Scene {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
+  private selectedCrashQuoteIndex: number = 0;
+
   private createCrashScreen(data: GameOverData): void {
+    // Play random crash quote (use same index for audio and text)
+    this.selectedCrashQuoteIndex = Math.floor(Math.random() * CRASH_QUOTES.length);
+    this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
+
     const score = data.score || 0;
     this.currentScore = score;
 
@@ -703,8 +715,8 @@ export class GameOverScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5, 0.5);
 
-    // Random quote
-    const quote = CRASH_QUOTES[Math.floor(Math.random() * CRASH_QUOTES.length)];
+    // Quote (synced with audio)
+    const quote = CRASH_QUOTES[this.selectedCrashQuoteIndex];
     const quoteText = this.add.text(GAME_WIDTH / 2, 210, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '14px',

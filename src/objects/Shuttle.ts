@@ -23,6 +23,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private debugModeUsed: boolean = false; // Track if debug was ever used this game
   private debugLabel: Phaser.GameObjects.Text | null = null;
   private thrustMultiplier: number = 1.0; // For speed boost power-up
+  private rocketSound: Phaser.Sound.BaseSound | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene.matter.world, x, y, 'shuttle-legs');
@@ -47,6 +48,9 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
     // Create thruster particles
     this.createThrusterParticles();
+
+    // Create rocket sound (looping)
+    this.rocketSound = scene.sound.add('rocket', { loop: true, volume: 0.5 });
 
     // Set up landing legs key (spacebar)
     if (scene.input.keyboard) {
@@ -159,8 +163,18 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
       this.applyForce(new Phaser.Math.Vector2(forceX, forceY));
 
+      // Start rocket sound if not already playing
+      if (!this.isThrusting && this.rocketSound && !this.rocketSound.isPlaying) {
+        this.rocketSound.play();
+      }
+
       this.isThrusting = true;
     } else {
+      // Stop rocket sound when not thrusting
+      if (this.isThrusting && this.rocketSound && this.rocketSound.isPlaying) {
+        this.rocketSound.stop();
+      }
+
       this.isThrusting = false;
     }
 
@@ -280,6 +294,12 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       }
     }
 
+  }
+
+  stopRocketSound(): void {
+    if (this.rocketSound && this.rocketSound.isPlaying) {
+      this.rocketSound.stop();
+    }
   }
 
   getVelocity(): { x: number; y: number; total: number } {

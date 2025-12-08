@@ -34,6 +34,7 @@ export class TradingScene extends Phaser.Scene {
   private quoteText!: Phaser.GameObjects.Text;
   private countTexts: Map<CollectibleType, Phaser.GameObjects.Text> = new Map();
   private sparkles: Phaser.GameObjects.Graphics[] = [];
+  private selectedQuoteIndex: number = 0;
 
   constructor() {
     super({ key: 'TradingScene' });
@@ -46,6 +47,10 @@ export class TradingScene extends Phaser.Scene {
     this.onScoreChange = data.onScoreChange;
     // Landing bonus: perfect = 25%, good = 10%, rough = no bonus
     this.landingBonus = data.landingQuality === 'perfect' ? 1.25 : data.landingQuality === 'good' ? 1.1 : 1.0;
+
+    // Select random trade quote (used for both audio and text)
+    this.selectedQuoteIndex = Math.floor(Math.random() * SATIRICAL_QUOTES.length);
+    this.sound.play(`trade${this.selectedQuoteIndex + 1}`);
 
     // Reset selection
     this.selectedItems.clear();
@@ -136,8 +141,8 @@ export class TradingScene extends Phaser.Scene {
     const gaugeY = badgeY + 40;
     this.createFuelGauge(GAME_WIDTH / 2, gaugeY);
 
-    // Quote
-    const quote = SATIRICAL_QUOTES[Math.floor(Math.random() * SATIRICAL_QUOTES.length)];
+    // Quote (uses same index as audio)
+    const quote = SATIRICAL_QUOTES[this.selectedQuoteIndex];
     this.quoteText = this.add.text(GAME_WIDTH / 2, gaugeY + 45, quote, {
       fontFamily: 'Georgia, serif',
       fontSize: '13px',
