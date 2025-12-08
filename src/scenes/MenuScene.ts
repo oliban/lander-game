@@ -237,14 +237,26 @@ export class MenuScene extends Phaser.Scene {
 
   private drawCloud(x: number, y: number, scale: number): void {
     const graphics = this.add.graphics();
-    graphics.fillStyle(0xFFFFFF, 0.2); // More subtle clouds for dark background
 
-    // Draw overlapping circles to make cloud shape
+    // Shadow layer (darker, offset down) - subtle on dark background
+    graphics.fillStyle(0x888888, 0.1);
+    graphics.fillCircle(x, y + 4 * scale, 30 * scale);
+    graphics.fillCircle(x + 25 * scale, y - 10 * scale + 4 * scale, 25 * scale);
+    graphics.fillCircle(x + 50 * scale, y + 4 * scale, 35 * scale);
+    graphics.fillCircle(x + 25 * scale, y + 10 * scale + 4 * scale, 20 * scale);
+    graphics.fillCircle(x - 20 * scale, y + 5 * scale + 4 * scale, 22 * scale);
+
+    // Main layer - subtle for dark background
+    graphics.fillStyle(0xFFFFFF, 0.2);
     graphics.fillCircle(x, y, 30 * scale);
     graphics.fillCircle(x + 25 * scale, y - 10 * scale, 25 * scale);
     graphics.fillCircle(x + 50 * scale, y, 35 * scale);
     graphics.fillCircle(x + 25 * scale, y + 10 * scale, 20 * scale);
     graphics.fillCircle(x - 20 * scale, y + 5 * scale, 22 * scale);
+
+    // Highlight (brighter, offset up)
+    graphics.fillStyle(0xFFFFFF, 0.1);
+    graphics.fillCircle(x + 5 * scale, y - 5 * scale, 15 * scale);
   }
 
   private createButton(x: number, y: number, label: string, callback: () => void): Phaser.GameObjects.Container {

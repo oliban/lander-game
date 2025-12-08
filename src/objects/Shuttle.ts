@@ -130,18 +130,20 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       this.setVelocity(vel.x * 0.98, vel.y * 0.99);
     }
 
-    // Rotation
+    // Rotation - faster when not thrusting (easier to aim before committing thrust)
+    const isThrusting = cursors.up.isDown && hasFuel;
+    const rotationMultiplier = isThrusting ? 1.0 : 1.5;
     if (cursors.left.isDown) {
-      this.setAngularVelocity(-ROTATION_SPEED);
+      this.setAngularVelocity(-ROTATION_SPEED * rotationMultiplier);
     } else if (cursors.right.isDown) {
-      this.setAngularVelocity(ROTATION_SPEED);
+      this.setAngularVelocity(ROTATION_SPEED * rotationMultiplier);
     } else {
       // Dampen rotation when no input
       this.setAngularVelocity(matterBody.angularVelocity * 0.95);
     }
 
     // Thrust - reduced effectiveness when legs are extended
-    if (cursors.up.isDown && hasFuel) {
+    if (isThrusting) {
       // Consume fuel (more with legs extended) - skip in debug mode
       if (this.fuelSystem && !this.debugMode) {
         const fuelRate = this.legsExtended ? FUEL_CONSUMPTION_RATE * 1.2 : FUEL_CONSUMPTION_RATE;

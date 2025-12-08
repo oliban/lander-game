@@ -223,7 +223,7 @@ export class GameScene extends Phaser.Scene {
       this.starfield.fillRect(0, y, GAME_WIDTH, 1);
     }
 
-    // Draw some clouds with parallax
+    // Draw some clouds with parallax and shading
     const cloudGraphics = this.add.graphics();
     cloudGraphics.setScrollFactor(0.02);
     cloudGraphics.setDepth(-90);
@@ -233,21 +233,73 @@ export class GameScene extends Phaser.Scene {
       const y = 50 + Math.random() * 200;
       const scale = 0.5 + Math.random() * 0.8;
 
-      cloudGraphics.fillStyle(0xFFFFFF, 0.8);
+      // Shadow layer (grey, offset down)
+      cloudGraphics.fillStyle(0xCCCCCC, 0.5);
+      cloudGraphics.fillCircle(x, y + 4 * scale, 25 * scale);
+      cloudGraphics.fillCircle(x + 20 * scale, y - 8 * scale + 4 * scale, 20 * scale);
+      cloudGraphics.fillCircle(x + 40 * scale, y + 4 * scale, 28 * scale);
+      cloudGraphics.fillCircle(x + 20 * scale, y + 8 * scale + 4 * scale, 18 * scale);
+
+      // Main white layer
+      cloudGraphics.fillStyle(0xFFFFFF, 0.85);
       cloudGraphics.fillCircle(x, y, 25 * scale);
       cloudGraphics.fillCircle(x + 20 * scale, y - 8 * scale, 20 * scale);
       cloudGraphics.fillCircle(x + 40 * scale, y, 28 * scale);
       cloudGraphics.fillCircle(x + 20 * scale, y + 8 * scale, 18 * scale);
+
+      // Highlight layer (brighter, offset up, smaller)
+      cloudGraphics.fillStyle(0xFFFFFF, 0.4);
+      cloudGraphics.fillCircle(x + 5 * scale, y - 5 * scale, 12 * scale);
+      cloudGraphics.fillCircle(x + 25 * scale, y - 12 * scale, 10 * scale);
     }
 
-    // Sun
+    // Add gentle cloud drift animation
+    this.tweens.add({
+      targets: cloudGraphics,
+      x: 30,
+      duration: 15000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    // Sun with multi-layer corona
+    const sunX = 100;
+    const sunY = 80;
+
+    // Outer glow layers (drawn first, behind)
+    const sunGlow = this.add.graphics();
+    sunGlow.setScrollFactor(0);
+    sunGlow.setDepth(-96);
+    sunGlow.fillStyle(0xFFAA44, 0.12);
+    sunGlow.fillCircle(sunX, sunY, 75);
+    sunGlow.fillStyle(0xFFBB55, 0.18);
+    sunGlow.fillCircle(sunX, sunY, 62);
+    sunGlow.fillStyle(0xFFCC66, 0.25);
+    sunGlow.fillCircle(sunX, sunY, 52);
+
+    // Sun core
     const sun = this.add.graphics();
     sun.setScrollFactor(0);
     sun.setDepth(-95);
-    sun.fillStyle(0xFFDD00);
-    sun.fillCircle(100, 80, 40);
-    sun.fillStyle(0xFFFF88, 0.3);
-    sun.fillCircle(100, 80, 55);
+    sun.fillStyle(0xFFEE88, 0.6);
+    sun.fillCircle(sunX, sunY, 45);
+    sun.fillStyle(0xFFFF99, 0.8);
+    sun.fillCircle(sunX, sunY, 38);
+    sun.fillStyle(0xFFFFCC, 1);
+    sun.fillCircle(sunX, sunY, 30);
+
+    // Pulsing glow animation
+    this.tweens.add({
+      targets: sunGlow,
+      scaleX: 1.12,
+      scaleY: 1.12,
+      alpha: 0.8,
+      duration: 3000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 
   private createLandingPads(): void {
@@ -875,7 +927,6 @@ export class GameScene extends Phaser.Scene {
   private updateMedalPhysics(): void {
     if (!this.hasPeaceMedal) return;
 
-    // Get current shuttle velocity
     const velocity = this.shuttle.getVelocity();
     const shuttleRotation = this.shuttle.rotation;
 
@@ -883,56 +934,49 @@ export class GameScene extends Phaser.Scene {
     const accelX = velocity.x - this.lastShuttleVelX;
     const accelY = velocity.y - this.lastShuttleVelY;
 
-    // Store for next frame
     this.lastShuttleVelX = velocity.x;
     this.lastShuttleVelY = velocity.y;
 
     // Pendulum physics constants
-    const wireLength = 45; // Length of wire in pixels (affects swing period)
-    const gravity = 0.5; // Gravity constant
-    const damping = 0.98; // Air resistance (1.0 = no damping)
+    const wireLength = 45;
+    const gravity = 0.5;
+    const damping = 0.97;
 
-    // The medal angle is relative to the shuttle's "down" direction
-    // We need to account for:
-    // 1. Gravity always pulls straight down (world space)
-    // 2. Shuttle acceleration creates pseudo-forces on the medal
-    // 3. The shuttle's rotation changes what "down" means for the attachment
+    // EFFECTIVE GRAVITY: real gravity minus shuttle acceleration
+    // This is the key physics - vertical thrust affects pendulum behavior
+    // When thrusting up (accelY negative), effective gravity increases
+    // When falling freely, effective gravity approaches zero (floaty)
+    const effectiveGravityX = -accelX;  // Horizontal pseudo-force
+    const effectiveGravityY = gravity - accelY;  // Vertical: gravity minus thrust
 
-    // Convert world gravity to shuttle-relative coordinates
-    // When shuttle tilts, gravity appears to come from a different angle
-    const effectiveGravityAngle = -shuttleRotation;
+    // Calculate effective gravity magnitude and direction
+    const effGravMagnitude = Math.sqrt(effectiveGravityX * effectiveGravityX + effectiveGravityY * effectiveGravityY);
+    const effGravAngle = Math.atan2(effectiveGravityX, effectiveGravityY);  // Angle from world "down"
 
-    // Pendulum restoring force: gravity tries to align medal with effective "down"
-    // The restoring torque is proportional to sin(angle difference)
-    const gravityTorque = (gravity / wireLength) * Math.sin(effectiveGravityAngle - this.medalAngle);
+    // Medal's world angle = shuttle rotation + local medal angle
+    const medalWorldAngle = shuttleRotation + this.medalAngle;
 
-    // Shuttle horizontal acceleration creates a pseudo-force
-    // Transform to shuttle-local coordinates
-    const localAccelX = accelX * Math.cos(shuttleRotation) + accelY * Math.sin(shuttleRotation);
+    // Angle between medal and effective "down" direction
+    const angleFromEffectiveDown = medalWorldAngle - effGravAngle;
 
-    // This acceleration pushes the medal in the opposite direction
-    const accelTorque = -localAccelX * 0.08;
+    // Restoring torque: stronger when effective gravity is higher (more thrust)
+    const restoreFactor = effGravMagnitude / wireLength;
+    const gravityTorque = -restoreFactor * Math.sin(angleFromEffectiveDown);
 
-    // Shuttle rotation rate directly affects the medal
-    // When shuttle rotates, the attachment point moves, imparting momentum
+    // Shuttle rotation imparts momentum to medal through the wire
     const shuttleAngularVel = (this.shuttle.body as MatterJS.BodyType).angularVelocity;
-    const rotationTorque = -shuttleAngularVel * 1.5;
+    const rotationTorque = -shuttleAngularVel * 0.8;
 
-    // Sum up all torques and update angular velocity
-    const totalTorque = gravityTorque + accelTorque + rotationTorque;
-    this.medalAngularVelocity += totalTorque;
-
-    // Apply damping (air resistance)
+    // Update angular velocity
+    this.medalAngularVelocity += gravityTorque + rotationTorque;
     this.medalAngularVelocity *= damping;
-
-    // Update angle
     this.medalAngle += this.medalAngularVelocity;
 
-    // Soft clamp - apply extra damping near limits instead of hard stop
-    const maxAngle = Math.PI * 0.6; // ~108 degrees
+    // Soft clamp - bounce back at extreme angles
+    const maxAngle = Math.PI * 0.6;
     if (Math.abs(this.medalAngle) > maxAngle) {
       this.medalAngle = Math.sign(this.medalAngle) * maxAngle;
-      this.medalAngularVelocity *= -0.3; // Bounce back slightly
+      this.medalAngularVelocity *= -0.3;
     }
   }
 

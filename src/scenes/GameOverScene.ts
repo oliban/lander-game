@@ -156,11 +156,24 @@ export class GameOverScene extends Phaser.Scene {
 
   private drawCloud(x: number, y: number, scale: number): void {
     const cloud = this.add.graphics();
+
+    // Shadow layer (grey, offset down)
+    cloud.fillStyle(0xCCCCCC, 0.4);
+    cloud.fillCircle(x, y + 4 * scale, 25 * scale);
+    cloud.fillCircle(x + 20 * scale, y - 8 * scale + 4 * scale, 20 * scale);
+    cloud.fillCircle(x + 40 * scale, y + 4 * scale, 28 * scale);
+    cloud.fillCircle(x + 20 * scale, y + 8 * scale + 4 * scale, 18 * scale);
+
+    // Main white layer
     cloud.fillStyle(0xFFFFFF, 0.9);
     cloud.fillCircle(x, y, 25 * scale);
     cloud.fillCircle(x + 20 * scale, y - 8 * scale, 20 * scale);
     cloud.fillCircle(x + 40 * scale, y, 28 * scale);
     cloud.fillCircle(x + 20 * scale, y + 8 * scale, 18 * scale);
+
+    // Highlight (brighter, offset up)
+    cloud.fillStyle(0xFFFFFF, 0.4);
+    cloud.fillCircle(x + 5 * scale, y - 5 * scale, 12 * scale);
   }
 
   private createVictoryScreen(data: GameOverData): void {
