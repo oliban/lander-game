@@ -132,7 +132,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
     // Rotation - faster when not thrusting (easier to aim before committing thrust)
     const isThrusting = cursors.up.isDown && hasFuel;
-    const rotationMultiplier = isThrusting ? 1.0 : 1.5;
+    const rotationMultiplier = isThrusting ? 1.0 : 2.0;
     if (cursors.left.isDown) {
       this.setAngularVelocity(-ROTATION_SPEED * rotationMultiplier);
     } else if (cursors.right.isDown) {
