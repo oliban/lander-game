@@ -101,8 +101,10 @@ export class GameScene extends Phaser.Scene {
     // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
     this.fisherBoat = new FisherBoat(this, 3500);
 
-    // Create golf cart in USA section (patrols x: 800-1200)
-    this.golfCart = new GolfCart(this, 1000, 800, 1200);
+    // Create golf cart in USA section (patrols x: 800-1200) - 1/3 chance to spawn
+    if (Math.random() < 0.33) {
+      this.golfCart = new GolfCart(this, 1000, 800, 1200);
+    }
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();

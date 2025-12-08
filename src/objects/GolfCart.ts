@@ -8,8 +8,8 @@ export class GolfCart extends Phaser.GameObjects.Container {
   private graphics: Phaser.GameObjects.Graphics;
   private patrolMinX: number;
   private patrolMaxX: number;
-  private vx: number = 0.3; // Patrol speed (slower)
-  private fleeSpeed: number = 1.5; // Flee speed (slower)
+  private vx: number = 0.5; // Patrol speed
+  private fleeSpeed: number = 2.5; // Flee speed
   private direction: number = 1; // 1 = right, -1 = left
   private isFleeingUntil: number = 0;
   private fleeDirection: number = 1;

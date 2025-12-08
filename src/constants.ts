@@ -72,7 +72,7 @@ export const COLLECTIBLE_TYPES = {
   // Very rare tradeable items
   CLASSIFIED_DOCS: { name: 'Classified Docs', fuelValue: 120, rarity: 0.02, color: 0x4169E1 }, // Royal blue
   GOLDEN_TOILET: { name: 'Golden Toilet', fuelValue: 200, rarity: 0.01, color: 0xFFD700 }, // Gold
-  EPSTEIN_FILES: { name: 'Epstein Files', fuelValue: 250, rarity: 0, color: 0x8B0000, contraband: true }, // Dark red - only from golf cart
+  EPSTEIN_FILES: { name: 'Epstein Files', fuelValue: 40, rarity: 0, color: 0x8B0000, contraband: true }, // Dark red - only from golf cart
 
   // Russian tradeable items (spawn more frequently in later zones)
   MATRYOSHKA: { name: 'Matryoshka', fuelValue: 60, rarity: 0.05, color: 0xFF6347, russianOnly: true }, // Tomato red
