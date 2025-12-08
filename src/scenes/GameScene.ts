@@ -80,6 +80,19 @@ export class GameScene extends Phaser.Scene {
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
 
+  // Scorch marks from thrust
+  private scorchMarks: Phaser.GameObjects.Graphics | null = null;
+  private lastScorchTime: number = 0;
+  private scorchMarkData: { x: number; y: number; width: number; height: number; type: 'thrust' | 'crater'; seed: number; distance?: number }[] = [];
+
+  // Water pollution from thrust/bombs
+  private waterPollution: Phaser.GameObjects.Graphics | null = null;
+  private waterPollutionLevel: number = 0; // 0-1, how dark the water is
+  private sinkingScorchParticles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; rotation: number; rotSpeed: number; shape: number }[] = [];
+
+  // Debug monitoring display
+  private debugText: Phaser.GameObjects.Text | null = null;
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -96,6 +109,9 @@ export class GameScene extends Phaser.Scene {
     this.medalHouse = null;
     this.bombs = [];
     this.oilTowers = [];
+    this.scorchMarkData = [];
+    this.waterPollutionLevel = 0;
+    this.sinkingScorchParticles = [];
 
     // Initialize systems
     this.fuelSystem = new FuelSystem();
@@ -106,6 +122,14 @@ export class GameScene extends Phaser.Scene {
 
     // Create terrain (including Washington DC area to the left)
     this.terrain = new Terrain(this, WORLD_START_X, WORLD_WIDTH);
+
+    // Create scorch marks graphics layer (behind buildings, on top of terrain)
+    this.scorchMarks = this.add.graphics();
+    this.scorchMarks.setDepth(2);
+
+    // Create water pollution graphics layer (for sinking scorch particles in ocean)
+    this.waterPollution = this.add.graphics();
+    this.waterPollution.setDepth(100); // Above water surface
 
     // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
     this.fisherBoat = new FisherBoat(this, 3500);
@@ -208,6 +232,17 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     });
     this.currentCountryText.setOrigin(0.5, 0);
+
+    // Debug monitoring display (bottom-right corner)
+    this.debugText = this.add.text(GAME_WIDTH - 10, GAME_HEIGHT - 10, '', {
+      fontFamily: 'monospace', fontSize: '14px',
+      color: '#00ff00',
+      backgroundColor: '#000000aa',
+      padding: { x: 5, y: 5 },
+    });
+    this.debugText.setOrigin(1, 1);
+    this.debugText.setScrollFactor(0);
+    this.debugText.setDepth(1000);
 
     // Handle first thrust - enable physics and collisions
     let hasLaunched = false;
@@ -1588,6 +1623,9 @@ export class GameScene extends Phaser.Scene {
           this.destructionScore += points;
           this.destroyedBuildings.push({ name, points, textureKey, country });
 
+          // Clear any scorch marks that were on the destroyed building
+          this.clearScorchMarksInArea(bounds);
+
           // Play special sound for FIFA Kennedy Center
           if (decoration instanceof MedalHouse) {
             this.time.delayedCall(500, () => {
@@ -1778,8 +1816,11 @@ export class GameScene extends Phaser.Scene {
 
         // Normal terrain - explode
         const explosionX = bombX;
-        const explosionY = bombY;
+        const explosionY = terrainY;
         bomb.explode(this);
+
+        // Create bomb crater scorch mark
+        this.createBombCrater(explosionX, explosionY);
 
         // Play explosion sound at 40% volume for ground hits
         const groundExplosionNum = Math.floor(Math.random() * 3) + 1;
@@ -2372,6 +2413,410 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateScorchMarks(time: number): void {
+    if (!this.scorchMarks || !this.shuttle.getIsThrusting()) return;
+
+    // Only create scorch marks every 50ms to avoid too many draws
+    if (time - this.lastScorchTime < 50) return;
+    this.lastScorchTime = time;
+
+    // Get thrust position and direction
+    const thrustPos = this.shuttle.getThrustPosition();
+    const thrustDir = this.shuttle.getThrustDirection();
+
+    // Raycast from thrust position in thrust direction to find what it hits
+    // Check up to 150 pixels in the thrust direction
+    const maxDistance = 150;
+    const stepSize = 5;
+
+    for (let dist = 20; dist < maxDistance; dist += stepSize) {
+      const checkX = thrustPos.x + thrustDir.x * dist;
+      const checkY = thrustPos.y + thrustDir.y * dist;
+
+      // Check terrain collision
+      const terrainY = this.terrain.getHeightAt(checkX);
+      if (checkY >= terrainY - 5) {
+        // Check if over water - no scorch marks on water
+        const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+        const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+        const isOverWater = checkX >= atlanticStart && checkX < atlanticEnd;
+
+        if (!isOverWater) {
+          // Hit terrain - create scorch mark
+          this.createScorchMark(checkX, terrainY, dist);
+        } else {
+          // Hit water - create sinking scorch particles
+          this.createWaterScorchParticle(checkX, terrainY, dist);
+        }
+        // Either way, stop raycasting when we hit terrain/water level
+        break;
+      }
+
+      // Check building collisions
+      for (const decoration of this.decorations) {
+        const bounds = decoration.getCollisionBounds();
+        if (
+          checkX >= bounds.x &&
+          checkX <= bounds.x + bounds.width &&
+          checkY >= bounds.y &&
+          checkY <= bounds.y + bounds.height
+        ) {
+          // Hit building - create scorch mark on the building surface
+          this.createScorchMark(checkX, checkY, dist);
+          return; // Exit early after hitting a building
+        }
+      }
+
+      // Check landing pad surfaces
+      for (const pad of this.landingPads) {
+        const padLeft = pad.x - pad.width / 2;
+        const padRight = pad.x + pad.width / 2;
+        const padTop = pad.y - 5;
+        if (checkX >= padLeft && checkX <= padRight && checkY >= padTop && checkY <= pad.y + 10) {
+          this.createScorchMark(checkX, padTop, dist);
+          return;
+        }
+      }
+    }
+  }
+
+  // Simple seeded random number generator for reproducible scorch marks
+  private seededRandom(seed: number): () => number {
+    return () => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    };
+  }
+
+  private static readonly MAX_SCORCH_MARKS = 150; // Higher cap - rely mainly on off-screen culling
+
+  private createScorchMark(x: number, y: number, distance: number, existingSeed?: number): void {
+    if (!this.scorchMarks) return;
+
+    // Only enforce hard limit as emergency fallback (prefer off-screen culling)
+    if (existingSeed === undefined && this.scorchMarkData.length >= GameScene.MAX_SCORCH_MARKS) {
+      // Remove marks furthest from player (not just oldest)
+      const playerX = this.shuttle.x;
+      this.scorchMarkData.sort((a, b) => {
+        const distA = Math.abs(a.x - playerX);
+        const distB = Math.abs(b.x - playerX);
+        return distB - distA; // Furthest first
+      });
+      // Remove the 20% furthest from player
+      const removeCount = Math.max(1, Math.floor(GameScene.MAX_SCORCH_MARKS * 0.2));
+      this.scorchMarkData.splice(0, removeCount);
+      // Redraw remaining marks
+      this.redrawAllScorchMarks();
+    }
+
+    const seed = existingSeed ?? Date.now() + Math.random() * 10000;
+    const rand = this.seededRandom(seed);
+
+    // Scorch intensity based on distance (closer = more intense)
+    const intensity = Math.max(0.3, 1 - distance / 150);
+
+    // Random variation for organic look
+    const offsetX = (rand() - 0.5) * 10;
+    const offsetY = (rand() - 0.5) * 3;
+
+    // Draw scorch marks - charred black/brown ellipses
+    const baseAlpha = intensity * 0.7;
+    const width = 10 + rand() * 15;
+    const height = 4 + rand() * 6;
+
+    // Store scorch mark data for potential redraw (only if new and not duplicate location)
+    if (existingSeed === undefined) {
+      // Skip if there's already a mark at this exact location
+      const isDuplicate = this.scorchMarkData.some(mark => mark.x === x && mark.y === y);
+      if (!isDuplicate) {
+        this.scorchMarkData.push({
+          x, y, width: width * 1.5, height: height * 1.5,
+          type: 'thrust', seed, distance
+        });
+      }
+    }
+
+    // Outer glow/heat discoloration (reddish-brown)
+    this.scorchMarks.fillStyle(0x4a2810, baseAlpha * 0.3);
+    this.scorchMarks.fillEllipse(x + offsetX, y + offsetY - 1, width * 1.4, height * 1.3);
+
+    // Main char mark
+    this.scorchMarks.fillStyle(0x1a1a1a, baseAlpha);
+    this.scorchMarks.fillEllipse(x + offsetX, y + offsetY, width, height);
+
+    // Darker center with slight gradient effect
+    this.scorchMarks.fillStyle(0x050505, baseAlpha * 0.9);
+    this.scorchMarks.fillEllipse(x + offsetX, y + offsetY, width * 0.5, height * 0.5);
+
+    // Ashy grey edges
+    this.scorchMarks.fillStyle(0x3a3a3a, baseAlpha * 0.4);
+    const numAshSpots = 3 + Math.floor(rand() * 4);
+    for (let i = 0; i < numAshSpots; i++) {
+      const angle = (i / numAshSpots) * Math.PI * 2 + rand() * 0.5;
+      const dist = width * 0.4 + rand() * width * 0.3;
+      const spotX = x + offsetX + Math.cos(angle) * dist;
+      const spotY = y + offsetY + Math.sin(angle) * dist * 0.4;
+      const spotSize = 2 + rand() * 4;
+      this.scorchMarks.fillCircle(spotX, spotY, spotSize);
+    }
+
+    // Brown singe marks radiating outward
+    this.scorchMarks.fillStyle(0x3d2817, baseAlpha * 0.5);
+    const numSpots = 2 + Math.floor(rand() * 3);
+    for (let i = 0; i < numSpots; i++) {
+      const spotX = x + offsetX + (rand() - 0.5) * width * 1.5;
+      const spotY = y + offsetY + (rand() - 0.5) * height * 0.8;
+      const spotSize = 2 + rand() * 3;
+      this.scorchMarks.fillCircle(spotX, spotY, spotSize);
+    }
+  }
+
+  private createBombCrater(x: number, y: number, existingSeed?: number): void {
+    if (!this.scorchMarks) return;
+
+    const seed = existingSeed ?? Date.now() + Math.random() * 10000;
+    const rand = this.seededRandom(seed);
+
+    // Large bomb crater scorch mark
+    const craterRadius = 35 + rand() * 15;
+
+    // Store crater data for potential redraw (only if new)
+    if (existingSeed === undefined) {
+      this.scorchMarkData.push({
+        x, y, width: craterRadius * 4, height: craterRadius * 2,
+        type: 'crater', seed
+      });
+    }
+
+    // Outer heat discoloration ring (dark reddish-brown)
+    this.scorchMarks.fillStyle(0x3d1a0a, 0.5);
+    this.scorchMarks.fillEllipse(x, y - 2, craterRadius * 2.2, craterRadius * 0.9);
+
+    // Scorched earth ring (dark brown)
+    this.scorchMarks.fillStyle(0x2a1a0a, 0.6);
+    this.scorchMarks.fillEllipse(x, y - 1, craterRadius * 1.8, craterRadius * 0.75);
+
+    // Main blast mark (very dark)
+    this.scorchMarks.fillStyle(0x0f0f0f, 0.8);
+    this.scorchMarks.fillEllipse(x, y, craterRadius * 1.4, craterRadius * 0.6);
+
+    // Charred center (black)
+    this.scorchMarks.fillStyle(0x050505, 0.9);
+    this.scorchMarks.fillEllipse(x, y, craterRadius * 0.8, craterRadius * 0.35);
+
+    // Impact point (darkest)
+    this.scorchMarks.fillStyle(0x020202, 0.95);
+    this.scorchMarks.fillEllipse(x, y, craterRadius * 0.3, craterRadius * 0.15);
+
+    // Radiating scorch lines (blast pattern)
+    this.scorchMarks.lineStyle(2, 0x1a1a1a, 0.6);
+    const numRays = 8 + Math.floor(rand() * 6);
+    for (let i = 0; i < numRays; i++) {
+      const angle = (i / numRays) * Math.PI * 2 + (rand() - 0.5) * 0.3;
+      const rayLength = craterRadius * (0.8 + rand() * 0.8);
+      const startDist = craterRadius * 0.3;
+      this.scorchMarks.lineBetween(
+        x + Math.cos(angle) * startDist,
+        y + Math.sin(angle) * startDist * 0.4,
+        x + Math.cos(angle) * rayLength,
+        y + Math.sin(angle) * rayLength * 0.4
+      );
+    }
+
+    // Scattered debris/ash spots around crater
+    const numDebris = 15 + Math.floor(rand() * 10);
+    for (let i = 0; i < numDebris; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = craterRadius * (0.6 + rand() * 1.2);
+      const spotX = x + Math.cos(angle) * dist;
+      const spotY = y + Math.sin(angle) * dist * 0.4;
+      const spotSize = 2 + rand() * 5;
+
+      // Vary colors between black, dark grey, and brown
+      const colorChoice = rand();
+      if (colorChoice < 0.4) {
+        this.scorchMarks.fillStyle(0x1a1a1a, 0.7);
+      } else if (colorChoice < 0.7) {
+        this.scorchMarks.fillStyle(0x3a3a3a, 0.5);
+      } else {
+        this.scorchMarks.fillStyle(0x3d2817, 0.6);
+      }
+      this.scorchMarks.fillCircle(spotX, spotY, spotSize);
+    }
+
+    // Ash ring around outer edge
+    this.scorchMarks.fillStyle(0x4a4a4a, 0.3);
+    const numAshPiles = 12 + Math.floor(rand() * 8);
+    for (let i = 0; i < numAshPiles; i++) {
+      const angle = (i / numAshPiles) * Math.PI * 2 + (rand() - 0.5) * 0.4;
+      const dist = craterRadius * (1.5 + rand() * 0.5);
+      const spotX = x + Math.cos(angle) * dist;
+      const spotY = y + Math.sin(angle) * dist * 0.4;
+      this.scorchMarks.fillEllipse(spotX, spotY, 4 + rand() * 6, 2 + rand() * 3);
+    }
+  }
+
+  private clearScorchMarksInArea(bounds: { x: number; y: number; width: number; height: number }): void {
+    // Filter out scorch marks that overlap with the destroyed building
+    const originalCount = this.scorchMarkData.length;
+    this.scorchMarkData = this.scorchMarkData.filter(mark => {
+      // Check if mark center is within expanded bounds (with some margin)
+      const margin = 20;
+      const inBounds =
+        mark.x >= bounds.x - margin &&
+        mark.x <= bounds.x + bounds.width + margin &&
+        mark.y >= bounds.y - margin &&
+        mark.y <= bounds.y + bounds.height + margin;
+      return !inBounds;
+    });
+
+    // Only redraw if we removed any marks
+    if (this.scorchMarkData.length < originalCount) {
+      this.redrawAllScorchMarks();
+    }
+  }
+
+  private redrawAllScorchMarks(): void {
+    if (!this.scorchMarks) return;
+
+    // Clear the graphics layer
+    this.scorchMarks.clear();
+
+    // Redraw all remaining scorch marks
+    for (const mark of this.scorchMarkData) {
+      if (mark.type === 'thrust') {
+        this.createScorchMark(mark.x, mark.y, mark.distance ?? 50, mark.seed);
+      } else {
+        this.createBombCrater(mark.x, mark.y, mark.seed);
+      }
+    }
+  }
+
+  private cullOffScreenScorchMarks(): void {
+    // Remove scorch marks that are 2 screen widths (2560px) behind the player
+    const cullThreshold = this.shuttle.x - (GAME_WIDTH * 2);
+
+    const originalLength = this.scorchMarkData.length;
+    this.scorchMarkData = this.scorchMarkData.filter(mark => mark.x > cullThreshold);
+
+    // Only redraw if we actually removed some marks
+    if (this.scorchMarkData.length < originalLength) {
+      this.redrawAllScorchMarks();
+    }
+  }
+
+  private createWaterScorchParticle(x: number, waterY: number, distance: number): void {
+    // Create sinking scorch particles when thrust hits water
+    const intensity = Math.max(0.2, 1 - distance / 150);
+    const numParticles = Math.floor(2 + intensity * 3);
+
+    for (let i = 0; i < numParticles; i++) {
+      this.sinkingScorchParticles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: waterY + Math.random() * 3,
+        vx: (Math.random() - 0.5) * 0.3, // Slight horizontal drift
+        vy: 0.2 + Math.random() * 0.4, // Sink speed
+        size: 2 + Math.random() * 4 * intensity,
+        alpha: 0.5 + Math.random() * 0.3,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.05, // Tumbling
+        shape: Math.floor(Math.random() * 3), // 0=flake, 1=elongated, 2=irregular
+      });
+    }
+
+    // Increase water pollution level
+    this.waterPollutionLevel = Math.min(1, this.waterPollutionLevel + 0.005 * intensity); // 50% slower pollution rate
+  }
+
+  private updateWaterPollution(): void {
+    if (!this.waterPollution) return;
+
+    // Clear and redraw
+    this.waterPollution.clear();
+
+    // Get water bounds
+    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const waterY = this.terrain.getHeightAt(atlanticStart + 100); // Approximate water level
+
+    // Draw pollution tint over water (if any pollution)
+    if (this.waterPollutionLevel > 0.01) {
+      const pollutionAlpha = this.waterPollutionLevel * 0.95; // Can go almost fully opaque
+      this.waterPollution.fillStyle(0x0a0805, pollutionAlpha);
+      this.waterPollution.fillRect(atlanticStart, waterY, atlanticEnd - atlanticStart, 200);
+    }
+
+    // Update and draw sinking particles
+    for (let i = this.sinkingScorchParticles.length - 1; i >= 0; i--) {
+      const particle = this.sinkingScorchParticles[i];
+
+      // Move particle (sinking with drift)
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      particle.rotation += particle.rotSpeed;
+
+      // Fade out as it sinks
+      particle.alpha -= 0.004;
+
+      // Slow down as it sinks deeper (water resistance)
+      particle.vy *= 0.992;
+      particle.vx *= 0.98;
+
+      // Remove if faded or sunk too deep
+      if (particle.alpha <= 0 || particle.y > waterY + 120) {
+        this.sinkingScorchParticles.splice(i, 1);
+        continue;
+      }
+
+      // Draw particle based on shape type
+      const cos = Math.cos(particle.rotation);
+      const sin = Math.sin(particle.rotation);
+      const s = particle.size * 1.5; // Make particles bigger
+
+      if (particle.shape === 0) {
+        // Ash flake - chunky irregular shape
+        this.waterPollution.fillStyle(0x2a2520, particle.alpha);
+        this.waterPollution.beginPath();
+        this.waterPollution.moveTo(particle.x + cos * s, particle.y + sin * s * 0.7);
+        this.waterPollution.lineTo(particle.x - sin * s * 0.8, particle.y + cos * s * 0.8);
+        this.waterPollution.lineTo(particle.x - cos * s * 0.9, particle.y - sin * s * 0.6);
+        this.waterPollution.lineTo(particle.x + sin * s * 0.6, particle.y - cos * s * 0.7);
+        this.waterPollution.closePath();
+        this.waterPollution.fillPath();
+        // Inner darker area
+        this.waterPollution.fillStyle(0x1a1510, particle.alpha * 0.7);
+        this.waterPollution.fillCircle(particle.x, particle.y, s * 0.4);
+      } else if (particle.shape === 1) {
+        // Chunky char piece
+        this.waterPollution.fillStyle(0x1a1815, particle.alpha);
+        this.waterPollution.fillEllipse(
+          particle.x, particle.y,
+          s * 1.2 * Math.abs(cos) + s * 0.8,
+          s * 0.8 * Math.abs(sin) + s * 0.6
+        );
+        // Darker center
+        this.waterPollution.fillStyle(0x0f0f0d, particle.alpha * 0.6);
+        this.waterPollution.fillEllipse(
+          particle.x, particle.y,
+          s * 0.6, s * 0.4
+        );
+      } else {
+        // Irregular burnt chunk - thicker
+        this.waterPollution.fillStyle(0x252018, particle.alpha);
+        this.waterPollution.beginPath();
+        this.waterPollution.moveTo(particle.x + cos * s, particle.y + sin * s);
+        this.waterPollution.lineTo(particle.x + sin * s * 0.9, particle.y - cos * s * 0.8);
+        this.waterPollution.lineTo(particle.x - cos * s * 0.7, particle.y - sin * s * 0.7);
+        this.waterPollution.lineTo(particle.x - sin * s * 0.9, particle.y + cos * s * 0.9);
+        this.waterPollution.closePath();
+        this.waterPollution.fillPath();
+        // Ashy highlight
+        this.waterPollution.fillStyle(0x3a352a, particle.alpha * 0.5);
+        this.waterPollution.fillCircle(particle.x - cos * s * 0.2, particle.y - sin * s * 0.2, s * 0.4);
+      }
+    }
+  }
+
   private getProgress(): number {
     return Phaser.Math.Clamp(this.shuttle.x / WORLD_WIDTH, 0, 1);
   }
@@ -2558,8 +3003,11 @@ export class GameScene extends Phaser.Scene {
   update(time: number): void {
     if (this.gameState !== 'playing') return;
 
-    // Update terrain (for animated ocean waves)
-    this.terrain.update();
+    // Update terrain (for animated ocean waves) - pass pollution level for wave tinting
+    this.terrain.update(this.waterPollutionLevel);
+
+    // Update water pollution (sinking scorch particles)
+    this.updateWaterPollution();
 
     // Update fisherboat (bob with waves)
     if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
@@ -2594,6 +3042,12 @@ export class GameScene extends Phaser.Scene {
 
     // Update power-up effects
     this.updatePowerUps();
+
+    // Update thrust scorch marks
+    this.updateScorchMarks(time);
+
+    // Cull off-screen scorch marks (2 screen widths behind player)
+    this.cullOffScreenScorchMarks();
 
     // Update cannons
     for (const cannon of this.cannons) {
@@ -2640,6 +3094,17 @@ export class GameScene extends Phaser.Scene {
     // Check for out of fuel while in air
     if (this.fuelSystem.isEmpty() && this.shuttle.body!.velocity.y > 0.5) {
       // Show warning (handled in UI)
+    }
+
+    // Update debug monitoring display
+    if (this.debugText) {
+      const fps = Math.round(this.game.loop.actualFps);
+      this.debugText.setText(
+        `FPS: ${fps}\n` +
+        `Scorch: ${this.scorchMarkData.length}\n` +
+        `WaterPart: ${this.sinkingScorchParticles.length}\n` +
+        `Pollution: ${(this.waterPollutionLevel * 100).toFixed(1)}%`
+      );
     }
 
     // Check for sitting duck (out of fuel on ground)
