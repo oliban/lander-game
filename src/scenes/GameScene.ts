@@ -484,6 +484,7 @@ export class GameScene extends Phaser.Scene {
     this.shuttle.explode();
 
     this.time.delayedCall(500, () => {
+      if (this.gameState !== 'crashed') return; // Don't show if we landed successfully
       this.scene.stop('UIScene');
       this.scene.start('GameOverScene', {
         victory: false,
@@ -667,6 +668,7 @@ export class GameScene extends Phaser.Scene {
 
     // Go to game over after sinking animation
     this.time.delayedCall(4000, () => {
+      if (this.gameState !== 'crashed') return; // Don't show if we landed successfully
       this.scene.stop('UIScene');
       this.scene.start('GameOverScene', {
         victory: false,
@@ -729,6 +731,7 @@ export class GameScene extends Phaser.Scene {
       this.shuttle.explode();
 
       this.time.delayedCall(500, () => {
+        if (this.gameState !== 'crashed') return; // Don't show if we landed successfully
         this.scene.stop('UIScene');
         this.scene.start('GameOverScene', {
           victory: false,
@@ -1043,6 +1046,7 @@ export class GameScene extends Phaser.Scene {
     const message = this.getProjectileDeathMessage(projectileSpriteKey);
 
     this.time.delayedCall(500, () => {
+      if (this.gameState !== 'crashed') return; // Don't show if we landed successfully
       this.scene.stop('UIScene');
       this.scene.start('GameOverScene', {
         victory: false,
@@ -1748,6 +1752,7 @@ export class GameScene extends Phaser.Scene {
     this.shuttle.explode();
 
     this.time.delayedCall(500, () => {
+      if (this.gameState !== 'crashed') return; // Don't show if we landed successfully
       this.scene.stop('UIScene');
       this.scene.start('GameOverScene', {
         victory: false,
