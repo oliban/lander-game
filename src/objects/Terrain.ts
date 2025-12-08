@@ -483,25 +483,42 @@ export class Terrain {
     return GAME_HEIGHT * 0.7;
   }
 
-  update(): void {
+  update(waterPollutionLevel: number = 0): void {
     // Animate ocean waves
     this.waveOffset += 0.02;
-    this.drawOcean();
+    this.drawOcean(waterPollutionLevel);
   }
 
   getWaveOffset(): number {
     return this.waveOffset;
   }
 
-  private drawOcean(): void {
+  private drawOcean(waterPollutionLevel: number = 0): void {
     this.oceanGraphics.clear();
 
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
     const oceanHeight = GAME_HEIGHT * 0.75;
 
+    // Helper to tint a color towards dark brown/black based on pollution level
+    const tintColor = (color: number, pollution: number): number => {
+      const pollutionColor = 0x0a0805; // Dark brown/black target
+      const r = (color >> 16) & 0xFF;
+      const g = (color >> 8) & 0xFF;
+      const b = color & 0xFF;
+      const pr = (pollutionColor >> 16) & 0xFF;
+      const pg = (pollutionColor >> 8) & 0xFF;
+      const pb = pollutionColor & 0xFF;
+      // Lerp towards pollution color
+      const nr = Math.floor(r + (pr - r) * pollution);
+      const ng = Math.floor(g + (pg - g) * pollution);
+      const nb = Math.floor(b + (pb - b) * pollution);
+      return (nr << 16) | (ng << 8) | nb;
+    };
+
     // Draw base ocean
-    this.oceanGraphics.fillStyle(0x1E90FF, 1); // Dodger blue
+    const baseOceanColor = tintColor(0x1E90FF, waterPollutionLevel);
+    this.oceanGraphics.fillStyle(baseOceanColor, 1); // Dodger blue -> polluted
     this.oceanGraphics.fillRect(atlanticStart, oceanHeight, atlanticEnd - atlanticStart, GAME_HEIGHT - oceanHeight + 50);
 
     // Draw animated wave layers
@@ -511,7 +528,8 @@ export class Terrain {
     const waveYOffsets = [0, 15, 30];
 
     for (let layer = 0; layer < 3; layer++) {
-      this.oceanGraphics.fillStyle(waveColors[layer], 0.8 - layer * 0.2);
+      const tintedWaveColor = tintColor(waveColors[layer], waterPollutionLevel);
+      this.oceanGraphics.fillStyle(tintedWaveColor, 0.8 - layer * 0.2);
       this.oceanGraphics.beginPath();
 
       const y = oceanHeight + waveYOffsets[layer];
@@ -530,8 +548,10 @@ export class Terrain {
       this.oceanGraphics.fillPath();
     }
 
-    // Draw foam/whitecaps
-    this.oceanGraphics.fillStyle(0xFFFFFF, 0.6);
+    // Draw foam/whitecaps (fade out with pollution)
+    const foamAlpha = 0.6 * (1 - waterPollutionLevel * 0.8); // Foam gets murky too
+    const foamColor = tintColor(0xFFFFFF, waterPollutionLevel * 0.7); // Gray out foam
+    this.oceanGraphics.fillStyle(foamColor, foamAlpha);
     for (let x = atlanticStart + 50; x < atlanticEnd - 50; x += 150) {
       const foamX = x + Math.sin(this.waveOffset * 0.5 + x * 0.01) * 20;
       const foamY = oceanHeight + Math.sin(foamX * 0.015 + this.waveOffset) * 10;

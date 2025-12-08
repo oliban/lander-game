@@ -317,6 +317,24 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     return this.debugModeUsed;
   }
 
+  getIsThrusting(): boolean {
+    return this.isThrusting;
+  }
+
+  getThrustPosition(): { x: number; y: number } {
+    // Position at the back of the ship (where exhaust comes out)
+    const backOfShipAngle = this.rotation + Math.PI / 2;
+    const offsetX = Math.cos(backOfShipAngle) * 20;
+    const offsetY = Math.sin(backOfShipAngle) * 20;
+    return { x: this.x + offsetX, y: this.y + offsetY };
+  }
+
+  getThrustDirection(): { x: number; y: number } {
+    // Direction the thrust is pointing (opposite of ship's forward direction)
+    const angle = this.rotation + Math.PI / 2;
+    return { x: Math.cos(angle), y: Math.sin(angle) };
+  }
+
   checkLandingSafety(): { safe: boolean; quality: 'perfect' | 'good' | 'rough' | 'crash'; reason?: string } {
     const velocity = this.getVelocity();
     const angle = Math.abs(Phaser.Math.Angle.Wrap(this.rotation));
