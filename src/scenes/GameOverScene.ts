@@ -62,6 +62,7 @@ export class GameOverScene extends Phaser.Scene {
   private playerName: string = '';
   private nameInputText!: Phaser.GameObjects.Text;
   private cursorBlink!: Phaser.Time.TimerEvent;
+  private wasVictory: boolean = false; // Track if this was a victory for high score restart
 
   constructor() {
     super({ key: 'GameOverScene' });
@@ -146,6 +147,9 @@ export class GameOverScene extends Phaser.Scene {
     this.drawCloud(500, 120, 0.7);
     this.drawCloud(900, 60, 0.9);
     this.drawCloud(1100, 140, 0.6);
+
+    // Store victory state for high score restart
+    this.wasVictory = data.victory;
 
     if (data.victory) {
       this.createVictoryScreen(data);
@@ -1024,7 +1028,7 @@ export class GameOverScene extends Phaser.Scene {
 
     // Restart scene - it will now show the leaderboard instead of name entry
     this.scene.restart({
-      victory: false,
+      victory: this.wasVictory,
       message: 'Score saved!',
       score: score,
       skipHighScoreCheck: true
