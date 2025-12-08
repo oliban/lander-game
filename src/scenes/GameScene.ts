@@ -391,10 +391,14 @@ export class GameScene extends Phaser.Scene {
       // Random chance to place a decoration (80%)
       if (Math.random() > 0.8) continue;
 
-      // Skip if too close to any cannon (within 80 pixels)
-      const tooCloseToCannon = this.cannons.some(
-        (cannon) => Math.abs(cannon.x - area.x) < 80
-      );
+      // Skip if too close to any cannon (within 80 pixels - check 2D distance)
+      const decorationY = this.terrain.getHeightAt(area.x);
+      const tooCloseToCannon = this.cannons.some((cannon) => {
+        const dx = cannon.x - area.x;
+        const dy = cannon.y - decorationY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < 80;
+      });
       if (tooCloseToCannon) continue;
 
       // Choose building (70%) or landmark (30%)
