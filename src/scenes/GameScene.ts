@@ -7,6 +7,7 @@ import { Collectible, spawnCollectibles } from '../objects/Collectible';
 import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
 import { Bomb } from '../objects/Bomb';
 import { FisherBoat } from '../objects/FisherBoat';
+import { GolfCart } from '../objects/GolfCart';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import {
@@ -68,6 +69,10 @@ export class GameScene extends Phaser.Scene {
   // Fisherboat in Atlantic
   private fisherBoat: FisherBoat | null = null;
 
+  // Golf cart in USA
+  private golfCart: GolfCart | null = null;
+  private epsteinFiles: Phaser.GameObjects.Container[] = [];
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -95,6 +100,9 @@ export class GameScene extends Phaser.Scene {
 
     // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
     this.fisherBoat = new FisherBoat(this, 3500);
+
+    // Create golf cart in USA section (patrols x: 800-1200)
+    this.golfCart = new GolfCart(this, 1000, 800, 1200);
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();
@@ -1492,6 +1500,41 @@ export class GameScene extends Phaser.Scene {
 
       if (bombDestroyed) continue;
 
+      // Check collision with golf cart
+      if (this.golfCart && !this.golfCart.isDestroyed) {
+        const bounds = this.golfCart.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit the golf cart!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Get cart info and destroy it
+          const { name, points, filePositions } = this.golfCart.explode();
+          this.destructionScore += points;
+
+          // Show special destruction message
+          this.showGolfCartDestroyed(this.golfCart.x, this.golfCart.y - 50, points);
+
+          // Spawn Epstein Files
+          this.spawnEpsteinFiles(filePositions);
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
       // Check collision with terrain (LAST, after checking buildings and cannons)
       const terrainY = this.terrain.getHeightAt(bombX);
       if (bombY >= terrainY - 5) {
@@ -1701,6 +1744,205 @@ export class GameScene extends Phaser.Scene {
 
     // Emit event to UIScene to update score display
     this.events.emit('destructionScore', this.destructionScore);
+  }
+
+  private showGolfCartDestroyed(x: number, y: number, points: number): void {
+    // Show "Presidential Getaway destroyed!" message
+    const nameText = this.add.text(x, y - 20, 'Presidential Getaway destroyed!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '20px',
+      color: '#FF4500', // Orange-red
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    nameText.setOrigin(0.5, 0.5);
+    nameText.setDepth(150);
+
+    // Show points
+    const pointsText = this.add.text(x, y + 15, `+${points} POINTS!`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '28px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    pointsText.setOrigin(0.5, 0.5);
+    pointsText.setDepth(150);
+
+    // Animate both texts - stay visible longer then fade
+    this.tweens.add({
+      targets: [nameText, pointsText],
+      y: '-=100',
+      alpha: 0,
+      duration: 4000,
+      delay: 800,
+      ease: 'Power1',
+      onComplete: () => {
+        nameText.destroy();
+        pointsText.destroy();
+      },
+    });
+
+    // Emit event to UIScene to update score display
+    this.events.emit('destructionScore', this.destructionScore);
+  }
+
+  private spawnEpsteinFiles(positions: { x: number; y: number }[]): void {
+    // Spawn collectible Epstein Files at the given positions
+    for (const pos of positions) {
+      // Create a file document graphic
+      const file = this.add.container(pos.x, pos.y);
+      file.setDepth(50);
+      file.setData('collected', false);
+
+      // File folder graphic
+      const folder = this.add.graphics();
+      // Folder tab
+      folder.fillStyle(0xDEB887, 1); // Burlywood (manila)
+      folder.fillRoundedRect(-12, -18, 10, 5, 2);
+      // Main folder
+      folder.fillStyle(0xF5DEB3, 1); // Wheat (manila folder)
+      folder.fillRoundedRect(-15, -15, 30, 22, 3);
+      // Folder outline
+      folder.lineStyle(1, 0xCD853F, 1);
+      folder.strokeRoundedRect(-15, -15, 30, 22, 3);
+      // "CLASSIFIED" text line
+      folder.fillStyle(0x8B0000, 1);
+      folder.fillRect(-10, -8, 20, 3);
+      // Document lines
+      folder.fillStyle(0x333333, 0.3);
+      folder.fillRect(-10, -2, 18, 2);
+      folder.fillRect(-10, 2, 15, 2);
+
+      file.add(folder);
+
+      // "EPSTEIN" label
+      const label = this.add.text(0, -5, 'EPSTEIN', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '6px',
+        color: '#8B0000',
+        fontStyle: 'bold',
+      });
+      label.setOrigin(0.5, 0.5);
+      file.add(label);
+
+      // Track this file for pickup detection
+      this.epsteinFiles.push(file);
+
+      // Animate file scattering then floating down to terrain
+      const scatterX = pos.x + (Math.random() - 0.5) * 100;
+      const scatterY = pos.y - 50 - Math.random() * 30;
+      const terrainY = this.terrain.getHeightAt(scatterX) - 15; // Land on terrain
+
+      // First scatter upward
+      this.tweens.add({
+        targets: file,
+        x: scatterX,
+        y: scatterY,
+        angle: (Math.random() - 0.5) * 60,
+        duration: 400,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          // Then float down to terrain level
+          this.tweens.add({
+            targets: file,
+            y: terrainY,
+            angle: file.angle + (Math.random() - 0.5) * 20,
+            duration: 2000,
+            ease: 'Bounce.easeOut',
+            onComplete: () => {
+              // File is now on the ground - stay there for a while
+              file.setData('grounded', true);
+
+              // Fade out after 10 seconds if not collected
+              this.time.delayedCall(10000, () => {
+                if (file && file.active && !file.getData('collected')) {
+                  // Remove from tracking and fade out
+                  const idx = this.epsteinFiles.indexOf(file);
+                  if (idx >= 0) {
+                    this.epsteinFiles.splice(idx, 1);
+                  }
+
+                  this.tweens.add({
+                    targets: file,
+                    alpha: 0,
+                    duration: 500,
+                    onComplete: () => file.destroy(),
+                  });
+                }
+              });
+            },
+          });
+        },
+      });
+    }
+  }
+
+  private updateEpsteinFiles(): void {
+    // Check for shuttle proximity to collect files - must be landed!
+    const pickupRadius = 60; // Must be close to pick up
+
+    // Check if shuttle is landed (very low velocity and on ground)
+    const velocity = this.shuttle.getVelocity();
+    const isLanded = velocity.total < 0.5;
+
+    for (let i = this.epsteinFiles.length - 1; i >= 0; i--) {
+      const file = this.epsteinFiles[i];
+      if (!file || !file.active || file.getData('collected')) continue;
+
+      const dx = this.shuttle.x - file.x;
+      const dy = this.shuttle.y - file.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < pickupRadius && isLanded) {
+        // Mark as collected
+        file.setData('collected', true);
+
+        // Add to cargo inventory
+        this.inventorySystem.add('EPSTEIN_FILES');
+
+        // Show pickup text
+        const pickupText = this.add.text(file.x, file.y - 20, '+1 EPSTEIN FILES', {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '12px',
+          color: '#8B0000',
+          fontStyle: 'bold',
+          stroke: '#FFFFFF',
+          strokeThickness: 2,
+        });
+        pickupText.setOrigin(0.5, 0.5);
+        pickupText.setDepth(150);
+
+        this.tweens.add({
+          targets: pickupText,
+          y: '-=30',
+          alpha: 0,
+          duration: 1500,
+          onComplete: () => pickupText.destroy(),
+        });
+
+        // Quick collect animation - file flies to shuttle
+        this.tweens.killTweensOf(file); // Stop floating
+        this.tweens.add({
+          targets: file,
+          x: this.shuttle.x,
+          y: this.shuttle.y,
+          scale: 0,
+          alpha: 0,
+          duration: 300,
+          ease: 'Quad.easeIn',
+          onComplete: () => {
+            const idx = this.epsteinFiles.indexOf(file);
+            if (idx >= 0) {
+              this.epsteinFiles.splice(idx, 1);
+            }
+            file.destroy();
+          },
+        });
+      }
+    }
   }
 
   private applyExplosionShockwave(explosionX: number, explosionY: number): void {
@@ -1991,6 +2233,14 @@ export class GameScene extends Phaser.Scene {
     if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
       this.fisherBoat.update(this.terrain.getWaveOffset());
     }
+
+    // Update golf cart (patrol and flee)
+    if (this.golfCart && !this.golfCart.isDestroyed) {
+      this.golfCart.update(this.terrain, this.shuttle.x, this.shuttle.y, time);
+    }
+
+    // Update Epstein Files (check for pickup)
+    this.updateEpsteinFiles();
 
     // Update shuttle
     this.shuttle.update(this.cursors);
