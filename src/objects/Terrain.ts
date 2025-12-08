@@ -489,6 +489,10 @@ export class Terrain {
     this.drawOcean();
   }
 
+  getWaveOffset(): number {
+    return this.waveOffset;
+  }
+
   private drawOcean(): void {
     this.oceanGraphics.clear();
 

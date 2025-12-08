@@ -6,6 +6,7 @@ import { Cannon } from '../objects/Cannon';
 import { Collectible, spawnCollectibles } from '../objects/Collectible';
 import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
 import { Bomb } from '../objects/Bomb';
+import { FisherBoat } from '../objects/FisherBoat';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import {
@@ -64,6 +65,9 @@ export class GameScene extends Phaser.Scene {
   private destructionScore: number = 0;
   private destroyedBuildings: { name: string; points: number; textureKey: string; country: string }[] = [];
 
+  // Fisherboat in Atlantic
+  private fisherBoat: FisherBoat | null = null;
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -88,6 +92,9 @@ export class GameScene extends Phaser.Scene {
 
     // Create terrain (including Washington DC area to the left)
     this.terrain = new Terrain(this, WORLD_START_X, WORLD_WIDTH);
+
+    // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
+    this.fisherBoat = new FisherBoat(this, 3500);
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();
@@ -1453,6 +1460,38 @@ export class GameScene extends Phaser.Scene {
 
       if (bombDestroyed) continue;
 
+      // Check collision with fisherboat
+      if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
+        const bounds = this.fisherBoat.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit the fisherboat!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Get boat info and destroy it
+          const { name, points } = this.fisherBoat.explode();
+          this.destructionScore += points;
+
+          // Show special destruction message
+          this.showFisherBoatDestroyed(this.fisherBoat.x, this.fisherBoat.y - 50, points);
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
       // Check collision with terrain (LAST, after checking buildings and cannons)
       const terrainY = this.terrain.getHeightAt(bombX);
       if (bombY >= terrainY - 5) {
@@ -1610,6 +1649,49 @@ export class GameScene extends Phaser.Scene {
       alpha: 0,
       duration: 3500,
       delay: 500, // Hold for half a second before starting to fade
+      ease: 'Power1',
+      onComplete: () => {
+        nameText.destroy();
+        pointsText.destroy();
+      },
+    });
+
+    // Emit event to UIScene to update score display
+    this.events.emit('destructionScore', this.destructionScore);
+  }
+
+  private showFisherBoatDestroyed(x: number, y: number, points: number): void {
+    // Show "Drug Kingpin dinghy destroyed!" message
+    const nameText = this.add.text(x, y - 20, 'Drug Kingpin dinghy destroyed!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '20px',
+      color: '#FF4500', // Orange-red
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    nameText.setOrigin(0.5, 0.5);
+    nameText.setDepth(150);
+
+    // Show points
+    const pointsText = this.add.text(x, y + 15, `+${points} POINTS!`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '28px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    pointsText.setOrigin(0.5, 0.5);
+    pointsText.setDepth(150);
+
+    // Animate both texts - stay visible longer then fade
+    this.tweens.add({
+      targets: [nameText, pointsText],
+      y: '-=100',
+      alpha: 0,
+      duration: 4000,
+      delay: 800, // Hold longer for this special message
       ease: 'Power1',
       onComplete: () => {
         nameText.destroy();
@@ -1904,6 +1986,11 @@ export class GameScene extends Phaser.Scene {
 
     // Update terrain (for animated ocean waves)
     this.terrain.update();
+
+    // Update fisherboat (bob with waves)
+    if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
+      this.fisherBoat.update(this.terrain.getWaveOffset());
+    }
 
     // Update shuttle
     this.shuttle.update(this.cursors);
