@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { COLLECTIBLE_TYPES } from '../constants';
-import { CountryDecoration } from './CountryDecoration';
+
+// Interface for objects that have collision bounds (CountryDecoration, MedalHouse, etc.)
+interface HasCollisionBounds {
+  getCollisionBounds(): { x: number; y: number; width: number; height: number };
+}
 
 export type CollectibleType = keyof typeof COLLECTIBLE_TYPES;
 
@@ -159,7 +163,7 @@ export function spawnCollectibles(
   startX: number,
   endX: number,
   getTerrainHeight: (x: number) => number,
-  decorations: CountryDecoration[] = []
+  decorations: HasCollisionBounds[] = []
 ): Collectible[] {
   const collectibles: Collectible[] = [];
   const spacing = 250; // Average spacing between collectibles

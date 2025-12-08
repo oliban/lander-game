@@ -9,6 +9,7 @@ import { MedalHouse } from '../objects/MedalHouse';
 import { Bomb } from '../objects/Bomb';
 import { FisherBoat } from '../objects/FisherBoat';
 import { GolfCart } from '../objects/GolfCart';
+import { OilTower } from '../objects/OilTower';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import {
@@ -57,6 +58,7 @@ export class GameScene extends Phaser.Scene {
   private speedBoostEndTime: number = 0;
   private bribeGraphics: Phaser.GameObjects.Graphics | null = null;
   private speedBoostTrail: Phaser.GameObjects.Graphics | null = null;
+  private tieSegments: { x: number; y: number }[] = []; // For floppy tie physics
 
   // Sitting duck detection
   private sittingDuckStartTime: number = 0;
@@ -75,6 +77,9 @@ export class GameScene extends Phaser.Scene {
   private golfCart: GolfCart | null = null;
   private epsteinFiles: Phaser.GameObjects.Container[] = [];
 
+  // Oil towers at fuel depots
+  private oilTowers: OilTower[] = [];
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -90,6 +95,7 @@ export class GameScene extends Phaser.Scene {
     this.decorations = [];
     this.medalHouse = null;
     this.bombs = [];
+    this.oilTowers = [];
 
     // Initialize systems
     this.fuelSystem = new FuelSystem();
@@ -329,10 +335,11 @@ export class GameScene extends Phaser.Scene {
 
   private createLandingPads(): void {
     for (let i = 0; i < LANDING_PADS.length; i++) {
-      const padData = LANDING_PADS[i] as { x: number; width: number; name: string; isWashington?: boolean };
+      const padData = LANDING_PADS[i] as { x: number; width: number; name: string; isWashington?: boolean; isOilPlatform?: boolean };
       const terrainY = this.terrain.getHeightAt(padData.x);
       const isFinal = i === LANDING_PADS.length - 1;
       const isWashington = padData.isWashington === true;
+      const isOilPlatform = padData.isOilPlatform === true;
 
       const pad = new LandingPad(
         this,
@@ -341,9 +348,27 @@ export class GameScene extends Phaser.Scene {
         padData.width,
         padData.name,
         isFinal,
-        isWashington
+        isWashington,
+        isOilPlatform
       );
       this.landingPads.push(pad);
+
+      // Create oil tower for fuel depots and oil platform
+      const isFuelDepot = !isOilPlatform && (padData.name.includes('Fuel') || padData.name.includes('Gas') || padData.name.includes('Depot') || padData.name.includes('Station'));
+      if (isFuelDepot || isOilPlatform) {
+        // Get the country name based on location
+        let countryName = 'Atlantic Ocean';
+        for (const country of COUNTRIES) {
+          if (padData.x >= country.startX) {
+            countryName = country.name;
+          }
+        }
+
+        // Position tower to the right of landing pad
+        const towerX = padData.x + padData.width / 2 + 35;
+        const oilTower = new OilTower(this, towerX, terrainY, countryName);
+        this.oilTowers.push(oilTower);
+      }
     }
   }
 
@@ -868,6 +893,15 @@ export class GameScene extends Phaser.Scene {
     // Successful landing
     this.gameState = 'landed';
 
+    // Play landing sound based on quality
+    if (landingResult.quality === 'perfect') {
+      this.sound.play('landing_perfect', { volume: 0.7 });
+    } else if (landingResult.quality === 'good') {
+      this.sound.play('landing_good', { volume: 0.7 });
+    } else {
+      this.sound.play('landing_rough', { volume: 0.8 });
+    }
+
     // Stop shuttle
     this.shuttle.setVelocity(0, 0);
     this.shuttle.setAngularVelocity(0);
@@ -1379,10 +1413,16 @@ export class GameScene extends Phaser.Scene {
     // Modify shuttle thrust temporarily
     this.shuttle.setThrustMultiplier(1.8);
 
-    // Create speed trail effect
+    // Create speed trail effect (floppy tie)
     if (!this.speedBoostTrail) {
       this.speedBoostTrail = this.add.graphics();
       this.speedBoostTrail.setDepth(45);
+    }
+
+    // Initialize tie segments at shuttle position
+    this.tieSegments = [];
+    for (let i = 0; i < 8; i++) {
+      this.tieSegments.push({ x: this.shuttle.x, y: this.shuttle.y + i * 6 });
     }
 
     // Show "SPEED BOOST" text
@@ -1685,6 +1725,42 @@ export class GameScene extends Phaser.Scene {
 
       if (bombDestroyed) continue;
 
+      // Check collision with oil towers
+      for (let j = this.oilTowers.length - 1; j >= 0; j--) {
+        const oilTower = this.oilTowers[j];
+        if (oilTower.isDestroyed) continue;
+
+        const bounds = oilTower.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit an oil tower!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Play explosion SFX (no bomb hit quote for oil towers)
+          const explosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Destroy the tower (no points awarded)
+          oilTower.explode();
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+          break;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
       // Check collision with terrain (LAST, after checking buildings and cannons)
       const terrainY = this.terrain.getHeightAt(bombX);
       if (bombY >= terrainY - 5) {
@@ -1704,6 +1780,10 @@ export class GameScene extends Phaser.Scene {
         const explosionX = bombX;
         const explosionY = bombY;
         bomb.explode(this);
+
+        // Play explosion sound at 40% volume for ground hits
+        const groundExplosionNum = Math.floor(Math.random() * 3) + 1;
+        this.sound.play(`explosion${groundExplosionNum}`, { volume: 0.4 });
 
         // Apply shockwave to shuttle
         this.applyExplosionShockwave(explosionX, explosionY);
@@ -2171,20 +2251,119 @@ export class GameScene extends Phaser.Scene {
         if (this.speedBoostTrail) {
           this.speedBoostTrail.clear();
         }
+        this.tieSegments = [];
       } else {
-        // Draw speed trail
-        if (this.speedBoostTrail) {
+        // Update and draw floppy red tie
+        if (this.speedBoostTrail && this.tieSegments.length > 0) {
           this.speedBoostTrail.clear();
           const timeLeft = this.speedBoostEndTime - now;
-          const alpha = timeLeft < 2000 ? (Math.sin(now * 0.02) * 0.3 + 0.4) : 0.6;
+          const alpha = timeLeft < 2000 ? (Math.sin(now * 0.02) * 0.3 + 0.5) : 0.9;
 
-          // Red speed lines behind shuttle
+          // Tie attaches to bottom of shuttle
+          const attachX = this.shuttle.x;
+          const attachY = this.shuttle.y + 15;
+
+          // Update tie physics - each segment follows the one before it
+          // First segment follows the shuttle
+          this.tieSegments[0].x += (attachX - this.tieSegments[0].x) * 0.4;
+          this.tieSegments[0].y += (attachY - this.tieSegments[0].y) * 0.4;
+
+          // Each subsequent segment follows the previous one with some lag and gravity
+          for (let i = 1; i < this.tieSegments.length; i++) {
+            const prev = this.tieSegments[i - 1];
+            const curr = this.tieSegments[i];
+
+            // Follow previous segment
+            const followStrength = 0.25;
+            curr.x += (prev.x - curr.x) * followStrength;
+            curr.y += (prev.y - curr.y) * followStrength;
+
+            // Add gravity
+            curr.y += 0.8;
+
+            // Add some wind/flutter based on shuttle velocity
+            const vel = this.shuttle.getVelocity();
+            curr.x -= vel.x * 0.05;
+            curr.y -= vel.y * 0.03;
+
+            // Add flutter/wave motion
+            const flutter = Math.sin(now * 0.015 + i * 0.8) * (2 + i * 0.5);
+            curr.x += flutter;
+
+            // Constrain distance from previous segment
+            const dx = curr.x - prev.x;
+            const dy = curr.y - prev.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxDist = 8;
+            if (dist > maxDist) {
+              const scale = maxDist / dist;
+              curr.x = prev.x + dx * scale;
+              curr.y = prev.y + dy * scale;
+            }
+          }
+
+          // Draw the tie
+          // Tie knot at top (small triangle)
+          this.speedBoostTrail.fillStyle(0xAA0000, alpha);
+          this.speedBoostTrail.fillTriangle(
+            this.tieSegments[0].x - 4, this.tieSegments[0].y,
+            this.tieSegments[0].x + 4, this.tieSegments[0].y,
+            this.tieSegments[0].x, this.tieSegments[0].y + 6
+          );
+
+          // Main tie body - draw as connected trapezoids that get wider then narrower
+          for (let i = 0; i < this.tieSegments.length - 1; i++) {
+            const curr = this.tieSegments[i];
+            const next = this.tieSegments[i + 1];
+
+            // Tie width: starts narrow, gets wider in middle, narrows at tip
+            const widthCurve = Math.sin((i / (this.tieSegments.length - 1)) * Math.PI);
+            const widthTop = 3 + widthCurve * 6;
+            const widthCurveNext = Math.sin(((i + 1) / (this.tieSegments.length - 1)) * Math.PI);
+            const widthBottom = 3 + widthCurveNext * 6;
+
+            // Calculate perpendicular direction for width
+            const dx = next.x - curr.x;
+            const dy = next.y - curr.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const perpX = -dy / len;
+            const perpY = dx / len;
+
+            // Draw tie segment as quadrilateral
+            this.speedBoostTrail.fillStyle(0xDC143C, alpha);
+            this.speedBoostTrail.beginPath();
+            this.speedBoostTrail.moveTo(curr.x + perpX * widthTop, curr.y + perpY * widthTop);
+            this.speedBoostTrail.lineTo(curr.x - perpX * widthTop, curr.y - perpY * widthTop);
+            this.speedBoostTrail.lineTo(next.x - perpX * widthBottom, next.y - perpY * widthBottom);
+            this.speedBoostTrail.lineTo(next.x + perpX * widthBottom, next.y + perpY * widthBottom);
+            this.speedBoostTrail.closePath();
+            this.speedBoostTrail.fillPath();
+
+            // Dark red stripe down the center for detail
+            this.speedBoostTrail.lineStyle(2, 0x8B0000, alpha * 0.7);
+            this.speedBoostTrail.lineBetween(curr.x, curr.y, next.x, next.y);
+          }
+
+          // Tie tip (pointed end)
+          const lastSeg = this.tieSegments[this.tieSegments.length - 1];
+          const secondLast = this.tieSegments[this.tieSegments.length - 2];
+          const tipDx = lastSeg.x - secondLast.x;
+          const tipDy = lastSeg.y - secondLast.y;
+          const tipLen = Math.sqrt(tipDx * tipDx + tipDy * tipDy) || 1;
+          this.speedBoostTrail.fillStyle(0xDC143C, alpha);
+          this.speedBoostTrail.fillTriangle(
+            lastSeg.x - 3, lastSeg.y,
+            lastSeg.x + 3, lastSeg.y,
+            lastSeg.x + (tipDx / tipLen) * 8, lastSeg.y + (tipDy / tipLen) * 8
+          );
+
+          // Also draw speed trail behind shuttle
           const vel = this.shuttle.getVelocity();
           if (Math.abs(vel.x) > 1 || Math.abs(vel.y) > 1) {
             for (let i = 0; i < 5; i++) {
               const offsetX = -vel.x * (i * 3) + (Math.random() - 0.5) * 10;
               const offsetY = -vel.y * (i * 3) + (Math.random() - 0.5) * 10;
-              this.speedBoostTrail.fillStyle(0xDC143C, alpha * (1 - i * 0.15));
+              this.speedBoostTrail.fillStyle(0xDC143C, alpha * 0.5 * (1 - i * 0.15));
               this.speedBoostTrail.fillCircle(this.shuttle.x + offsetX, this.shuttle.y + offsetY, 5 - i);
             }
           }

@@ -13,6 +13,8 @@ export class LandingPad {
   public name: string;
   public isFinalDestination: boolean;
   public isWashington: boolean;
+  public isFuelDepot: boolean;
+  public isOilPlatform: boolean;
 
   constructor(
     scene: Phaser.Scene,
@@ -21,7 +23,8 @@ export class LandingPad {
     width: number,
     name: string,
     isFinalDestination: boolean = false,
-    isWashington: boolean = false
+    isWashington: boolean = false,
+    isOilPlatform: boolean = false
   ) {
     this.padScene = scene;
     this.x = x;
@@ -30,6 +33,9 @@ export class LandingPad {
     this.name = name;
     this.isFinalDestination = isFinalDestination;
     this.isWashington = isWashington;
+    this.isOilPlatform = isOilPlatform;
+    // Check if this is a fuel depot based on name (but not the oil platform)
+    this.isFuelDepot = !isOilPlatform && (name.includes('Fuel') || name.includes('Gas') || name.includes('Depot') || name.includes('Station'));
 
     this.graphics = scene.add.graphics();
 
@@ -63,6 +69,11 @@ export class LandingPad {
     // Draw White House for Washington
     if (this.isWashington) {
       this.drawWhiteHouse();
+    }
+
+    // Draw oil platform structure for Mid-Atlantic (static parts only, tower is separate)
+    if (this.isOilPlatform) {
+      this.drawOilPlatformBase();
     }
 
     // Draw main landing pad platform (cartoon style)
@@ -293,6 +304,40 @@ export class LandingPad {
       this.peaceMedalGraphics.destroy();
       this.peaceMedalGraphics = null;
     }
+  }
+
+  private drawOilPlatformBase(): void {
+    const platX = this.x;
+    const baseY = this.y;
+
+    // Platform legs going down into water
+    this.graphics.lineStyle(4, 0x666666, 1);
+    this.graphics.lineBetween(platX - 40, baseY, platX - 40, baseY + 60);
+    this.graphics.lineBetween(platX + 40, baseY, platX + 40, baseY + 60);
+    this.graphics.lineBetween(platX - 20, baseY, platX - 25, baseY + 60);
+    this.graphics.lineBetween(platX + 20, baseY, platX + 25, baseY + 60);
+
+    // Cross braces on legs
+    this.graphics.lineStyle(2, 0x555555, 1);
+    this.graphics.lineBetween(platX - 40, baseY + 20, platX - 25, baseY + 30);
+    this.graphics.lineBetween(platX + 40, baseY + 20, platX + 25, baseY + 30);
+
+    // Main platform deck
+    this.graphics.fillStyle(0x777777, 1);
+    this.graphics.fillRect(platX - 50, baseY - 8, 100, 12);
+    this.graphics.lineStyle(2, 0x555555, 1);
+    this.graphics.strokeRect(platX - 50, baseY - 8, 100, 12);
+
+    // Control room / small building
+    this.graphics.fillStyle(0x888888, 1);
+    this.graphics.fillRect(platX - 35, baseY - 25, 25, 17);
+    this.graphics.lineStyle(1, 0x666666, 1);
+    this.graphics.strokeRect(platX - 35, baseY - 25, 25, 17);
+    // Window
+    this.graphics.fillStyle(0x4488FF, 1);
+    this.graphics.fillRect(platX - 30, baseY - 22, 8, 6);
+
+    // Note: Oil tower is created separately as a bombable OilTower object
   }
 
   getBody(): MatterJS.BodyType {

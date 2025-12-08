@@ -135,6 +135,11 @@ export class BootScene extends Phaser.Scene {
     this.load.audio('pickup_russian', 'assets/audio/pickup_russian.mp3');
     this.load.audio('pickup_tansuit', 'assets/audio/pickup_tansuit.mp3');
 
+    // Landing sounds
+    this.load.audio('landing_perfect', 'assets/audio/landing_perfect.mp3');
+    this.load.audio('landing_good', 'assets/audio/landing_good.mp3');
+    this.load.audio('landing_rough', 'assets/audio/landing_rough.mp3');
+
     // Bomb hit sounds
     for (let i = 1; i <= 5; i++) {
       this.load.audio(`bombhit${i}`, `assets/audio/bombhit${i}.mp3`);
