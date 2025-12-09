@@ -198,7 +198,11 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
     };
   }
 
-  // For future bombing mechanic
+  // Building destruction with 4-phase effect:
+  // Phase 1: Bomb explodes (flash)
+  // Phase 2: Building cracks up (crack lines appear, building shakes)
+  // Phase 3: Building crumbles down (collapses into horizontal slices)
+  // Phase 4: Pile of debris on the ground (permanent)
   explode(): { name: string; points: number; textureKey: string; country: string } {
     if (this.isDestroyed) return { name: this.buildingName, points: 0, textureKey: this.texture.key, country: this.country };
 
@@ -211,55 +215,222 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
       this.matterBody = null;
     }
 
-    // Create explosion effect
     const scene = this.scene;
     const x = this.x;
-    const y = this.y - this.displayHeight / 2;
+    const groundY = this.y; // Bottom of building (ground level)
+    const buildingTop = this.y - this.displayHeight;
+    const centerY = this.y - this.displayHeight / 2;
+    const textureKey = this.texture.key;
+    const sourceImage = this.texture.getSourceImage();
+    const textureWidth = sourceImage.width;
+    const textureHeight = sourceImage.height;
+    const scale = this.scaleX;
+    const buildingWidth = this.displayWidth;
+    const buildingHeight = this.displayHeight;
 
-    // Explosion flash - draw at (0,0) relative to graphics position to prevent drift when fading
+    // ============ PHASE 1: BOMB EXPLODES ============
+    // Explosion flash at center
     const flash = scene.add.graphics();
-    flash.setPosition(x, y); // Position the graphics object at explosion center
+    flash.setPosition(x, centerY);
     flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(0, 0, 40); // Draw relative to graphics position
+    flash.fillCircle(0, 0, 40);
     flash.fillStyle(0xFFFF00, 1);
     flash.fillCircle(0, 0, 25);
     flash.fillStyle(0xFFFFFF, 1);
     flash.fillCircle(0, 0, 10);
     flash.setDepth(100);
 
-    // Fade out only - no scale (scale causes drift since it scales from world origin)
     scene.tweens.add({
       targets: flash,
       alpha: 0,
-      duration: 400,
+      duration: 300,
       onComplete: () => flash.destroy(),
     });
 
-    // Flying debris - position each debris at explosion center
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2;
-      const targetX = Math.cos(angle) * 60;
-      const targetY = Math.sin(angle) * 60 + 30;
 
-      const debris = scene.add.graphics();
-      debris.setPosition(x, y); // Start at explosion center
-      debris.fillStyle(0x888888, 1);
-      debris.fillRect(-3, -3, 6, 6);
-      debris.setDepth(99);
+    // ============ PHASE 3: BUILDING CRUMBLES DOWN (after crack phase) ============
+    // Create many irregular-sized pieces from the building texture
+    const numPieces = 60;
+    const pieceData: {
+      key: string;
+      worldX: number;
+      worldY: number;
+      worldW: number;
+      worldH: number;
+    }[] = [];
 
-      scene.tweens.add({
-        targets: debris,
-        x: x + targetX,
-        y: y + targetY,
-        angle: Math.random() * 360,
-        alpha: 0,
-        duration: 500,
-        onComplete: () => debris.destroy(),
+    // Generate irregular pieces by randomly sampling regions of the texture
+    for (let i = 0; i < numPieces; i++) {
+      // Random size for this piece (irregular)
+      const pieceTexW = 30 + Math.floor(Math.random() * 80);
+      const pieceTexH = 25 + Math.floor(Math.random() * 70);
+
+      // Random position within texture bounds
+      const texX = Math.floor(Math.random() * (textureWidth - pieceTexW));
+      const texY = Math.floor(Math.random() * (textureHeight - pieceTexH));
+
+      // Create texture for this piece
+      const key = `${textureKey}_piece_${i}_${Date.now()}_${Math.random()}`;
+      const pieceRT = scene.make.renderTexture({ width: pieceTexW, height: pieceTexH }, false);
+      pieceRT.draw(textureKey, -texX, -texY);
+      pieceRT.saveTexture(key);
+      pieceRT.destroy();
+
+      // Calculate world position (where this piece appears on screen)
+      const ratioX = texX / textureWidth;
+      const ratioY = texY / textureHeight;
+      const worldX = x - buildingWidth / 2 + ratioX * buildingWidth + (pieceTexW * scale) / 2;
+      const worldY = buildingTop + ratioY * buildingHeight + (pieceTexH * scale) / 2;
+
+      pieceData.push({
+        key,
+        worldX,
+        worldY,
+        worldW: pieceTexW,
+        worldH: pieceTexH,
       });
     }
 
-    // Hide the building
+    // Hide the original building immediately and start explosion
     this.setVisible(false);
+
+    scene.time.delayedCall(0, () => {
+
+      // Create piece sprites at their positions within the building
+      const pieces: { sprite: Phaser.GameObjects.Sprite; startY: number }[] = [];
+
+      for (const data of pieceData) {
+        const piece = scene.add.sprite(data.worldX, data.worldY, data.key);
+        piece.setScale(scale);
+        piece.setDepth(6);
+        piece.setOrigin(0.5, 0.5);
+
+        pieces.push({ sprite: piece, startY: data.worldY });
+      }
+
+      // Animate pieces falling - sort by Y position so top pieces fall first
+      pieces.sort((a, b) => a.startY - b.startY);
+
+      // Explosion origin at bottom center of building
+      const explosionX = x;
+      const explosionY = groundY;
+
+      pieces.forEach((piece, index) => {
+        // Calculate force direction from explosion point (bottom center)
+        const dx = piece.sprite.x - explosionX;
+        const dy = piece.sprite.y - explosionY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Normalize and apply force - pieces closer to explosion get more force
+        const maxDist = Math.sqrt(buildingWidth * buildingWidth + buildingHeight * buildingHeight);
+        const forceMult = 1.2 - (dist / maxDist) * 0.5; // Closer = stronger
+
+        const forceX = (dx / dist) * 70 * forceMult + (Math.random() - 0.5) * 40;
+        const forceY = (dy / dist) * 50 * forceMult - 30; // Upward bias
+
+        // Delay: pieces near explosion go first
+        const delay = (dist / maxDist) * 200;
+
+        // Target: land at ground level
+        const targetY = groundY - 2 - Math.random() * 10;
+        const targetX = piece.sprite.x + forceX * 1.5 + (Math.random() - 0.5) * 20;
+
+        scene.time.delayedCall(delay, () => {
+          // First: explosive burst upward and outward from bottom
+          scene.tweens.add({
+            targets: piece.sprite,
+            x: piece.sprite.x + forceX,
+            y: piece.sprite.y + forceY, // Flies up and out
+            rotation: (Math.random() - 0.5) * 0.8,
+            duration: 150,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              // Then: fall down to ground
+              const fallDist = targetY - piece.sprite.y;
+              const duration = Math.max(200, Math.min(500, Math.abs(fallDist) * 2));
+
+              scene.tweens.add({
+                targets: piece.sprite,
+                y: targetY,
+                x: targetX,
+                rotation: (Math.random() - 0.5) * 1.5,
+                scaleX: scale * (0.5 + Math.random() * 0.5),
+                scaleY: scale * (0.3 + Math.random() * 0.4),
+                duration: duration,
+                ease: 'Quad.easeIn',
+              });
+            },
+          });
+        });
+      });
+
+      // ============ SMOKE EFFECTS ============
+      // Immediate smoke burst during explosion
+      for (let i = 0; i < 15; i++) {
+        const smokeX = x + (Math.random() - 0.5) * buildingWidth;
+        const smokeY = groundY - Math.random() * buildingHeight * 0.5;
+        const smoke = scene.add.circle(smokeX, smokeY, 8 + Math.random() * 15, 0x555555, 0.5 + Math.random() * 0.3);
+        smoke.setDepth(7);
+
+        scene.tweens.add({
+          targets: smoke,
+          y: smokeY - 30 - Math.random() * 40,
+          x: smokeX + (Math.random() - 0.5) * 30,
+          alpha: 0,
+          scale: 2 + Math.random(),
+          duration: 600 + Math.random() * 400,
+          ease: 'Power1',
+          onComplete: () => smoke.destroy(),
+        });
+      }
+
+      // ============ PHASE 4: DEBRIS PILE (permanent) ============
+      // Dust cloud when pieces land
+      scene.time.delayedCall(350, () => {
+        for (let i = 0; i < 12; i++) {
+          const dustX = x + (Math.random() - 0.5) * buildingWidth * 0.8;
+          const dust = scene.add.circle(dustX, groundY - 3, 6 + Math.random() * 10, 0x777777, 0.4);
+          dust.setDepth(5);
+
+          scene.tweens.add({
+            targets: dust,
+            y: groundY - 15 - Math.random() * 15,
+            x: dustX + (Math.random() - 0.5) * 20,
+            alpha: 0,
+            scale: 1.8,
+            duration: 500 + Math.random() * 300,
+            ease: 'Power1',
+            onComplete: () => dust.destroy(),
+          });
+        }
+      });
+
+      // Lingering smoke at the base
+      scene.time.delayedCall(400, () => {
+        for (let wave = 0; wave < 3; wave++) {
+          scene.time.delayedCall(wave * 400, () => {
+            for (let i = 0; i < 5; i++) {
+              const smokeX = x + (Math.random() - 0.5) * buildingWidth * 0.6;
+              const smoke = scene.add.circle(smokeX, groundY - 5, 5 + Math.random() * 8, 0x666666, 0.25 + Math.random() * 0.15);
+              smoke.setDepth(4);
+
+              scene.tweens.add({
+                targets: smoke,
+                y: groundY - 20 - Math.random() * 25,
+                x: smokeX + (Math.random() - 0.5) * 25,
+                alpha: 0,
+                scale: 1.5 + Math.random() * 0.5,
+                duration: 800 + Math.random() * 500,
+                ease: 'Power1',
+                onComplete: () => smoke.destroy(),
+              });
+            }
+          });
+        }
+      });
+
+      // Pieces remain as permanent rubble
+    });
 
     return { name: this.buildingName, points: this.pointValue, textureKey: this.texture.key, country: this.country };
   }
