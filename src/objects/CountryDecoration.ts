@@ -216,35 +216,41 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
     const x = this.x;
     const y = this.y - this.displayHeight / 2;
 
-    // Explosion flash
+    // Explosion flash - draw at (0,0) relative to graphics position to prevent drift when fading
     const flash = scene.add.graphics();
+    flash.setPosition(x, y); // Position the graphics object at explosion center
     flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(x, y, 40);
+    flash.fillCircle(0, 0, 40); // Draw relative to graphics position
     flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(x, y, 25);
+    flash.fillCircle(0, 0, 25);
     flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(x, y, 10);
+    flash.fillCircle(0, 0, 10);
+    flash.setDepth(100);
 
+    // Fade out only - no scale (scale causes drift since it scales from world origin)
     scene.tweens.add({
       targets: flash,
       alpha: 0,
-      scale: 2,
       duration: 400,
       onComplete: () => flash.destroy(),
     });
 
-    // Flying debris
+    // Flying debris - position each debris at explosion center
     for (let i = 0; i < 8; i++) {
       const angle = (i / 8) * Math.PI * 2;
+      const targetX = Math.cos(angle) * 60;
+      const targetY = Math.sin(angle) * 60 + 30;
+
       const debris = scene.add.graphics();
+      debris.setPosition(x, y); // Start at explosion center
       debris.fillStyle(0x888888, 1);
       debris.fillRect(-3, -3, 6, 6);
-      debris.setPosition(x, y);
+      debris.setDepth(99);
 
       scene.tweens.add({
         targets: debris,
-        x: x + Math.cos(angle) * 60,
-        y: y + Math.sin(angle) * 60 + 30,
+        x: x + targetX,
+        y: y + targetY,
         angle: Math.random() * 360,
         alpha: 0,
         duration: 500,

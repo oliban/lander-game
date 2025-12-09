@@ -1602,10 +1602,10 @@ export class GameScene extends Phaser.Scene {
           bombY >= bounds.y &&
           bombY <= bounds.y + bounds.height
         ) {
-          // Hit a building!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
+          // Hit a building! Use decoration.explode() for visual (fixes drift issue)
+          this.cameras.main.shake(200, 0.01);
+          bomb.hasExploded = true;
+          bomb.destroy();
 
           // Play explosion SFX (can overlap) and bomb hit quote (delayed 1.5s, no overlap)
           const explosionNum = Math.floor(Math.random() * 3) + 1;
@@ -1615,10 +1615,10 @@ export class GameScene extends Phaser.Scene {
             this.playSoundIfNotPlaying(`bombhit${bombHitNum}`);
           });
 
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
+          // Apply shockwave to shuttle (use decoration position, not bomb position)
+          this.applyExplosionShockwave(decoration.x, decoration.y);
 
-          // Get building info and destroy it
+          // Get building info and destroy it (this creates the explosion visual)
           const { name, points, textureKey, country } = decoration.explode();
           this.destructionScore += points;
           this.destroyedBuildings.push({ name, points, textureKey, country });
