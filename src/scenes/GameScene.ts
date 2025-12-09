@@ -478,8 +478,8 @@ export class GameScene extends Phaser.Scene {
       let index = -1;
       const availableIndices = [];
       for (let i = 0; i < 16; i++) {
-        // Skip Washington building index 13 (Kennedy Center image)
-        if (assetPrefix === 'Washington' && typeStr === 'building' && i === 13) continue;
+        // Skip Washington building indices 12 (Union Station) and 13 (Kennedy Center)
+        if (assetPrefix === 'Washington' && typeStr === 'building' && (i === 12 || i === 13)) continue;
         const key = `${assetPrefix}_${typeStr}_${i}`;
         if (!usedImages.has(key)) {
           availableIndices.push(i);
@@ -1556,8 +1556,21 @@ export class GameScene extends Phaser.Scene {
     oscillator.stop(audioContext.currentTime + 0.3);
   }
 
+  // Dedicated pickup sounds mapping
+  private static readonly PICKUP_SOUNDS: Record<string, string> = {
+    'BURGER': 'pickup_burger', 'HAMBERDER': 'pickup_burger',
+    'DIET_COKE': 'pickup_dietcoke', 'TRUMP_STEAK': 'pickup_steak',
+    'DOLLAR': 'pickup_dollar', 'HAIR_SPRAY': 'pickup_hairspray',
+    'TWITTER': 'pickup_twitter', 'CASINO_CHIP': 'pickup_casinochip',
+    'MAGA_HAT': 'pickup_magahat', 'NFT': 'pickup_nft',
+    'BITCOIN': 'pickup_bitcoin', 'CLASSIFIED_DOCS': 'pickup_classifieddocs',
+    'GOLDEN_TOILET': 'pickup_goldentoilet', 'VODKA': 'pickup_vodka',
+    'MATRYOSHKA': 'pickup_russian', 'OLIGARCH_GOLD': 'pickup_russian',
+    'TAN_SUIT': 'pickup_tansuit',
+  };
+
   private playPickupSound(collectibleType: string): void {
-    // Power-ups have special voice sounds
+    // Power-ups have special voice sounds (always play, no boing)
     const powerUpSounds: Record<string, string> = {
       'TRUMP_TOWER': 'bribe1',
       'RED_TIE': 'speedboost',
@@ -1567,9 +1580,16 @@ export class GameScene extends Phaser.Scene {
     const soundKey = powerUpSounds[collectibleType];
     if (soundKey) {
       this.playSoundIfNotPlaying(soundKey);
-    } else {
-      // Regular collectibles get a "boing" sound
-      this.playBoingSound();
+      return;
+    }
+
+    // Regular collectibles: always play boing
+    this.playBoingSound();
+
+    // 20% chance to also play dedicated sound
+    const dedicatedSound = GameScene.PICKUP_SOUNDS[collectibleType];
+    if (dedicatedSound && Math.random() < 0.2) {
+      this.playSoundIfNotPlaying(dedicatedSound);
     }
   }
 
