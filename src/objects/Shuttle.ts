@@ -369,6 +369,10 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   }
 
   explode(): void {
+    // Capture crash position immediately so explosion stays at impact site
+    const crashX = this.x;
+    const crashY = this.y;
+
     // Stop thruster
     this.isThrusting = false;
     if (this.thrusterParticles) {
@@ -383,36 +387,40 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Create cartoon explosion - expanding circles
     const colors = [0xFF6600, 0xFFFF00, 0xFF0000, 0xFFFFFF];
 
-    // Main explosion flash
+    // Main explosion flash - draw at (0,0) relative to positioned graphics to prevent drift
     const flash = this.scene.add.graphics();
+    flash.setPosition(crashX, crashY);
     flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(this.x, this.y, 30);
+    flash.fillCircle(0, 0, 30);
     flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(this.x, this.y, 20);
+    flash.fillCircle(0, 0, 20);
     flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(this.x, this.y, 10);
+    flash.fillCircle(0, 0, 10);
 
+    // Fade out only - no scale (scale causes drift since it scales from world origin)
     this.scene.tweens.add({
       targets: flash,
       alpha: 0,
-      scale: 3,
       duration: 400,
       onComplete: () => flash.destroy(),
     });
 
-    // Flying debris pieces
+    // Flying debris pieces - all start at crash position
     for (let i = 0; i < 12; i++) {
       const angle = (i / 12) * Math.PI * 2;
+      const targetX = Math.cos(angle) * (80 + Math.random() * 40);
+      const targetY = Math.sin(angle) * (80 + Math.random() * 40) + 50;
+
       const debris = this.scene.add.graphics();
       const color = colors[Math.floor(Math.random() * colors.length)];
       debris.fillStyle(color, 1);
       debris.fillRect(-4, -4, 8, 8);
-      debris.setPosition(this.x, this.y);
+      debris.setPosition(crashX, crashY);
 
       this.scene.tweens.add({
         targets: debris,
-        x: this.x + Math.cos(angle) * (80 + Math.random() * 40),
-        y: this.y + Math.sin(angle) * (80 + Math.random() * 40) + 50,
+        x: crashX + targetX,
+        y: crashY + targetY,
         angle: Math.random() * 360,
         alpha: 0,
         duration: 600,
