@@ -478,6 +478,8 @@ export class GameScene extends Phaser.Scene {
       let index = -1;
       const availableIndices = [];
       for (let i = 0; i < 16; i++) {
+        // Skip Washington building index 13 (Kennedy Center image)
+        if (assetPrefix === 'Washington' && typeStr === 'building' && i === 13) continue;
         const key = `${assetPrefix}_${typeStr}_${i}`;
         if (!usedImages.has(key)) {
           availableIndices.push(i);
@@ -528,11 +530,10 @@ export class GameScene extends Phaser.Scene {
       this.decorations.push(decoration);
     }
 
-    // Create the medal house near the Washington DC landing pad
-    // Position it to the left of the landing pad
+    // Medal house (FIFA Kennedy Center) - special building spawned near Washington DC
     const washingtonPad = LANDING_PADS.find(p => p.isWashington);
     if (washingtonPad) {
-      const medalHouseX = washingtonPad.x - 120; // To the left of the pad
+      const medalHouseX = washingtonPad.x - 120;
       const medalHouseY = this.terrain.getHeightAt(medalHouseX);
       this.medalHouse = new MedalHouse(this, medalHouseX, medalHouseY);
       this.decorations.push(this.medalHouse);

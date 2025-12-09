@@ -7,7 +7,7 @@ export const BUILDING_NAMES: Record<string, string[]> = {
     'White House', 'Capitol Building', 'Washington Monument', 'Lincoln Memorial',
     'Jefferson Memorial', 'Supreme Court', 'Smithsonian Castle', 'National Archives',
     'Library of Congress', 'National Cathedral', 'Treasury Building', 'Vietnam Veterans Memorial',
-    'Union Station', 'Kennedy Center', 'Fords Theatre', 'DC Row Houses'
+    'Union Station', 'National Mall', 'Fords Theatre', 'DC Row Houses'
   ],
   USA: [
     'One World Trade Center', 'Willis Tower', 'Transamerica Pyramid', 'Chrysler Building',
