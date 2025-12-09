@@ -224,20 +224,20 @@ export class MedalHouse extends Phaser.GameObjects.Sprite {
         });
       });
 
-      // Smoke effects
-      for (let i = 0; i < 15; i++) {
+      // Immediate thick smoke burst during explosion
+      for (let i = 0; i < 25; i++) {
         const smokeX = x + (Math.random() - 0.5) * buildingWidth;
-        const smokeY = groundY - Math.random() * buildingHeight * 0.5;
-        const smoke = scene.add.circle(smokeX, smokeY, 8 + Math.random() * 15, 0x555555, 0.5 + Math.random() * 0.3);
+        const smokeY = groundY - Math.random() * buildingHeight * 0.6;
+        const smoke = scene.add.circle(smokeX, smokeY, 12 + Math.random() * 20, 0x444444, 0.6 + Math.random() * 0.3);
         smoke.setDepth(7);
 
         scene.tweens.add({
           targets: smoke,
-          y: smokeY - 30 - Math.random() * 40,
-          x: smokeX + (Math.random() - 0.5) * 30,
+          y: smokeY - 40 - Math.random() * 60,
+          x: smokeX + (Math.random() - 0.5) * 40,
           alpha: 0,
-          scale: 2 + Math.random(),
-          duration: 600 + Math.random() * 400,
+          scale: 2.5 + Math.random() * 1.5,
+          duration: 1000 + Math.random() * 600,
           ease: 'Power1',
           onComplete: () => smoke.destroy(),
         });
@@ -245,46 +245,83 @@ export class MedalHouse extends Phaser.GameObjects.Sprite {
 
       // Dust cloud when pieces land
       scene.time.delayedCall(350, () => {
-        for (let i = 0; i < 12; i++) {
-          const dustX = x + (Math.random() - 0.5) * buildingWidth * 0.8;
-          const dust = scene.add.circle(dustX, groundY - 3, 6 + Math.random() * 10, 0x777777, 0.4);
+        for (let i = 0; i < 18; i++) {
+          const dustX = x + (Math.random() - 0.5) * buildingWidth * 0.9;
+          const dust = scene.add.circle(dustX, groundY - 3, 10 + Math.random() * 15, 0x666666, 0.5);
           dust.setDepth(5);
 
           scene.tweens.add({
             targets: dust,
-            y: groundY - 15 - Math.random() * 15,
-            x: dustX + (Math.random() - 0.5) * 20,
+            y: groundY - 25 - Math.random() * 20,
+            x: dustX + (Math.random() - 0.5) * 25,
             alpha: 0,
-            scale: 1.8,
-            duration: 500 + Math.random() * 300,
+            scale: 2.2,
+            duration: 800 + Math.random() * 400,
             ease: 'Power1',
             onComplete: () => dust.destroy(),
           });
         }
       });
 
-      // Lingering smoke
-      scene.time.delayedCall(400, () => {
-        for (let wave = 0; wave < 3; wave++) {
-          scene.time.delayedCall(wave * 400, () => {
-            for (let i = 0; i < 5; i++) {
-              const smokeX = x + (Math.random() - 0.5) * buildingWidth * 0.6;
-              const smoke = scene.add.circle(smokeX, groundY - 5, 5 + Math.random() * 8, 0x666666, 0.25 + Math.random() * 0.15);
+      // Lingering smoke at the base - 12 waves over 10 seconds for long-lasting effect
+      scene.time.delayedCall(300, () => {
+        for (let wave = 0; wave < 12; wave++) {
+          scene.time.delayedCall(wave * 800, () => {
+            // Fewer particles per wave as time goes on (fire dying down)
+            const particleCount = Math.max(3, 8 - Math.floor(wave / 2));
+            for (let i = 0; i < particleCount; i++) {
+              const smokeX = x + (Math.random() - 0.5) * buildingWidth * 0.7;
+              // Smoke gets lighter/less opaque as fire dies
+              const baseOpacity = Math.max(0.15, 0.4 - wave * 0.02);
+              const smoke = scene.add.circle(smokeX, groundY - 5, 8 + Math.random() * 12, 0x555555, baseOpacity + Math.random() * 0.15);
               smoke.setDepth(4);
 
               scene.tweens.add({
                 targets: smoke,
-                y: groundY - 20 - Math.random() * 25,
-                x: smokeX + (Math.random() - 0.5) * 25,
+                y: groundY - 30 - Math.random() * 40,
+                x: smokeX + (Math.random() - 0.5) * 35,
                 alpha: 0,
-                scale: 1.5 + Math.random() * 0.5,
-                duration: 800 + Math.random() * 500,
+                scale: 2 + Math.random() * 1,
+                duration: 1500 + Math.random() * 800,
                 ease: 'Power1',
                 onComplete: () => smoke.destroy(),
               });
             }
           });
         }
+      });
+
+      // Air pollution - persistent smoke haze using particle emitter (like chemtrails)
+      // Create a stationary emitter for long-lasting pollution particles
+      const pollutionEmitter = scene.add.particles(0, 0, 'particle', {
+        speed: { min: 5, max: 15 }, // Very slow drift (same as chemtrails)
+        angle: { min: 0, max: 360 }, // Random drift direction (same as chemtrails)
+        scale: { start: 0.4, end: 0.1 }, // Same size as chemtrails
+        alpha: { start: 0.3, end: 0 }, // Same alpha as chemtrails
+        lifespan: 60000, // 1 minute (same as chemtrails)
+        blendMode: Phaser.BlendModes.NORMAL,
+        frequency: -1, // Manual emission only
+        tint: [0x555555, 0x666666, 0x777777, 0x444444], // Same grey colors as chemtrails
+      });
+      pollutionEmitter.setDepth(3);
+
+      // Emit pollution particles over time from bomb site
+      scene.time.delayedCall(300, () => {
+        for (let wave = 0; wave < 15; wave++) {
+          scene.time.delayedCall(wave * 400, () => {
+            const particleCount = Math.max(2, 6 - Math.floor(wave / 3));
+            for (let i = 0; i < particleCount; i++) {
+              const emitX = x + (Math.random() - 0.5) * buildingWidth;
+              const emitY = groundY - Math.random() * buildingHeight * 0.7;
+              pollutionEmitter.emitParticleAt(emitX, emitY, 1);
+            }
+          });
+        }
+      });
+
+      // Clean up emitter after all particles have faded (60s lifespan + 6s emission time)
+      scene.time.delayedCall(70000, () => {
+        pollutionEmitter.destroy();
       });
     });
 
