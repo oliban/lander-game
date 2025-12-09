@@ -928,13 +928,13 @@ export class GameScene extends Phaser.Scene {
     // Successful landing
     this.gameState = 'landed';
 
-    // Play landing sound based on quality
+    // Play landing sound based on quality (louder volumes for better audibility)
     if (landingResult.quality === 'perfect') {
-      this.sound.play('landing_perfect', { volume: 0.7 });
+      this.sound.play('landing_perfect', { volume: 1.0 });
     } else if (landingResult.quality === 'good') {
-      this.sound.play('landing_good', { volume: 0.7 });
+      this.sound.play('landing_good', { volume: 1.0 });
     } else {
-      this.sound.play('landing_rough', { volume: 0.8 });
+      this.sound.play('landing_rough', { volume: 1.0 });
     }
 
     // Stop shuttle
