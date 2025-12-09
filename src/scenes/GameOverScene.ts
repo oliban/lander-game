@@ -1035,16 +1035,8 @@ export class GameOverScene extends Phaser.Scene {
 
     this.addHighScore(this.playerName, score);
 
-    // Mark that we already saved, so we don't show name entry again
-    this.isNewHighScore = false;
-
-    // Restart scene - it will now show the leaderboard instead of name entry
-    this.scene.restart({
-      victory: this.wasVictory,
-      message: 'Score saved!',
-      score: score,
-      skipHighScoreCheck: true
-    });
+    // Start a new game after saving the high score
+    this.scene.start('GameScene');
   }
 
   private createLeaderboard(x: number, y: number, currentScore: number): void {
