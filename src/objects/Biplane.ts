@@ -432,10 +432,10 @@ export class Biplane extends Phaser.GameObjects.Container {
     // Redraw biplane (for propeller animation)
     this.drawBiplane();
 
-    // Check if WAY off screen (relative to camera) - use larger margin so chasing works
+    // Check if WAY off screen (relative to camera) - use very large margin
     const camera = this.scene.cameras.main;
-    const screenLeft = camera.scrollX - 800;  // Larger margin
-    const screenRight = camera.scrollX + GAME_WIDTH + 800;
+    const screenLeft = camera.scrollX - 2000;  // Very large margin
+    const screenRight = camera.scrollX + GAME_WIDTH + 2000;
 
     if (this.x < screenLeft || this.x > screenRight) {
       this.startWaiting();

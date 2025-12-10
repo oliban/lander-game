@@ -99,6 +99,10 @@ export class GameScene extends Phaser.Scene {
   private fisherBoat: FisherBoat | null = null;
   private shuttleOnBoat: boolean = false; // Track if shuttle has landed on boat
 
+  // Landing pad debounce (prevent re-triggering trade after closing)
+  private lastLandingTime: number = 0;
+  private lastTradedPad: LandingPad | null = null; // Track pad we just traded at
+
   // Golf cart in USA
   private golfCart: GolfCart | null = null;
   private epsteinFiles: Phaser.GameObjects.Container[] = [];
@@ -120,6 +124,7 @@ export class GameScene extends Phaser.Scene {
   // Water pollution from thrust/bombs
   private waterPollution: Phaser.GameObjects.Graphics | null = null;
   private waterPollutionLevel: number = 0; // 0-1, how dark the water is
+  private totalWaterPollutionParticles: number = 0; // Total particles ever added
   private sinkingScorchParticles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; rotation: number; rotSpeed: number; shape: number }[] = [];
 
   // Debug monitoring display
@@ -156,6 +161,7 @@ export class GameScene extends Phaser.Scene {
     this.oilTowers = [];
     this.scorchMarkData = [];
     this.waterPollutionLevel = 0;
+    this.totalWaterPollutionParticles = 0;
     this.sinkingScorchParticles = [];
     this.shuttles = [];
     this.shuttle2 = null;
@@ -164,6 +170,8 @@ export class GameScene extends Phaser.Scene {
     this.p2Controls = null;
     this.tombstoneGraphics = [];
     this.tombstoneBodies = [];
+    this.fisherBoat = null;
+    this.shuttleOnBoat = false;
     this.gameInitialized = false; // Reset to prevent splash effects on load
     // Note: p1Kills and p2Kills persist across restarts within a session
     // Reset death messages for new game
@@ -712,6 +720,13 @@ export class GameScene extends Phaser.Scene {
           }
         }
 
+        // Check shuttle collision with boat deck
+        if (this.isShuttleCollision(bodyA, bodyB, 'boatDeck')) {
+          const shuttleBody = bodyA.label === 'boatDeck' ? bodyB : bodyA;
+          const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
+          this.handleBoatDeckCollision(isP2 ? 2 : 1);
+        }
+
         // Check shuttle collision with projectile
         if (this.isShuttleCollision(bodyA, bodyB, 'projectile')) {
           const shuttleBody = bodyA.label === 'projectile' ? bodyB : bodyA;
@@ -1141,6 +1156,13 @@ export class GameScene extends Phaser.Scene {
     if (this.gameState !== 'playing') return;
     if (this.invulnerable) return; // Ignore collisions during invulnerability
 
+    // Debounce - prevent re-triggering trade immediately after closing
+    const now = Date.now();
+    if (now - this.lastLandingTime < 1000) return;
+
+    // Don't trigger trade again on the same pad until shuttle leaves
+    if (this.lastTradedPad === pad) return;
+
     // Get the correct shuttle
     const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
     if (!shuttle || !shuttle.active) return;
@@ -1213,6 +1235,8 @@ export class GameScene extends Phaser.Scene {
 
     // Successful landing
     this.gameState = 'landed';
+    this.lastLandingTime = Date.now();
+    this.lastTradedPad = pad;
 
     // Track landing achievement
     this.achievementSystem.onLanding(landingResult.quality);
@@ -1226,9 +1250,10 @@ export class GameScene extends Phaser.Scene {
       this.sound.play('landing_rough', { volume: 1.0 });
     }
 
-    // Stop shuttle
+    // Stop shuttle and auto-align upright
     shuttle.setVelocity(0, 0);
     shuttle.setAngularVelocity(0);
+    shuttle.setRotation(0);
 
     if (pad.isFinalDestination) {
       // Victory!
@@ -1366,169 +1391,148 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private checkBoatLanding(): void {
+  private checkBoatProximity(): void {
     if (!this.fisherBoat || this.fisherBoat.isDestroyed) return;
-    if (this.gameState !== 'playing') return;
-    if (this.shuttleOnBoat) return; // Already landed, don't trigger again
 
-    const deckBounds = this.fisherBoat.getLandingBounds();
-    const deckY = this.fisherBoat.getDeckY();
-
+    // Check if any shuttle is close to the boat (within 150px horizontally and 100px vertically)
+    let shuttleNearby = false;
     for (const shuttle of this.shuttles) {
       if (!shuttle.active) continue;
-
-      // Shuttle bottom is about 18 pixels below center
-      const shuttleBottom = shuttle.y + 18;
-      const distanceFromDeck = deckY - shuttleBottom;
-
-      // Check horizontal alignment
-      if (shuttle.x < deckBounds.x || shuttle.x > deckBounds.x + deckBounds.width) {
-        // Reset flag if shuttle leaves the boat
-        if (this.shuttleOnBoat) {
-          this.shuttleOnBoat = false;
-          this.fisherBoat!.hasShuttleLanded = false;
-        }
-        continue;
+      const horizDist = Math.abs(shuttle.x - this.fisherBoat.x);
+      const vertDist = Math.abs(shuttle.y - this.fisherBoat.y);
+      if (horizDist < 150 && vertDist < 100) {
+        shuttleNearby = true;
+        break;
       }
+    }
+    this.fisherBoat.shuttleNearby = shuttleNearby;
+  }
 
-      // Check vertical proximity (must be close to deck surface)
-      if (distanceFromDeck < -5 || distanceFromDeck > 15) {
-        continue;
-      }
+  private handleBoatDeckCollision(playerNum: number = 1): void {
+    if (this.gameState !== 'playing') return;
+    if (!this.fisherBoat || this.fisherBoat.isDestroyed) return;
 
-      // Check landing safety
-      const landingResult = shuttle.checkLandingSafety();
-      const velocity = shuttle.getVelocity();
+    // Debounce
+    const now = Date.now();
+    if (now - this.lastLandingTime < 1000) return;
+    if (this.shuttleOnBoat) return;
 
-      // Need to be moving slowly enough to "land"
-      if (velocity.total > 2) {
-        continue;
-      }
+    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+    if (!shuttle || !shuttle.active) return;
 
-      if (!landingResult.safe) {
-        // Crash on deck
-        console.log('CRASH: Bad landing on boat deck');
-        const playerNum = shuttle === this.shuttle2 ? 2 : 1;
+    const landingResult = shuttle.checkLandingSafety();
 
-        if (this.playerCount === 2) {
-          this.handleShuttleCrash(playerNum, `Crash landing on boat! ${landingResult.reason}`, 'landing');
-          return;
-        }
+    if (!landingResult.safe) {
+      console.log('CRASH: Bad landing on boat deck');
 
-        this.gameState = 'crashed';
-        shuttle.stopRocketSound();
-        this.spawnTombstone(shuttle.x, shuttle.y, 'landing');
-        shuttle.explode();
-
-        this.transitionToGameOver({
-          victory: false,
-          message: `Crash landing on boat! ${landingResult.reason}`,
-          score: this.destructionScore,
-          debugModeUsed: shuttle.wasDebugModeUsed(),
-          destroyedBuildings: this.destroyedBuildings,
-        });
+      if (this.playerCount === 2) {
+        this.handleShuttleCrash(playerNum, `Crash landing on boat! ${landingResult.reason}`, 'landing');
         return;
       }
 
-      // Successful landing on boat!
-      console.log('Successful landing on fishing boat!');
-      this.shuttleOnBoat = true;
-      this.fisherBoat!.hasShuttleLanded = true; // Stop boat bobbing
+      this.gameState = 'crashed';
+      shuttle.stopRocketSound();
+      this.spawnTombstone(shuttle.x, shuttle.y, 'landing');
+      shuttle.explode();
 
-      // Unlock achievement
-      this.achievementSystem.onBoatLanding();
+      this.transitionToGameOver({
+        victory: false,
+        message: `Crash landing on boat! ${landingResult.reason}`,
+        score: this.destructionScore,
+        debugModeUsed: shuttle.wasDebugModeUsed(),
+        destroyedBuildings: this.destroyedBuildings,
+      });
+      return;
+    }
 
-      // Check for "fish" package pickup (15% chance boat has it)
-      if (this.fisherBoat!.hasFishPackage && !this.fisherBoat!.fishPackageCollected) {
-        this.fisherBoat!.fishPackageCollected = true;
+    // Successful landing on boat!
+    console.log('Successful landing on fishing boat!');
+    this.shuttleOnBoat = true;
+    this.lastLandingTime = now;
 
-        // Add to inventory
-        const playerNum = shuttle === this.shuttle2 ? 2 : 1;
-        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-        invSys.add('FISH_PACKAGE');
+    // Unlock achievement
+    this.achievementSystem.onBoatLanding();
 
-        // Show pickup message
-        const fishText = this.add.text(shuttle.x, shuttle.y - 90, '"Fish" acquired!', {
-          fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '16px',
-          color: '#FFFFFF',
-          fontStyle: 'bold',
-          stroke: '#000000',
-          strokeThickness: 3,
-        });
-        fishText.setOrigin(0.5, 0.5);
-        fishText.setDepth(101);
+    // Check for "fish" package pickup (15% chance boat has it)
+    if (this.fisherBoat.hasFishPackage && !this.fisherBoat.fishPackageCollected) {
+      this.fisherBoat.fishPackageCollected = true;
 
-        this.tweens.add({
-          targets: fishText,
-          y: fishText.y - 30,
-          alpha: 0,
-          duration: 2500,
-          onComplete: () => fishText.destroy(),
-        });
+      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+      invSys.add('FISH_PACKAGE');
 
-        // Play boing sound for pickup
-        this.playBoingSound();
-      }
-
-      // Play landing sound
-      if (landingResult.quality === 'perfect') {
-        this.sound.play('landing_perfect', { volume: 1.0 });
-      } else if (landingResult.quality === 'good') {
-        this.sound.play('landing_good', { volume: 1.0 });
-      } else {
-        this.sound.play('landing_rough', { volume: 1.0 });
-      }
-
-      // Stop shuttle but don't fully land (boat is bobbing)
-      shuttle.setVelocity(0, 0);
-      shuttle.setAngularVelocity(0);
-
-      // Show boat landing message
-      const landingText = this.add.text(shuttle.x, shuttle.y - 60, 'BOAT LANDING!', {
+      const fishText = this.add.text(shuttle.x, shuttle.y - 90, '"Fish" acquired!', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '20px',
-        color: '#FFD700',
+        fontSize: '16px',
+        color: '#FFFFFF',
         fontStyle: 'bold',
         stroke: '#000000',
         strokeThickness: 3,
       });
-      landingText.setOrigin(0.5, 0.5);
-      landingText.setDepth(100);
+      fishText.setOrigin(0.5, 0.5);
+      fishText.setDepth(101);
 
       this.tweens.add({
-        targets: landingText,
-        y: landingText.y - 40,
+        targets: fishText,
+        y: fishText.y - 30,
         alpha: 0,
-        duration: 2000,
-        onComplete: () => landingText.destroy(),
+        duration: 2500,
+        onComplete: () => fishText.destroy(),
       });
 
-      // Make shuttle follow the boat's bobbing motion briefly
-      const startTime = this.time.now;
-      const followDuration = 3000; // Follow boat for 3 seconds
-
-      const followBoat = this.time.addEvent({
-        delay: 16,
-        repeat: Math.floor(followDuration / 16),
-        callback: () => {
-          if (!shuttle.active || this.fisherBoat?.isDestroyed) {
-            followBoat.destroy();
-            return;
-          }
-          // Keep shuttle on deck
-          shuttle.y = this.fisherBoat!.getDeckY() - 18;
-          shuttle.setVelocity(0, 0);
-
-          // After follow duration, allow takeoff
-          if (this.time.now - startTime > followDuration) {
-            followBoat.destroy();
-          }
-        },
-      });
-
-      break; // Only handle one landing at a time
+      this.playBoingSound();
     }
+
+    // Play landing sound
+    if (landingResult.quality === 'perfect') {
+      this.sound.play('landing_perfect', { volume: 1.0 });
+    } else if (landingResult.quality === 'good') {
+      this.sound.play('landing_good', { volume: 1.0 });
+    } else {
+      this.sound.play('landing_rough', { volume: 1.0 });
+    }
+
+    // Stop shuttle and auto-align upright
+    shuttle.setVelocity(0, 0);
+    shuttle.setAngularVelocity(0);
+    shuttle.setRotation(0);
+
+    // Show boat landing message
+    const landingText = this.add.text(shuttle.x, shuttle.y - 60, 'BOAT LANDING!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '20px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 3,
+    });
+    landingText.setOrigin(0.5, 0.5);
+    landingText.setDepth(100);
+
+    this.tweens.add({
+      targets: landingText,
+      y: landingText.y - 40,
+      alpha: 0,
+      duration: 2000,
+      onComplete: () => landingText.destroy(),
+    });
+
+    // Reset flag when shuttle leaves (detected by velocity)
+    const checkLeave = this.time.addEvent({
+      delay: 100,
+      loop: true,
+      callback: () => {
+        if (!shuttle.active || this.fisherBoat?.isDestroyed) {
+          this.shuttleOnBoat = false;
+          checkLeave.destroy();
+          return;
+        }
+        const velocity = shuttle.getVelocity();
+        if (velocity.total > 1) {
+          this.shuttleOnBoat = false;
+          checkLeave.destroy();
+        }
+      },
+    });
   }
 
   private createPeaceMedalGraphics(shuttle: Shuttle): void {
@@ -3491,6 +3495,38 @@ export class GameScene extends Phaser.Scene {
           return;
         }
       }
+
+    }
+
+    // Check all tombstones for thrust effect (separate from raycast loop for reliability)
+    for (const tombstoneBody of this.tombstoneBodies) {
+      const tbX = tombstoneBody.position.x;
+      const tbY = tombstoneBody.position.y;
+
+      // Check if tombstone is in the thrust cone
+      const dx = tbX - thrustPos.x;
+      const dy = tbY - thrustPos.y;
+      const distToTombstone = Math.sqrt(dx * dx + dy * dy);
+
+      // Only affect tombstones within thrust range
+      if (distToTombstone > 20 && distToTombstone < maxDistance) {
+        // Check if tombstone is roughly in thrust direction (dot product)
+        const normalizedDx = dx / distToTombstone;
+        const normalizedDy = dy / distToTombstone;
+        const dotProduct = normalizedDx * thrustDir.x + normalizedDy * thrustDir.y;
+
+        console.log(`Tombstone check: dist=${distToTombstone.toFixed(0)}, dot=${dotProduct.toFixed(2)}, thrustDir=(${thrustDir.x.toFixed(2)},${thrustDir.y.toFixed(2)})`);
+
+        // Only affect if in front of thrust (dot > 0.5 means within ~60 degree cone)
+        if (dotProduct > 0.5) {
+          // Apply force in thrust direction, stronger when closer
+          const forceMagnitude = 0.05 * (1 - distToTombstone / maxDistance);
+          this.matter.body.applyForce(tombstoneBody, tombstoneBody.position, {
+            x: thrustDir.x * forceMagnitude,
+            y: thrustDir.y * forceMagnitude,
+          });
+        }
+      }
     }
   }
 
@@ -3736,6 +3772,7 @@ export class GameScene extends Phaser.Scene {
         rotSpeed: (Math.random() - 0.5) * 0.05, // Tumbling
         shape: Math.floor(Math.random() * 3), // 0=flake, 1=elongated, 2=irregular
       });
+      this.totalWaterPollutionParticles++;
     }
 
     // Increase water pollution level
@@ -4073,10 +4110,20 @@ export class GameScene extends Phaser.Scene {
 
     // Update fisherboat (bob with waves) and check for landing
     if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
+      // Check shuttle proximity to stop bobbing
+      this.checkBoatProximity();
       this.fisherBoat.update(this.terrain.getWaveOffset());
+    }
 
-      // Check if any shuttle is landing on the boat deck
-      this.checkBoatLanding();
+    // Clear lastTradedPad when shuttle leaves the pad
+    if (this.lastTradedPad) {
+      const pad = this.lastTradedPad;
+      const shuttle = this.shuttle;
+      const halfPadWidth = pad.width / 2;
+      const horizontalDistance = Math.abs(shuttle.x - pad.x);
+      if (horizontalDistance > halfPadWidth + 20) {
+        this.lastTradedPad = null;
+      }
     }
 
     // Update golf cart (patrol and flee from nearest shuttle)
@@ -4275,11 +4322,16 @@ export class GameScene extends Phaser.Scene {
     // Update debug monitoring display
     if (this.debugText) {
       const fps = Math.round(this.game.loop.actualFps);
+      // Sum chemtrail particles from all shuttles
+      let totalChemtrails = 0;
+      for (const shuttle of this.shuttles) {
+        totalChemtrails += shuttle.getChemtrailParticleCount();
+      }
       this.debugText.setText(
         `FPS: ${fps}\n` +
         `Scorch: ${this.scorchMarkData.length}\n` +
-        `WaterPart: ${this.sinkingScorchParticles.length}\n` +
-        `Pollution: ${(this.waterPollutionLevel * 100).toFixed(1)}%`
+        `Water Pollution: ${this.totalWaterPollutionParticles}\n` +
+        `Air Pollution: ${totalChemtrails}`
       );
     }
 
