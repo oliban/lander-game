@@ -45,7 +45,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     this.setRectangle(28, 36);
 
     this.setFrictionAir(0.02); // Increased for heavier, more dampened feel
-    this.setBounce(0.3); // Bouncy enough to survive light touches
+    this.setBounce(0.7); // Bouncy for ship-to-ship collisions
     this.setFixedRotation();
     this.setMass(5); // Heavier mass for more inertia
 
@@ -53,7 +53,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
     // Set collision category
     this.setCollisionCategory(1);
-    this.setCollidesWith([2, 3, 4]); // terrain, landing pads, projectiles
+    this.setCollidesWith([1, 2, 3, 4, 8]); // shuttles, terrain, landing pads, projectiles, tombstones
 
     // Apply tint for Player 2 to distinguish from Player 1
     if (playerIndex === 1) {

@@ -116,6 +116,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: 'Crash with zero fuel',
     tier: 'bronze',
   },
+  {
+    id: 'puskas_award',
+    name: 'Puskás Award',
+    description: "Bounce a tombstone 3 times - hey you're Leo Messi!",
+    tier: 'gold',
+  },
 
   // 2-Player Combat (3)
   {
