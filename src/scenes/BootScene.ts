@@ -145,6 +145,10 @@ export class BootScene extends Phaser.Scene {
       this.load.audio(`bombhit${i}`, `assets/audio/bombhit${i}.mp3`);
     }
 
+    // Player kill sounds (2-player mode)
+    this.load.audio('p1_gotcha', 'assets/audio/trump-gotcha.mp3');
+    this.load.audio('p2_gotcha', 'assets/audio/p2-gotcha.mp3');
+
     // Explosion sound effects
     for (let i = 1; i <= 3; i++) {
       this.load.audio(`explosion${i}`, `assets/audio/explosion${i}.mp3`);
