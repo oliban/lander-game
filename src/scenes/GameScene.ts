@@ -124,6 +124,9 @@ export class GameScene extends Phaser.Scene {
   // Achievement system
   private achievementSystem!: AchievementSystem;
   private cannonsDestroyedThisGame: number = 0;
+  private tombstoneBounceCount: number = 0;
+  private juggledTombstoneId: number | null = null; // Track which tombstone is being juggled
+  private lastTombstoneBounceTime: number = 0; // Debounce multiple collision events
 
   constructor() {
     super({ key: 'GameScene' });
@@ -252,7 +255,6 @@ export class GameScene extends Phaser.Scene {
 
     // Create Player 1 shuttle
     const p1X = this.playerCount === 2 ? startPad.x - 30 : startPad.x; // Offset left if 2 players, stay on pad
-    console.log('Starting P1 shuttle at:', p1X, shuttleStartY, 'pad.y:', startPad.y);
     this.shuttle = new Shuttle(this, p1X, shuttleStartY, 0);
     this.shuttle.setFuelSystem(this.fuelSystem);
     this.shuttle.setVelocity(0, 0);
@@ -262,7 +264,6 @@ export class GameScene extends Phaser.Scene {
     // Create Player 2 shuttle if 2-player mode
     if (this.playerCount === 2 && this.fuelSystem2) {
       const p2X = startPad.x + 30; // Offset right, stay on pad
-      console.log('Starting P2 shuttle at:', p2X, shuttleStartY);
       this.shuttle2 = new Shuttle(this, p2X, shuttleStartY, 1);
       this.shuttle2.setFuelSystem(this.fuelSystem2);
       this.shuttle2.setVelocity(0, 0);
@@ -707,8 +708,50 @@ export class GameScene extends Phaser.Scene {
             this.handleCollectiblePickup(collectible, isP2 ? 2 : 1);
           }
         }
+
+        // Check shuttle collision with tombstone (for Puskás Award)
+        if (this.isShuttleCollision(bodyA, bodyB, 'tombstone')) {
+          const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
+          this.handleTombstoneBounce(tombstoneBody.id);
+        }
+
+        // Check tombstone collision with terrain (resets juggle count)
+        if ((bodyA.label === 'tombstone' && bodyB.label === 'terrain') ||
+            (bodyB.label === 'tombstone' && bodyA.label === 'terrain')) {
+          const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
+          if (tombstoneBody.id === this.juggledTombstoneId) {
+            // Tombstone hit ground - reset juggle
+            this.tombstoneBounceCount = 0;
+            this.juggledTombstoneId = null;
+          }
+        }
       }
     });
+  }
+
+  private handleTombstoneBounce(tombstoneId: number): void {
+    const now = Date.now();
+
+    // Debounce - ignore if same tombstone collision within 200ms (physics fires multiple events)
+    if (tombstoneId === this.juggledTombstoneId && now - this.lastTombstoneBounceTime < 200) {
+      return;
+    }
+
+    // If different tombstone, reset count
+    if (this.juggledTombstoneId !== tombstoneId) {
+      this.tombstoneBounceCount = 0;
+      this.juggledTombstoneId = tombstoneId;
+    }
+
+    this.lastTombstoneBounceTime = now;
+    this.tombstoneBounceCount++;
+
+    console.log(`Tombstone bounce #${this.tombstoneBounceCount} (tombstone ${tombstoneId})`);
+
+    // Award achievement for 3 bounces in a row without hitting ground
+    if (this.tombstoneBounceCount >= 3) {
+      this.achievementSystem.unlock('puskas_award');
+    }
   }
 
   private isShuttleCollision(bodyA: MatterJS.BodyType, bodyB: MatterJS.BodyType, label: string): boolean {
@@ -3811,12 +3854,10 @@ export class GameScene extends Phaser.Scene {
   private loadTombstones(): void {
     try {
       const saved = localStorage.getItem(GameScene.TOMBSTONE_STORAGE_KEY);
-      console.log('Loading tombstones, saved data:', saved);
       if (saved) {
         const tombstones: { x: number; y: number; date: string; cause?: CauseOfDeath }[] = JSON.parse(saved);
         // Limit to last 20 tombstones to prevent clutter
         const recent = tombstones.slice(-20);
-        console.log('Loading', recent.length, 'tombstones');
         for (const ts of recent) {
           // All tombstones have physics so they react to explosions
           this.createTombstoneGraphic(ts.x, ts.y, false, false, ts.cause);
@@ -3938,7 +3979,7 @@ export class GameScene extends Phaser.Scene {
         mass: 2,
         collisionFilter: {
           category: 8, // New category for tombstones
-          mask: 2, // Only collide with terrain (category 2)
+          mask: 1 | 2, // Collide with shuttles (1) and terrain (2)
         },
       });
       this.tombstoneBodies.push(body);
@@ -3974,7 +4015,6 @@ export class GameScene extends Phaser.Scene {
     } else {
       // Normal death - spawn physics tombstone at death location
       // It will fall if in mid-air, and can be knocked around by explosions
-      console.log('Spawning tombstone at', deathX, deathY, 'cause:', cause);
 
       // Save to localStorage (use terrain Y for persistence, body will settle there)
       this.saveTombstone(deathX, terrainY, cause);
