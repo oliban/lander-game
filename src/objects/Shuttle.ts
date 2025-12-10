@@ -71,7 +71,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Set up landing legs key (spacebar)
     if (scene.input.keyboard) {
       this.legsKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-      this.debugKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+      this.debugKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX);
     }
 
     // Create debug label (hidden initially)
