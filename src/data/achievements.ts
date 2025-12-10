@@ -78,6 +78,13 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: 'Destroy a golf cart',
     tier: 'bronze',
   },
+  {
+    id: 'red_baron',
+    name: 'Red Baron',
+    description: 'Shoot down the propaganda biplane',
+    tier: 'silver',
+    hidden: true,
+  },
 
   // Deaths & Mishaps (5)
   {

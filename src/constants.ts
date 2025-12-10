@@ -78,6 +78,14 @@ export const COLLECTIBLE_TYPES = {
   MATRYOSHKA: { name: 'Matryoshka', fuelValue: 60, rarity: 0.05, color: 0xFF6347, russianOnly: true }, // Tomato red
   OLIGARCH_GOLD: { name: 'Oligarch Gold', fuelValue: 150, rarity: 0.05, color: 0xFFD700, russianOnly: true }, // Gold
 
+  // Propaganda banners (from biplane)
+  USA_PROPAGANDA: { name: 'American Propaganda', fuelValue: 5, rarity: 0, color: 0x3C3B6E },
+  UK_PROPAGANDA: { name: 'British Propaganda', fuelValue: 5, rarity: 0, color: 0x012169 },
+  FRANCE_PROPAGANDA: { name: 'French Propaganda', fuelValue: 5, rarity: 0, color: 0x0055A4 },
+  GERMANY_PROPAGANDA: { name: 'German Propaganda', fuelValue: 5, rarity: 0, color: 0x000000 },
+  POLAND_PROPAGANDA: { name: 'Polish Propaganda', fuelValue: 5, rarity: 0, color: 0xDC143C },
+  RUSSIA_PROPAGANDA: { name: 'Russian Facts', fuelValue: 5, rarity: 0, color: 0x0039A6 },
+
   // Easter egg
   TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C }, // Tan
 

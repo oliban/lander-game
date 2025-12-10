@@ -1,0 +1,574 @@
+import Phaser from 'phaser';
+import { COUNTRIES, GAME_HEIGHT, GAME_WIDTH } from '../constants';
+
+// Country-specific colors matching their flags
+const BIPLANE_COLORS: Record<string, { primary: number; secondary: number; accent: number }> = {
+  'USA': { primary: 0xFFFFFF, secondary: 0xB22234, accent: 0x3C3B6E },
+  'United Kingdom': { primary: 0xFFFFFF, secondary: 0xC8102E, accent: 0x012169 },
+  'France': { primary: 0xFFFFFF, secondary: 0x0055A4, accent: 0xEF4135 },
+  'Germany': { primary: 0xFFCC00, secondary: 0x000000, accent: 0xDD0000 },
+  'Poland': { primary: 0xFFFFFF, secondary: 0xDC143C, accent: 0xDC143C },
+  'Russia': { primary: 0xFFFFFF, secondary: 0x0039A6, accent: 0xD52B1E },
+};
+
+// Country to propaganda item type mapping
+const PROPAGANDA_TYPES: Record<string, string> = {
+  'USA': 'USA_PROPAGANDA',
+  'United Kingdom': 'UK_PROPAGANDA',
+  'France': 'FRANCE_PROPAGANDA',
+  'Germany': 'GERMANY_PROPAGANDA',
+  'Poland': 'POLAND_PROPAGANDA',
+  'Russia': 'RUSSIA_PROPAGANDA',
+};
+
+// Country-specific dark humor messages
+const BANNER_MESSAGES: Record<string, string[]> = {
+  'USA': [
+    "FREEDOM ISN'T FREE - $19.99/MONTH",
+    "THOUGHTS AND PRAYERS INCLUDED",
+    "MAKE LANDINGS GREAT AGAIN",
+    "HEALTHCARE? JUST DON'T CRASH",
+    "SPONSORED BY BIG OIL",
+    "SECOND AMENDMENT APPLIES TO MISSILES",
+    "STUDENT DEBT FOLLOWS YOU TO ЯUSSIA",
+  ],
+  'United Kingdom': [
+    "BREXIT MEANS BREXIT MEANS CRASH",
+    "QUEUE HERE FOR FIERY DEATH",
+    "KEEP CALM AND AVOID TEACUPS",
+    "SORRY FOR THE COLONIALISM LOL",
+    "NHS WAIT TIME: 6-8 WEEKS",
+    "MIND THE GAP (IN YOUR FUEL TANK)",
+    "TEA BREAK? NOT WHILE FLYING",
+  ],
+  'France': [
+    "SURRENDER IS ALWAYS AN OPTION",
+    "BAGUETTES: WEAPONIZED SINCE 1789",
+    "ON STRIKE - FLY YOURSELF",
+    "LIBERTÉ, ÉGALITÉ, CRASHÉ",
+    "35-HOUR FLIGHT WEEK ONLY",
+    "WINE PAIRS WELL WITH EXPLOSIONS",
+    "REVOLUTION TIME? OUI OUI",
+  ],
+  'Germany': [
+    "EFFICIENCY IS MANDATORY",
+    "AUTOBAHN RULES DON'T APPLY HERE",
+    "ORDNUNG MUSS SEIN - THEN DIE",
+    "PRETZEL VELOCITY: LETHAL",
+    "NO HUMOR ZONE - KEEP MOVING",
+    "BEER BREAK AT CRASH SITE",
+    "VOLKSWAGEN: NOW WITH WINGS",
+  ],
+  'Poland': [
+    "CANNOT INTO SPACE BUT CAN INTO YOU",
+    "PIEROGI POWER UNLIMITED",
+    "KURWA! WATCH THE BUILDINGS",
+    "PARTITION THIS, GERMANY",
+    "SOLIDARITY WITH YOUR SMOKING WRECK",
+    "POPE APPROVED FLIGHT PATH",
+    "KIELBASA FUELED AVIATION",
+  ],
+  'Russia': [
+    "JOIN GRU TODAY - GREAT BENEFITS, NO WINDOWS",
+    "IN SOVIET ЯUSSIA, PLANE LANDS YOU",
+    "FREE POLONIUM TEA AT DESTINATION",
+    "WINDOW ACCIDENTS OOO - WE PUSH BOUNDARIES",
+    "KREMLIN HR: 0 DAYS SINCE ACCIDENT",
+    "GULAG AIRLINES - ONE WAY ONLY",
+    "NOVICHOK: NOW IN AEROSOL",
+    "BLYAT! FUEL IS JUST SUGGESTION",
+    "PUTIN WANTS YOU... ALIVE OR DEAD",
+  ],
+};
+
+// Valid countries for biplane spawning (excluding Washington DC and Atlantic Ocean)
+const VALID_COUNTRIES = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+
+export class Biplane extends Phaser.GameObjects.Container {
+  public isDestroyed: boolean = false;
+  public readonly pointValue: number = 1000;
+  public readonly planeName: string = 'Propaganda Plane';
+  public country: string;
+
+  private graphics: Phaser.GameObjects.Graphics;
+  private bannerContainer: Phaser.GameObjects.Container;
+  private propellerAngle: number = 0;
+  private colors: { primary: number; secondary: number; accent: number };
+  private message: string;
+  private direction: number; // 1 = right, -1 = left
+  private speed: number = 2.5;
+  private isWaiting: boolean = false;
+  private waitTimer: Phaser.Time.TimerEvent | null = null;
+  private collisionWidth: number = 70;
+  private collisionHeight: number = 35;
+  private baseY: number;
+
+  constructor(scene: Phaser.Scene) {
+    // Randomly select a country to spawn over
+    const countryName = VALID_COUNTRIES[Math.floor(Math.random() * VALID_COUNTRIES.length)];
+    const countryData = COUNTRIES.find(c => c.name === countryName)!;
+    const nextCountry = COUNTRIES.find(c => c.startX > countryData.startX);
+
+    const countryStartX = countryData.startX;
+    const countryEndX = nextCountry ? nextCountry.startX : countryData.startX + 6000;
+
+    // Spawn in middle of country, high in sky
+    const spawnX = countryStartX + (countryEndX - countryStartX) / 2;
+    const spawnY = 100 + Math.random() * 40; // 100-140px from top
+
+    super(scene, spawnX, spawnY);
+
+    this.country = countryName;
+    this.baseY = spawnY;
+    this.colors = BIPLANE_COLORS[countryName] || BIPLANE_COLORS['USA'];
+
+    // Pick random message for this country
+    const messages = BANNER_MESSAGES[countryName] || BANNER_MESSAGES['USA'];
+    this.message = messages[Math.floor(Math.random() * messages.length)];
+
+    // Random direction
+    this.direction = Math.random() > 0.5 ? 1 : -1;
+
+    this.graphics = scene.add.graphics();
+    this.bannerContainer = scene.add.container(0, 0);
+
+    this.add(this.graphics);
+    this.add(this.bannerContainer);
+
+    this.drawBiplane();
+    this.createBanner();
+    this.setDepth(5); // Below shuttle but visible
+
+    // Flip if going left
+    if (this.direction === -1) {
+      this.setScale(-1, 1);
+    }
+
+    scene.add.existing(this);
+  }
+
+  private drawBiplane(): void {
+    this.graphics.clear();
+
+    const { primary, secondary, accent } = this.colors;
+
+    // === SIMPLE CLASSIC BIPLANE DESIGN ===
+
+    // UPPER WING (longer, sits above fuselage)
+    this.graphics.fillStyle(secondary, 1);
+    this.graphics.fillRect(-32, -14, 64, 6);
+    this.graphics.fillStyle(accent, 1);
+    this.graphics.fillRect(-32, -14, 8, 6); // Left tip
+    this.graphics.fillRect(24, -14, 8, 6);  // Right tip
+    this.graphics.lineStyle(1, 0x222222, 0.8);
+    this.graphics.strokeRect(-32, -14, 64, 6);
+
+    // WING STRUTS (simple vertical lines)
+    this.graphics.lineStyle(3, 0x8B4513, 1);
+    this.graphics.beginPath();
+    this.graphics.moveTo(-18, -8);
+    this.graphics.lineTo(-18, 6);
+    this.graphics.moveTo(18, -8);
+    this.graphics.lineTo(18, 6);
+    this.graphics.strokePath();
+
+    // FUSELAGE (simple rounded rectangle body)
+    this.graphics.fillStyle(primary, 1);
+    this.graphics.fillRoundedRect(-28, -5, 56, 12, 3);
+
+    // Fuselage stripe
+    this.graphics.fillStyle(secondary, 1);
+    this.graphics.fillRect(-20, -1, 40, 4);
+
+    // Fuselage outline
+    this.graphics.lineStyle(1.5, 0x222222, 0.8);
+    this.graphics.strokeRoundedRect(-28, -5, 56, 12, 3);
+
+    // LOWER WING (shorter, attached to fuselage)
+    this.graphics.fillStyle(secondary, 1);
+    this.graphics.fillRect(-26, 6, 52, 5);
+    this.graphics.fillStyle(accent, 1);
+    this.graphics.fillRect(-26, 6, 6, 5);  // Left tip
+    this.graphics.fillRect(20, 6, 6, 5);   // Right tip
+    this.graphics.lineStyle(1, 0x222222, 0.8);
+    this.graphics.strokeRect(-26, 6, 52, 5);
+
+    // ENGINE (dark cylinder at front)
+    this.graphics.fillStyle(0x444444, 1);
+    this.graphics.fillCircle(30, 1, 7);
+    this.graphics.fillStyle(0x333333, 1);
+    this.graphics.fillCircle(32, 1, 5);
+
+    // PROPELLER
+    this.drawPropeller();
+
+    // COCKPIT (open cockpit with pilot)
+    this.graphics.fillStyle(0x333333, 1);
+    this.graphics.fillRect(2, -8, 14, 6);
+
+    // Pilot (simple circle head with goggles)
+    this.graphics.fillStyle(0xFFDBAC, 1);
+    this.graphics.fillCircle(9, -6, 4);
+    this.graphics.fillStyle(0x8B4513, 1);
+    this.graphics.fillCircle(9, -8, 3); // Leather cap
+    this.graphics.fillStyle(0x222222, 1);
+    this.graphics.fillRect(7, -7, 5, 2); // Goggles
+
+    // TAIL FIN (vertical)
+    this.graphics.fillStyle(accent, 1);
+    this.graphics.beginPath();
+    this.graphics.moveTo(-24, -5);
+    this.graphics.lineTo(-30, -12);
+    this.graphics.lineTo(-30, -5);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(1, 0x222222, 0.8);
+    this.graphics.strokePath();
+
+    // TAIL STABILIZER (horizontal)
+    this.graphics.fillStyle(accent, 1);
+    this.graphics.fillRect(-34, 0, 12, 3);
+    this.graphics.lineStyle(1, 0x222222, 0.8);
+    this.graphics.strokeRect(-34, 0, 12, 3);
+
+    // LANDING GEAR (simple)
+    this.graphics.lineStyle(2, 0x666666, 1);
+    this.graphics.beginPath();
+    this.graphics.moveTo(-6, 10);
+    this.graphics.lineTo(-10, 18);
+    this.graphics.moveTo(6, 10);
+    this.graphics.lineTo(10, 18);
+    this.graphics.strokePath();
+
+    // Wheels
+    this.graphics.fillStyle(0x333333, 1);
+    this.graphics.fillCircle(-10, 20, 4);
+    this.graphics.fillCircle(10, 20, 4);
+    this.graphics.fillStyle(0x666666, 1);
+    this.graphics.fillCircle(-10, 20, 2);
+    this.graphics.fillCircle(10, 20, 2);
+
+    // Tail wheel
+    this.graphics.fillStyle(0x333333, 1);
+    this.graphics.fillCircle(-32, 5, 2);
+  }
+
+  private drawPropeller(): void {
+    const hubX = 36;
+
+    // Propeller hub
+    this.graphics.fillStyle(0x444444, 1);
+    this.graphics.fillCircle(hubX, 1, 3);
+
+    // Draw 2-blade propeller (simple wooden blades)
+    const bladeLength = 16;
+
+    for (let i = 0; i < 2; i++) {
+      const angle = this.propellerAngle + (i * Math.PI);
+      const endX = hubX + Math.cos(angle) * bladeLength;
+      const endY = 1 + Math.sin(angle) * bladeLength;
+
+      // Wooden blade
+      this.graphics.lineStyle(4, 0xDEB887, 1);
+      this.graphics.beginPath();
+      this.graphics.moveTo(hubX, 1);
+      this.graphics.lineTo(endX, endY);
+      this.graphics.strokePath();
+
+      // Dark edge
+      this.graphics.lineStyle(1, 0x8B4513, 0.6);
+      this.graphics.beginPath();
+      this.graphics.moveTo(hubX, 1);
+      this.graphics.lineTo(endX, endY);
+      this.graphics.strokePath();
+    }
+
+    // Blur disc when spinning
+    this.graphics.lineStyle(1, 0xDEB887, 0.12);
+    this.graphics.strokeCircle(hubX, 1, bladeLength - 1);
+  }
+
+  private createBanner(): void {
+    // Clear previous banner
+    this.bannerContainer.removeAll(true);
+
+    const textWidth = this.message.length * 7.5;
+    const bannerWidth = Math.max(textWidth + 30, 100);
+    const bannerHeight = 20;
+    const ropeLength = 45;
+
+    // Banner position (behind the plane)
+    const bannerX = -42 - ropeLength - bannerWidth / 2;
+    const bannerY = 3;
+
+    // Create tow rope
+    const ropeGraphics = this.scene.add.graphics();
+    ropeGraphics.lineStyle(2, 0x8B4513, 1);
+    ropeGraphics.beginPath();
+    ropeGraphics.moveTo(-36, 1);
+    // Slightly curved rope
+    ropeGraphics.lineTo(-50, 3);
+    ropeGraphics.lineTo(-65, 2);
+    ropeGraphics.lineTo(-80, 4);
+    ropeGraphics.lineTo(bannerX + bannerWidth / 2 + 5, bannerY);
+    ropeGraphics.strokePath();
+    this.bannerContainer.add(ropeGraphics);
+
+    // Banner
+    const bannerGraphics = this.scene.add.graphics();
+
+    // Banner shadow
+    bannerGraphics.fillStyle(0x000000, 0.15);
+    bannerGraphics.fillRoundedRect(
+      bannerX - bannerWidth / 2 + 2,
+      bannerY - bannerHeight / 2 + 2,
+      bannerWidth,
+      bannerHeight,
+      3
+    );
+
+    // Main banner (cream/white)
+    bannerGraphics.fillStyle(0xFFFFF5, 1);
+    bannerGraphics.fillRoundedRect(
+      bannerX - bannerWidth / 2,
+      bannerY - bannerHeight / 2,
+      bannerWidth,
+      bannerHeight,
+      3
+    );
+
+    // Banner border (country accent color)
+    bannerGraphics.lineStyle(2.5, this.colors.accent, 1);
+    bannerGraphics.strokeRoundedRect(
+      bannerX - bannerWidth / 2,
+      bannerY - bannerHeight / 2,
+      bannerWidth,
+      bannerHeight,
+      3
+    );
+
+    // Inner accent line
+    bannerGraphics.lineStyle(1, this.colors.secondary, 0.4);
+    bannerGraphics.strokeRoundedRect(
+      bannerX - bannerWidth / 2 + 3,
+      bannerY - bannerHeight / 2 + 3,
+      bannerWidth - 6,
+      bannerHeight - 6,
+      2
+    );
+
+    this.bannerContainer.add(bannerGraphics);
+
+    // Banner text
+    const bannerText = this.scene.add.text(bannerX, bannerY, this.message, {
+      fontSize: '10px',
+      fontFamily: 'Arial Black, Arial',
+      color: '#1a1a1a',
+      fontStyle: 'bold',
+    });
+    bannerText.setOrigin(0.5, 0.5);
+
+    // Keep text readable when plane flips
+    if (this.direction === -1) {
+      bannerText.setScale(-1, 1);
+    }
+
+    this.bannerContainer.add(bannerText);
+
+    // Attachment grommet
+    const grommetGraphics = this.scene.add.graphics();
+    grommetGraphics.fillStyle(0x888888, 1);
+    grommetGraphics.fillCircle(bannerX + bannerWidth / 2 - 3, bannerY, 3);
+    grommetGraphics.fillStyle(0x666666, 1);
+    grommetGraphics.fillCircle(bannerX + bannerWidth / 2 - 3, bannerY, 1.5);
+    this.bannerContainer.add(grommetGraphics);
+  }
+
+  update(time: number, _delta: number): void {
+    if (this.isDestroyed || this.isWaiting) return;
+
+    // Move in current direction
+    this.x += this.speed * this.direction;
+
+    // Spin propeller fast
+    this.propellerAngle += 0.7;
+
+    // Gentle bobbing motion
+    const bobOffset = Math.sin(time * 0.003) * 3;
+    this.y = this.baseY + bobOffset;
+
+    // Slight pitch variation
+    this.rotation = Math.sin(time * 0.002) * 0.02;
+
+    // Redraw biplane (for propeller animation)
+    this.drawBiplane();
+
+    // Check if WAY off screen (relative to camera) - use larger margin so chasing works
+    const camera = this.scene.cameras.main;
+    const screenLeft = camera.scrollX - 800;  // Larger margin
+    const screenRight = camera.scrollX + GAME_WIDTH + 800;
+
+    if (this.x < screenLeft || this.x > screenRight) {
+      this.startWaiting();
+    }
+  }
+
+  private startWaiting(): void {
+    this.isWaiting = true;
+    this.setVisible(false);
+
+    // Wait 5 seconds then re-enter
+    this.waitTimer = this.scene.time.delayedCall(5000, () => {
+      if (this.isDestroyed) return;
+
+      const camera = this.scene.cameras.main;
+
+      // Re-enter from the side we exited
+      if (this.direction === 1) {
+        this.x = camera.scrollX - 200;
+      } else {
+        this.x = camera.scrollX + GAME_WIDTH + 200;
+      }
+
+      this.isWaiting = false;
+      this.setVisible(true);
+    });
+  }
+
+  getCollisionBounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.x - this.collisionWidth / 2,
+      y: this.y - this.collisionHeight / 2,
+      width: this.collisionWidth,
+      height: this.collisionHeight,
+    };
+  }
+
+  explode(): { name: string; points: number; bannerPosition: { x: number; y: number }; propagandaType: string; message: string; accentColor: number } {
+    if (this.isDestroyed) return { name: this.planeName, points: 0, bannerPosition: { x: this.x, y: this.y }, propagandaType: PROPAGANDA_TYPES[this.country] || 'USA_PROPAGANDA', message: this.message, accentColor: this.colors.accent };
+
+    this.isDestroyed = true;
+
+    if (this.waitTimer) {
+      this.waitTimer.destroy();
+    }
+
+    const scene = this.scene;
+    const x = this.x;
+    const y = this.y;
+
+    // Big explosion flash
+    const flash = scene.add.graphics();
+    flash.fillStyle(0xFF6600, 1);
+    flash.fillCircle(0, 0, 45);
+    flash.fillStyle(0xFFAA00, 1);
+    flash.fillCircle(0, 0, 30);
+    flash.fillStyle(0xFFFF00, 1);
+    flash.fillCircle(0, 0, 18);
+    flash.fillStyle(0xFFFFFF, 1);
+    flash.fillCircle(0, 0, 8);
+    flash.setPosition(x, y);
+    flash.setDepth(100);
+
+    scene.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 2.5,
+      duration: 350,
+      onComplete: () => flash.destroy(),
+    });
+
+    // Flying debris (plane parts in country colors)
+    const debrisColors = [this.colors.primary, this.colors.secondary, this.colors.accent, 0x8B4513, 0x333333, 0xDEB887];
+    for (let i = 0; i < 20; i++) {
+      const angle = (i / 20) * Math.PI * 2;
+      const debris = scene.add.graphics();
+      const color = debrisColors[i % debrisColors.length];
+      debris.fillStyle(color, 1);
+
+      // Random debris shapes
+      const shapeType = i % 6;
+      if (shapeType === 0) {
+        debris.fillRect(-10, -2, 20, 4); // Wing piece
+      } else if (shapeType === 1) {
+        debris.fillRect(-1.5, -8, 3, 16); // Strut
+      } else if (shapeType === 2) {
+        debris.fillEllipse(0, 0, 10, 5); // Fuselage piece
+      } else if (shapeType === 3) {
+        debris.fillCircle(0, 0, 5); // Wheel
+        debris.fillStyle(0x888888, 1);
+        debris.fillCircle(0, 0, 2);
+      } else if (shapeType === 4) {
+        // Propeller blade
+        debris.fillRect(-2, -8, 4, 16);
+        debris.fillStyle(0x8B4513, 1);
+        debris.fillCircle(0, -8, 2);
+      } else {
+        debris.fillCircle(0, 0, 2 + Math.random() * 3);
+      }
+
+      debris.setPosition(x + (Math.random() - 0.5) * 40, y + (Math.random() - 0.5) * 25);
+      debris.setDepth(101);
+
+      const distance = 70 + Math.random() * 80;
+      scene.tweens.add({
+        targets: debris,
+        x: x + Math.cos(angle) * distance + (Math.random() - 0.5) * 50,
+        y: y + Math.sin(angle) * distance + 150,
+        angle: Math.random() * 1440 - 720,
+        alpha: 0,
+        duration: 1200 + Math.random() * 600,
+        ease: 'Quad.easeOut',
+        onComplete: () => debris.destroy(),
+      });
+    }
+
+    // Smoke puffs
+    for (let i = 0; i < 12; i++) {
+      const smoke = scene.add.graphics();
+      const smokeSize = 10 + Math.random() * 18;
+      smoke.fillStyle(0x555555, 0.5);
+      smoke.fillCircle(0, 0, smokeSize);
+      smoke.fillStyle(0x777777, 0.3);
+      smoke.fillCircle(smokeSize * 0.3, -smokeSize * 0.3, smokeSize * 0.5);
+      smoke.setPosition(
+        x + (Math.random() - 0.5) * 60,
+        y + (Math.random() - 0.5) * 35
+      );
+      smoke.setDepth(99);
+
+      scene.tweens.add({
+        targets: smoke,
+        alpha: 0,
+        scale: 3,
+        y: smoke.y - 100 - Math.random() * 50,
+        x: smoke.x + (Math.random() - 0.5) * 80,
+        duration: 1800 + Math.random() * 1000,
+        ease: 'Quad.easeOut',
+        onComplete: () => smoke.destroy(),
+      });
+    }
+
+    // Hide the plane
+    this.setVisible(false);
+
+    // Return banner info for GameScene to spawn collectible
+    return {
+      name: this.planeName,
+      points: this.pointValue,
+      bannerPosition: { x: x - 50, y },
+      propagandaType: PROPAGANDA_TYPES[this.country] || 'USA_PROPAGANDA',
+      message: this.message,
+      accentColor: this.colors.accent,
+    };
+  }
+
+  destroy(fromScene?: boolean): void {
+    if (this.waitTimer) {
+      this.waitTimer.destroy();
+    }
+    this.graphics.destroy();
+    this.bannerContainer.destroy(true);
+    super.destroy(fromScene);
+  }
+}
