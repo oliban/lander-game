@@ -83,6 +83,10 @@ export class GameScene extends Phaser.Scene {
   private destructionScore: number = 0;
   private destroyedBuildings: { name: string; points: number; textureKey: string; country: string }[] = [];
 
+  // Player vs player kill tracking (2-player mode)
+  private p1Kills: number = 0;
+  private p2Kills: number = 0;
+
   // Fisherboat in Atlantic
   private fisherBoat: FisherBoat | null = null;
 
@@ -139,6 +143,7 @@ export class GameScene extends Phaser.Scene {
     this.tombstoneGraphics = [];
     this.tombstoneBodies = [];
     this.gameInitialized = false; // Reset to prevent splash effects on load
+    // Note: p1Kills and p2Kills persist across restarts within a session
 
     // Initialize systems
     this.fuelSystem = new FuelSystem();
@@ -315,6 +320,7 @@ export class GameScene extends Phaser.Scene {
       getP2Velocity: () => this.shuttle2?.getVelocity() ?? { x: 0, y: 0, total: 0 },
       getP2LegsExtended: () => this.shuttle2?.areLandingLegsExtended() ?? false,
       isP2Active: () => this.shuttle2?.active ?? false,
+      getKillCounts: () => ({ p1Kills: this.p1Kills, p2Kills: this.p2Kills }),
     });
 
     // Country indicator
@@ -1723,7 +1729,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.flash(300, 220, 20, 60);
   }
 
-  private dropBomb(shuttle: Shuttle, inventory: InventorySystem): void {
+  private dropBomb(shuttle: Shuttle, inventory: InventorySystem, playerNum: number = 1): void {
     // Find a droppable food item in inventory
     let foodType: string | null = null;
 
@@ -1747,8 +1753,8 @@ export class GameScene extends Phaser.Scene {
     // Consume 1 from inventory
     inventory.remove(foodType as any, 1);
 
-    // Create bomb at shuttle position
-    const bomb = new Bomb(this, shuttle.x, shuttle.y + 20, foodType);
+    // Create bomb at shuttle position, tracking which player dropped it
+    const bomb = new Bomb(this, shuttle.x, shuttle.y + 20, foodType, playerNum);
 
     // Give it the shuttle's velocity plus some downward motion
     const shuttleVel = shuttle.getVelocity();
@@ -1845,6 +1851,42 @@ export class GameScene extends Phaser.Scene {
       const bombX = bomb.x;
       const bombY = bomb.y;
       let bombDestroyed = false;
+
+      // Check collision with OTHER player's shuttle (2-player mode only)
+      if (this.playerCount === 2) {
+        const targetShuttle = bomb.droppedByPlayer === 1 ? this.shuttle2 : this.shuttle;
+        if (targetShuttle && targetShuttle.active) {
+          const dx = bombX - targetShuttle.x;
+          const dy = bombY - targetShuttle.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const hitRadius = 25; // Shuttle is roughly 32x40, so 25px radius is good
+
+          if (dist < hitRadius) {
+            // Direct hit on enemy shuttle!
+            bomb.explode(this);
+            this.bombs.splice(i, 1);
+            bombDestroyed = true;
+
+            // Track the kill
+            const killerPlayer = bomb.droppedByPlayer;
+            const victimPlayer = killerPlayer === 1 ? 2 : 1;
+            if (killerPlayer === 1) {
+              this.p1Kills++;
+            } else {
+              this.p2Kills++;
+            }
+
+            // Emit event for UI to update kill tally
+            this.events.emit('playerKill', { killer: killerPlayer, victim: victimPlayer, p1Kills: this.p1Kills, p2Kills: this.p2Kills });
+
+            // Kill the target shuttle with friendly fire cause
+            const causeEmoji = victimPlayer === 1 ? 'p1_bombed' : 'p2_bombed';
+            this.handleShuttleCrash(victimPlayer, `Bombed by P${killerPlayer}!`, causeEmoji);
+          }
+        }
+      }
+
+      if (bombDestroyed) continue;
 
       // Check collision with buildings FIRST (before terrain, since buildings sit on terrain)
       for (let j = this.decorations.length - 1; j >= 0; j--) {
@@ -3397,14 +3439,14 @@ export class GameScene extends Phaser.Scene {
     const p1Bomb = this.cursors.down.isDown && this.shuttle && this.shuttle.active;
     const p2Bomb = this.p2BombKey && this.shuttle2 && this.shuttle2.active && this.p2BombKey.isDown;
     if (p1Bomb && !this.bombCooldown) {
-      this.dropBomb(this.shuttle, this.inventorySystem);
+      this.dropBomb(this.shuttle, this.inventorySystem, 1);
       this.bombCooldown = true;
       this.time.delayedCall(300, () => {
         this.bombCooldown = false;
       });
     }
     if (p2Bomb && !this.bombCooldown2) {
-      this.dropBomb(this.shuttle2!, this.inventorySystem2!);
+      this.dropBomb(this.shuttle2!, this.inventorySystem2!, 2);
       this.bombCooldown2 = true;
       this.time.delayedCall(300, () => {
         this.bombCooldown2 = false;
@@ -3647,10 +3689,12 @@ export class GameScene extends Phaser.Scene {
   private loadTombstones(): void {
     try {
       const saved = localStorage.getItem(GameScene.TOMBSTONE_STORAGE_KEY);
+      console.log('Loading tombstones, saved data:', saved);
       if (saved) {
         const tombstones: { x: number; y: number; date: string; cause?: CauseOfDeath }[] = JSON.parse(saved);
         // Limit to last 20 tombstones to prevent clutter
         const recent = tombstones.slice(-20);
+        console.log('Loading', recent.length, 'tombstones');
         for (const ts of recent) {
           // All tombstones have physics so they react to explosions
           this.createTombstoneGraphic(ts.x, ts.y, false, false, ts.cause);
@@ -3682,6 +3726,8 @@ export class GameScene extends Phaser.Scene {
       case 'landing': return '🛬';
       case 'duck': return '🦆';
       case 'void': return '🌌';
+      case 'p1_bombed': return '🟢'; // P1 (green) was bombed
+      case 'p2_bombed': return '🔵'; // P2 (blue) was bombed
     }
 
     // Projectile type emojis

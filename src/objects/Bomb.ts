@@ -12,12 +12,14 @@ const COLLECTIBLE_SPRITE_MAP: { [key: string]: string } = {
 export class Bomb extends Phaser.Physics.Matter.Sprite {
   public foodType: string;
   public hasExploded: boolean = false;
+  public droppedByPlayer: number; // 1 or 2
 
-  constructor(scene: Phaser.Scene, x: number, y: number, foodType: string) {
+  constructor(scene: Phaser.Scene, x: number, y: number, foodType: string, droppedByPlayer: number = 1) {
     const spriteKey = COLLECTIBLE_SPRITE_MAP[foodType] || 'burger';
     super(scene.matter.world, x, y, spriteKey);
 
     this.foodType = foodType;
+    this.droppedByPlayer = droppedByPlayer;
 
     // Add to scene
     scene.add.existing(this);
