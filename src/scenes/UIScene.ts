@@ -12,6 +12,13 @@ interface UISceneData {
   getLegsExtended: () => boolean;
   getElapsedTime: () => number;
   hasPeaceMedal?: () => boolean;
+  // P2 data for 2-player mode
+  playerCount?: number;
+  fuelSystem2?: FuelSystem | null;
+  inventorySystem2?: InventorySystem | null;
+  getP2Velocity?: () => { x: number; y: number; total: number };
+  getP2LegsExtended?: () => boolean;
+  isP2Active?: () => boolean;
 }
 
 export class UIScene extends Phaser.Scene {
@@ -22,12 +29,20 @@ export class UIScene extends Phaser.Scene {
   private getLegsExtended!: () => boolean;
   private getElapsedTime!: () => number;
   private hasPeaceMedal!: () => boolean;
+  // P2 data
+  private playerCount: number = 1;
+  private fuelSystem2: FuelSystem | null = null;
+  private inventorySystem2: InventorySystem | null = null;
+  private getP2Velocity: () => { x: number; y: number; total: number } = () => ({ x: 0, y: 0, total: 0 });
+  private getP2LegsExtended: () => boolean = () => false;
+  private isP2Active: () => boolean = () => false;
 
   private fuelBarBg!: Phaser.GameObjects.Graphics;
   private fuelBar!: Phaser.GameObjects.Graphics;
   private fuelText!: Phaser.GameObjects.Text;
   private velocityText!: Phaser.GameObjects.Text;
   private inventoryContainer!: Phaser.GameObjects.Container;
+  private p2InventoryContainer: Phaser.GameObjects.Container | null = null;
   private progressBar!: Phaser.GameObjects.Graphics;
   private progressText!: Phaser.GameObjects.Text;
   private gearIndicator!: Phaser.GameObjects.Text;
@@ -44,6 +59,12 @@ export class UIScene extends Phaser.Scene {
   private lastTime: number = -1;
   private lastMedalState: boolean = false;
   private currentScore: number = 0;
+  // P2 UI elements
+  private p2FuelBarBg: Phaser.GameObjects.Graphics | null = null;
+  private p2FuelBar: Phaser.GameObjects.Graphics | null = null;
+  private p2FuelText: Phaser.GameObjects.Text | null = null;
+  private lastP2Velocity: number = -1;
+  private lastP2LegsState: boolean = false;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -58,12 +79,26 @@ export class UIScene extends Phaser.Scene {
     this.getElapsedTime = data.getElapsedTime;
     this.hasPeaceMedal = data.hasPeaceMedal || (() => false);
 
+    // P2 data
+    this.playerCount = data.playerCount ?? 1;
+    this.fuelSystem2 = data.fuelSystem2 ?? null;
+    this.inventorySystem2 = data.inventorySystem2 ?? null;
+    this.getP2Velocity = data.getP2Velocity ?? (() => ({ x: 0, y: 0, total: 0 }));
+    this.getP2LegsExtended = data.getP2LegsExtended ?? (() => false);
+    this.isP2Active = data.isP2Active ?? (() => false);
+
     // Reset state variables (Phaser may reuse scene instances)
     this.lastVelocity = -1;
     this.lastLegsState = false;
     this.lastTime = -1;
     this.lastMedalState = false;
     this.currentScore = 0;
+    this.lastP2Velocity = -1;
+    this.lastP2LegsState = false;
+    this.p2FuelBarBg = null;
+    this.p2FuelBar = null;
+    this.p2FuelText = null;
+    this.p2InventoryContainer = null;
 
     this.createFuelGauge();
     this.createVelocityMeter();
@@ -75,15 +110,35 @@ export class UIScene extends Phaser.Scene {
     this.createProgressBar();
     this.createControlsHint();
 
+    // Create P2 fuel gauge and inventory if 2-player mode
+    if (this.playerCount === 2) {
+      this.createP2FuelGauge();
+      this.createP2InventoryDisplay();
+    }
+
     // Listen for inventory changes
     this.inventorySystem.setOnInventoryChange((items) => {
-      this.updateInventoryDisplay(items);
+      this.updateInventoryDisplay(items, this.inventoryContainer, this.inventorySystem);
     });
+
+    // Listen for P2 inventory changes if applicable
+    if (this.inventorySystem2 && this.p2InventoryContainer) {
+      this.inventorySystem2.setOnInventoryChange((items) => {
+        this.updateInventoryDisplay(items, this.p2InventoryContainer!, this.inventorySystem2!);
+      });
+    }
 
     // Listen for fuel changes
     this.fuelSystem.setOnFuelChange((fuel, max) => {
       this.updateFuelBar(fuel, max);
     });
+
+    // Listen for P2 fuel changes if applicable
+    if (this.fuelSystem2) {
+      this.fuelSystem2.setOnFuelChange((fuel, max) => {
+        this.updateP2FuelBar(fuel, max);
+      });
+    }
 
     // Listen for destruction score updates from GameScene
     const gameScene = this.scene.get('GameScene');
@@ -108,8 +163,9 @@ export class UIScene extends Phaser.Scene {
     // Fuel bar
     this.fuelBar = this.add.graphics();
 
-    // Label with shadow
-    const labelShadow = this.add.text(x + width / 2 + 1, y - 9, 'FUEL', {
+    // Label with shadow - show 'P1' in 2-player mode, 'FUEL' in single player
+    const fuelLabel = this.playerCount === 2 ? 'P1' : 'FUEL';
+    const labelShadow = this.add.text(x + width / 2 + 1, y - 9, fuelLabel, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '12px',
       color: '#666666',
@@ -117,7 +173,7 @@ export class UIScene extends Phaser.Scene {
     });
     labelShadow.setOrigin(0.5, 1);
 
-    this.fuelText = this.add.text(x + width / 2, y - 10, 'FUEL', {
+    this.fuelText = this.add.text(x + width / 2, y - 10, fuelLabel, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '12px',
       color: '#2E7D32',
@@ -156,6 +212,72 @@ export class UIScene extends Phaser.Scene {
     if (fillHeight > 10) {
       this.fuelBar.fillStyle(0xFFFFFF, 0.3);
       this.fuelBar.fillRoundedRect(x + 6, y + height - 4 - fillHeight + 2, 4, fillHeight - 4, 2);
+    }
+  }
+
+  private createP2FuelGauge(): void {
+    const x = 92; // Right of P1's fuel bar
+    const y = 100;
+    const width = 28;
+    const height = 200;
+
+    // Background (cartoon style with rounded rect) - blue tint for P2
+    this.p2FuelBarBg = this.add.graphics();
+    this.p2FuelBarBg.fillStyle(0xE3F2FD, 0.9); // Light blue bg for P2
+    this.p2FuelBarBg.fillRoundedRect(x, y, width, height, 8);
+    this.p2FuelBarBg.lineStyle(3, 0x1565C0); // Blue border
+    this.p2FuelBarBg.strokeRoundedRect(x, y, width, height, 8);
+
+    // Fuel bar
+    this.p2FuelBar = this.add.graphics();
+
+    // Label
+    const labelShadow = this.add.text(x + width / 2 + 1, y - 9, 'P2', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '12px',
+      color: '#666666',
+      fontStyle: 'bold',
+    });
+    labelShadow.setOrigin(0.5, 1);
+
+    this.p2FuelText = this.add.text(x + width / 2, y - 10, 'P2', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '12px',
+      color: '#1565C0', // Blue for P2
+      fontStyle: 'bold',
+    });
+    this.p2FuelText.setOrigin(0.5, 1);
+  }
+
+  private updateP2FuelBar(fuel: number, max: number): void {
+    if (!this.p2FuelBar) return;
+
+    const x = 92;
+    const y = 100;
+    const width = 28;
+    const height = 200;
+
+    const percentage = fuel / max;
+    const fillHeight = (height - 8) * percentage;
+
+    this.p2FuelBar.clear();
+
+    // Color based on fuel level (blue tints for P2)
+    let color = 0x42A5F5; // Blue
+    if (percentage < 0.25) {
+      color = 0xE91E63; // Pink/red
+    } else if (percentage < 0.5) {
+      color = 0xFFA726; // Orange
+    }
+
+    // Cartoon style fill
+    this.p2FuelBar.fillStyle(color, 1);
+    this.p2FuelBar.fillRoundedRect(x + 4, y + height - 4 - fillHeight, width - 8, fillHeight, 4);
+
+    // Inner highlight
+    if (fillHeight > 10) {
+      this.p2FuelBar.fillStyle(0xFFFFFF, 0.3);
+      this.p2FuelBar.fillRoundedRect(x + 6, y + height - 4 - fillHeight + 2, 4, fillHeight - 4, 2);
     }
   }
 
@@ -210,7 +332,9 @@ export class UIScene extends Phaser.Scene {
     const bg = this.add.graphics();
     this.inventoryContainer.add(bg);
 
-    const title = this.add.text(0, 0, 'CARGO', {
+    // Show 'P1 CARGO' in 2-player mode, 'CARGO' in single player
+    const titleText = this.playerCount === 2 ? 'P1 CARGO' : 'CARGO';
+    const title = this.add.text(0, 0, titleText, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '12px',
       color: '#333333',
@@ -219,6 +343,25 @@ export class UIScene extends Phaser.Scene {
     title.setOrigin(0.5, 0);
 
     this.inventoryContainer.add(title);
+  }
+
+  private createP2InventoryDisplay(): void {
+    // Position on the right side, below P1's inventory
+    this.p2InventoryContainer = this.add.container(GAME_WIDTH - 90, 260);
+
+    // Background panel will be redrawn dynamically based on content
+    const bg = this.add.graphics();
+    this.p2InventoryContainer.add(bg);
+
+    const title = this.add.text(0, 0, 'P2 CARGO', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '12px',
+      color: '#1565C0', // Blue to match P2's shuttle tint
+      fontStyle: 'bold',
+    });
+    title.setOrigin(0.5, 0);
+
+    this.p2InventoryContainer.add(title);
   }
 
   // Full display names for items
@@ -247,10 +390,10 @@ export class UIScene extends Phaser.Scene {
     return names[type];
   }
 
-  private updateInventoryDisplay(items: InventoryItem[]): void {
+  private updateInventoryDisplay(items: InventoryItem[], container: Phaser.GameObjects.Container, inventorySys: InventorySystem): void {
     // Clear existing items (except background and title)
-    while (this.inventoryContainer.length > 2) {
-      this.inventoryContainer.removeAt(2, true);
+    while (container.length > 2) {
+      container.removeAt(2, true);
     }
 
     // Split items into regular cargo and contrabands
@@ -273,7 +416,7 @@ export class UIScene extends Phaser.Scene {
           fontStyle: 'bold',
         });
         text.setOrigin(0.5, 0);
-        this.inventoryContainer.add(text);
+        container.add(text);
         yOffset += 16;
       }
       yOffset += 2;
@@ -285,7 +428,7 @@ export class UIScene extends Phaser.Scene {
       const sep = this.add.graphics();
       sep.lineStyle(1, 0xCC0000, 0.5);
       sep.lineBetween(-panelWidth / 2 + 10, yOffset, panelWidth / 2 - 10, yOffset);
-      this.inventoryContainer.add(sep);
+      container.add(sep);
       yOffset += 6;
 
       // Contrabands header
@@ -296,7 +439,7 @@ export class UIScene extends Phaser.Scene {
         fontStyle: 'bold',
       });
       contrabandHeader.setOrigin(0.5, 0);
-      this.inventoryContainer.add(contrabandHeader);
+      container.add(contrabandHeader);
       yOffset += 14;
 
       // Contraband items in single column
@@ -310,14 +453,14 @@ export class UIScene extends Phaser.Scene {
           fontStyle: 'bold',
         });
         text.setOrigin(0.5, 0);
-        this.inventoryContainer.add(text);
+        container.add(text);
         yOffset += 16;
       }
       yOffset += 2;
     }
 
     // Total fuel value
-    const totalValue = this.inventorySystem.getTotalFuelValue();
+    const totalValue = inventorySys.getTotalFuelValue();
     if (totalValue > 0) {
       const totalText = this.add.text(0, yOffset, `⛽ ${totalValue}`, {
         fontFamily: 'Arial, Helvetica, sans-serif',
@@ -326,12 +469,12 @@ export class UIScene extends Phaser.Scene {
         fontStyle: 'bold',
       });
       totalText.setOrigin(0.5, 0);
-      this.inventoryContainer.add(totalText);
+      container.add(totalText);
       yOffset += 16;
     }
 
     // Redraw background to fit content
-    const bg = this.inventoryContainer.getAt(0) as Phaser.GameObjects.Graphics;
+    const bg = container.getAt(0) as Phaser.GameObjects.Graphics;
     const hasContent = regularItems.length > 0 || contrabandItems.length > 0 || totalValue > 0;
     const panelHeight = hasContent ? yOffset + 8 : 30;
     bg.clear();
