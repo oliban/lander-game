@@ -24,6 +24,7 @@ import {
 } from '../constants';
 
 type GameState = 'playing' | 'landed' | 'crashed' | 'victory';
+type CauseOfDeath = 'water' | 'terrain' | 'landing' | 'duck' | 'void' | string;
 
 export class GameScene extends Phaser.Scene {
   private shuttle!: Shuttle; // Primary shuttle (P1) - kept for compatibility
@@ -727,7 +728,7 @@ export class GameScene extends Phaser.Scene {
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
-        this.handleShuttleCrash(playerNum, 'Splashed into the Atlantic!');
+        this.handleShuttleCrash(playerNum, 'Splashed into the Atlantic!', 'water');
         return;
       }
 
@@ -736,7 +737,7 @@ export class GameScene extends Phaser.Scene {
       this.sound.play('water_splash');
 
       // Spawn tombstone at water crash location (will appear after ship sinks)
-      this.spawnTombstone(shuttle.x, shuttle.y);
+      this.spawnTombstone(shuttle.x, shuttle.y, 'water');
 
       // Play bubbles sound after splash, fade out after 3 seconds
       this.time.delayedCall(500, () => {
@@ -771,7 +772,7 @@ export class GameScene extends Phaser.Scene {
 
     // In 2-player mode, only destroy this shuttle
     if (this.playerCount === 2) {
-      this.handleShuttleCrash(playerNum, 'Crashed into terrain!');
+      this.handleShuttleCrash(playerNum, 'Crashed into terrain!', 'terrain');
       return;
     }
 
@@ -779,7 +780,7 @@ export class GameScene extends Phaser.Scene {
     shuttle.stopRocketSound();
 
     // Spawn tombstone at terrain crash location
-    this.spawnTombstone(shuttle.x, shuttle.y);
+    this.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
 
     shuttle.explode();
     this.sound.play('car_crash', { volume: 0.8 });
@@ -1062,7 +1063,7 @@ export class GameScene extends Phaser.Scene {
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
-        this.handleShuttleCrash(playerNum, `Crash landing! ${landingResult.reason}`);
+        this.handleShuttleCrash(playerNum, `Crash landing! ${landingResult.reason}`, 'landing');
         return;
       }
 
@@ -1070,7 +1071,7 @@ export class GameScene extends Phaser.Scene {
       shuttle.stopRocketSound();
 
       // Spawn tombstone at crash landing location
-      this.spawnTombstone(shuttle.x, shuttle.y);
+      this.spawnTombstone(shuttle.x, shuttle.y, 'landing');
 
       shuttle.explode();
 
@@ -1397,14 +1398,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   // Generic handler for shuttle crashes in 2-player mode
-  private handleShuttleCrash(playerNum: number, message: string): void {
+  private handleShuttleCrash(playerNum: number, message: string, cause: CauseOfDeath): void {
     const shuttle = playerNum === 2 ? this.shuttle2 : this.shuttle;
     if (!shuttle || !shuttle.active) return;
 
     console.log(`P${playerNum} crashed: ${message}`);
 
     // Spawn tombstone at crash location
-    this.spawnTombstone(shuttle.x, shuttle.y);
+    this.spawnTombstone(shuttle.x, shuttle.y, cause);
 
     // Stop thrust sound and explode the shuttle
     shuttle.stopRocketSound();
@@ -1441,8 +1442,8 @@ export class GameScene extends Phaser.Scene {
 
     console.log('CRASH: Hit by projectile at', { x: shuttle.x, y: shuttle.y }, 'player:', shuttle.getPlayerIndex(), 'type:', projectileSpriteKey);
 
-    // Spawn tombstone at crash location
-    this.spawnTombstone(shuttle.x, shuttle.y);
+    // Spawn tombstone at crash location with projectile type as cause
+    this.spawnTombstone(shuttle.x, shuttle.y, projectileSpriteKey || 'cannonball');
 
     // Stop thrust sound and explode the hit shuttle
     shuttle.stopRocketSound();
@@ -3207,7 +3208,7 @@ export class GameScene extends Phaser.Scene {
     this.shuttle.stopRocketSound();
 
     // Spawn tombstone at crash location
-    this.spawnTombstone(this.shuttle.x, this.shuttle.y);
+    this.spawnTombstone(this.shuttle.x, this.shuttle.y, 'duck');
 
     // Taunting messages - all duck-themed!
     const tauntMessages = [
@@ -3507,7 +3508,7 @@ export class GameScene extends Phaser.Scene {
       this.gameState = 'crashed';
       this.shuttle.stopRocketSound();
       // Spawn tombstone at last known position (bottom of visible area)
-      this.spawnTombstone(this.shuttle.x, GAME_HEIGHT);
+      this.spawnTombstone(this.shuttle.x, GAME_HEIGHT, 'void');
       this.transitionToGameOver({
         victory: false,
         message: 'Lost in the void!',
@@ -3647,12 +3648,12 @@ export class GameScene extends Phaser.Scene {
     try {
       const saved = localStorage.getItem(GameScene.TOMBSTONE_STORAGE_KEY);
       if (saved) {
-        const tombstones: { x: number; y: number; date: string }[] = JSON.parse(saved);
+        const tombstones: { x: number; y: number; date: string; cause?: CauseOfDeath }[] = JSON.parse(saved);
         // Limit to last 20 tombstones to prevent clutter
         const recent = tombstones.slice(-20);
         for (const ts of recent) {
           // All tombstones have physics so they react to explosions
-          this.createTombstoneGraphic(ts.x, ts.y, false);
+          this.createTombstoneGraphic(ts.x, ts.y, false, false, ts.cause);
         }
       }
     } catch (e) {
@@ -3660,11 +3661,11 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private saveTombstone(x: number, y: number): void {
+  private saveTombstone(x: number, y: number, cause?: CauseOfDeath): void {
     try {
       const saved = localStorage.getItem(GameScene.TOMBSTONE_STORAGE_KEY);
-      const tombstones: { x: number; y: number; date: string }[] = saved ? JSON.parse(saved) : [];
-      tombstones.push({ x, y, date: new Date().toISOString() });
+      const tombstones: { x: number; y: number; date: string; cause?: CauseOfDeath }[] = saved ? JSON.parse(saved) : [];
+      tombstones.push({ x, y, date: new Date().toISOString(), cause });
       // Keep only last 50 tombstones
       const trimmed = tombstones.slice(-50);
       localStorage.setItem(GameScene.TOMBSTONE_STORAGE_KEY, JSON.stringify(trimmed));
@@ -3673,7 +3674,44 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private createTombstoneGraphic(x: number, y: number, isStatic: boolean = true, isUnderwater: boolean = false): { container: Phaser.GameObjects.Container; body: MatterJS.BodyType | null } {
+  private getCauseEmoji(cause?: CauseOfDeath): string {
+    // Standard death causes
+    switch (cause) {
+      case 'water': return '🌊';
+      case 'terrain': return '💥';
+      case 'landing': return '🛬';
+      case 'duck': return '🦆';
+      case 'void': return '🌌';
+    }
+
+    // Projectile type emojis
+    const projectileEmojis: { [key: string]: string } = {
+      'teacup': '🫖',
+      'doubledecker': '🚌',
+      'blackcab': '🚕',
+      'guardhat': '💂',
+      'baguette': '🥖',
+      'wine': '🍷',
+      'croissant': '🥐',
+      'pretzel': '🥨',
+      'beer': '🍺',
+      'pierogi': '🥟',
+      'pottery': '🏺',
+      'proj_matryoshka': '🪆',
+      'balalaika': '🪕',
+      'borscht': '🍲',
+      'samovar': '🫖',
+      'cannonball': '💣',
+    };
+
+    if (cause && projectileEmojis[cause]) {
+      return projectileEmojis[cause];
+    }
+
+    return '💀';
+  }
+
+  private createTombstoneGraphic(x: number, y: number, isStatic: boolean = true, isUnderwater: boolean = false, cause?: CauseOfDeath): { container: Phaser.GameObjects.Container; body: MatterJS.BodyType | null } {
     const container = this.add.container(x, y);
     container.setDepth(5); // Above terrain, below shuttle
 
@@ -3708,7 +3746,15 @@ export class GameScene extends Phaser.Scene {
     ripText.setOrigin(0.5, 0.5);
     ripText.setAlpha(textAlpha);
 
-    container.add([stone, ripText]);
+    // Cause of death emoji below RIP
+    const causeEmoji = this.add.text(0, -7, this.getCauseEmoji(cause), {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '9px',
+    });
+    causeEmoji.setOrigin(0.5, 0.5);
+    causeEmoji.setAlpha(textAlpha);
+
+    container.add([stone, ripText, causeEmoji]);
     this.tombstoneGraphics.push(container);
 
     // Create physics body for dynamic tombstones
@@ -3735,7 +3781,7 @@ export class GameScene extends Phaser.Scene {
     return { container, body };
   }
 
-  private spawnTombstone(deathX: number, deathY: number): void {
+  private spawnTombstone(deathX: number, deathY: number, cause?: CauseOfDeath): void {
     // Check if death occurred in Atlantic Ocean (water)
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
@@ -3751,20 +3797,20 @@ export class GameScene extends Phaser.Scene {
 
       this.time.delayedCall(3500, () => {
         // Save sunken position to localStorage
-        this.saveTombstone(deathX, sinkDepth);
+        this.saveTombstone(deathX, sinkDepth, cause);
 
         // Create static tombstone at sunken position with underwater tint
-        this.createTombstoneGraphic(deathX, sinkDepth, true, true);
+        this.createTombstoneGraphic(deathX, sinkDepth, true, true, cause);
       });
     } else {
       // Normal death - spawn physics tombstone at death location
       // It will fall if in mid-air, and can be knocked around by explosions
 
       // Save to localStorage (use terrain Y for persistence, body will settle there)
-      this.saveTombstone(deathX, terrainY);
+      this.saveTombstone(deathX, terrainY, cause);
 
       // Create a physics-enabled tombstone that falls
-      this.createTombstoneGraphic(deathX, deathY, false);
+      this.createTombstoneGraphic(deathX, deathY, false, false, cause);
     }
   }
 
