@@ -30,8 +30,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   },
   {
     id: 'mission_complete',
-    name: 'Mission Complete',
-    description: "Reach Putino's Palace",
+    name: 'Welcome to Яussia',
+    description: "Reach Putino's Palace - Dasvidaniya, freedomski!",
     tier: 'silver',
   },
   {
