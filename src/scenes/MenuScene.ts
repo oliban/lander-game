@@ -182,7 +182,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Start button - centered between the two panels
     const startButton = this.createButton(GAME_WIDTH / 2, 580, 'START MISSION', () => {
-      this.startGame();
+      this.startGame(1);
     });
 
     // Pulsing animation on start button
@@ -196,16 +196,28 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Press Enter hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, 625, 'Press ENTER to start', {
+    const enterHint = this.add.text(GAME_WIDTH / 2, 625, 'Press 1 for 1 Player  |  Press 2 for 2 Players', {
       fontSize: '14px',
       color: '#666666',
       fontFamily: 'Arial, Helvetica, sans-serif',
     });
     enterHint.setOrigin(0.5, 0.5);
 
-    // Listen for Enter key
+    // Listen for Enter key (starts 1 player)
     this.input.keyboard!.on('keydown-ENTER', () => {
-      this.startGame();
+      this.startGame(1);
+    });
+
+    // Listen for 1 key (1 player mode) - key code 49 is '1'
+    const key1 = this.input.keyboard!.addKey(49);
+    key1.on('down', () => {
+      this.startGame(1);
+    });
+
+    // Listen for 2 key (2 player mode) - key code 50 is '2'
+    const key2 = this.input.keyboard!.addKey(50);
+    key2.on('down', () => {
+      this.startGame(2);
     });
 
     // Version/credits
@@ -218,8 +230,8 @@ export class MenuScene extends Phaser.Scene {
     credits.setOrigin(0.5, 1);
   }
 
-  private startGame(): void {
-    this.scene.start('GameScene');
+  private startGame(playerCount: number = 1): void {
+    this.scene.start('GameScene', { playerCount });
   }
 
   private loadHighScores(): { name: string; score: number; date: string }[] {

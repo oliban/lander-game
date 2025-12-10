@@ -11,6 +11,14 @@ import {
 // Speed reduction when landing legs are extended
 const LEGS_DRAG_MULTIPLIER = 1.5;
 
+// Custom controls interface for flexible key bindings
+export interface ShuttleControls {
+  thrust: Phaser.Input.Keyboard.Key;
+  rotateLeft: Phaser.Input.Keyboard.Key;
+  rotateRight: Phaser.Input.Keyboard.Key;
+  gear: Phaser.Input.Keyboard.Key;
+}
+
 export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private thrusterParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private chemtrailEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -24,9 +32,12 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private debugLabel: Phaser.GameObjects.Text | null = null;
   private thrustMultiplier: number = 1.0; // For speed boost power-up
   private rocketSound: Phaser.Sound.BaseSound | null = null;
+  private playerIndex: number = 0; // 0 = P1, 1 = P2
+  private controls: ShuttleControls | null = null; // Custom key bindings
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, playerIndex: number = 0) {
     super(scene.matter.world, x, y, 'shuttle-legs');
+    this.playerIndex = playerIndex;
 
     scene.add.existing(this);
 
@@ -43,6 +54,11 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Set collision category
     this.setCollisionCategory(1);
     this.setCollidesWith([2, 3, 4]); // terrain, landing pads, projectiles
+
+    // Apply tint for Player 2 to distinguish from Player 1
+    if (playerIndex === 1) {
+      this.setTint(0x66CCFF); // Light blue tint for P2
+    }
 
     // No glow for cartoon style
 
@@ -75,6 +91,16 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     this.fuelSystem = fuelSystem;
   }
 
+  setControls(controls: ShuttleControls): void {
+    this.controls = controls;
+    // Override the default legsKey with the one from controls
+    this.legsKey = controls.gear;
+  }
+
+  getPlayerIndex(): number {
+    return this.playerIndex;
+  }
+
   private createThrusterParticles(): void {
     this.thrusterParticles = this.scene.add.particles(0, 0, 'particle', {
       speed: { min: 100, max: 200 },
@@ -102,11 +128,16 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     this.chemtrailEmitter.setDepth(-1); // Behind everything
   }
 
-  update(cursors: Phaser.Types.Input.Keyboard.CursorKeys): void {
+  update(cursors?: Phaser.Types.Input.Keyboard.CursorKeys): void {
     if (!this.active) return;
 
-    // Toggle debug mode with D key
-    if (this.debugKey && Phaser.Input.Keyboard.JustDown(this.debugKey)) {
+    // Determine which keys to use - custom controls if set, otherwise fall back to cursors
+    const thrustDown = this.controls ? this.controls.thrust.isDown : (cursors?.up.isDown ?? false);
+    const leftDown = this.controls ? this.controls.rotateLeft.isDown : (cursors?.left.isDown ?? false);
+    const rightDown = this.controls ? this.controls.rotateRight.isDown : (cursors?.right.isDown ?? false);
+
+    // Toggle debug mode with D key (only for P1)
+    if (this.playerIndex === 0 && this.debugKey && Phaser.Input.Keyboard.JustDown(this.debugKey)) {
       this.debugMode = !this.debugMode;
       if (this.debugMode) {
         this.debugModeUsed = true; // Once used, always marked
@@ -122,7 +153,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Get angular velocity from body
     const matterBody = this.body as MatterJS.BodyType;
 
-    // Toggle landing legs with spacebar (single press)
+    // Toggle landing legs (single press)
     if (this.legsKey && Phaser.Input.Keyboard.JustDown(this.legsKey)) {
       this.toggleLandingLegs();
     }
@@ -135,11 +166,11 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     }
 
     // Rotation - faster when not thrusting (easier to aim before committing thrust)
-    const isThrusting = cursors.up.isDown && hasFuel;
+    const isThrusting = thrustDown && hasFuel;
     const rotationMultiplier = isThrusting ? 1.0 : 2.0;
-    if (cursors.left.isDown) {
+    if (leftDown) {
       this.setAngularVelocity(-ROTATION_SPEED * rotationMultiplier);
-    } else if (cursors.right.isDown) {
+    } else if (rightDown) {
       this.setAngularVelocity(ROTATION_SPEED * rotationMultiplier);
     } else {
       // Dampen rotation when no input

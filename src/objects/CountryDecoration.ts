@@ -148,8 +148,8 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
     this.y = terrainY;
 
     // Calculate collision dimensions based on actual scaled size
-    this.collisionWidth = textureWidth * baseScale * 0.6; // Narrower than visual
-    this.collisionHeight = textureHeight * baseScale * 0.9; // Slightly shorter than visual
+    this.collisionWidth = textureWidth * baseScale * 0.85; // Slightly narrower than visual for better feel
+    this.collisionHeight = textureHeight * baseScale * 0.95; // Nearly full height
 
     // Create physics body for collision
     const matterScene = scene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
