@@ -2,6 +2,9 @@ import Phaser from 'phaser';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem, InventoryItem } from '../systems/InventorySystem';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS, MAX_SAFE_LANDING_VELOCITY, BOMB_DROPPABLE_TYPES } from '../constants';
+import { AchievementPopup } from '../ui/AchievementPopup';
+import { getAchievementSystem } from '../systems/AchievementSystem';
+import { Achievement } from '../data/achievements';
 
 interface UISceneData {
   fuelSystem: FuelSystem;
@@ -72,6 +75,9 @@ export class UIScene extends Phaser.Scene {
   private p1TallyGraphics: Phaser.GameObjects.Graphics | null = null;
   private p2TallyGraphics: Phaser.GameObjects.Graphics | null = null;
   private getKillCounts: () => { p1Kills: number; p2Kills: number } = () => ({ p1Kills: 0, p2Kills: 0 });
+
+  // Achievement popup (displayed in UI scene so it's on top of everything)
+  private achievementPopup!: AchievementPopup;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -164,6 +170,15 @@ export class UIScene extends Phaser.Scene {
         this.updateKillTally(data.p1Kills, data.p2Kills);
       });
     }
+
+    // Create achievement popup in UI scene (so it's on top of all UI elements)
+    this.achievementPopup = new AchievementPopup(this);
+
+    // Listen for achievement unlocks from the achievement system
+    const achievementSystem = getAchievementSystem();
+    achievementSystem.onUnlock((achievement: Achievement) => {
+      this.achievementPopup.show(achievement);
+    });
   }
 
   private createFuelGauge(): void {
