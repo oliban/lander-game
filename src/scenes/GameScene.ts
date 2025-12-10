@@ -97,6 +97,7 @@ export class GameScene extends Phaser.Scene {
 
   // Fisherboat in Atlantic
   private fisherBoat: FisherBoat | null = null;
+  private shuttleOnBoat: boolean = false; // Track if shuttle has landed on boat
 
   // Golf cart in USA
   private golfCart: GolfCart | null = null;
@@ -204,17 +205,24 @@ export class GameScene extends Phaser.Scene {
 
     // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
     this.fisherBoat = new FisherBoat(this, 3500);
+    // 15% chance the boat has a "fish" package
+    this.fisherBoat.hasFishPackage = Math.random() < 0.15;
 
     // Create golf cart in USA section (patrols x: 800-1200) - 1/3 chance to spawn
     if (Math.random() < 0.33) {
       this.golfCart = new GolfCart(this, 1000, 800, 1200);
     }
 
-    // Pick a random country for the biplane to spawn when player gets close
-    const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
-    this.biplaneTargetCountry = biplaneCountries[Math.floor(Math.random() * biplaneCountries.length)];
+    // Pick biplane type: 30% chance for info plane, 70% for country propaganda
+    if (Math.random() < 0.3) {
+      this.biplaneTargetCountry = 'GAME_INFO';
+      console.log(`[Biplane] Info plane - will spawn when player approaches any country`);
+    } else {
+      const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+      this.biplaneTargetCountry = biplaneCountries[Math.floor(Math.random() * biplaneCountries.length)];
+      console.log(`[Biplane] Propaganda plane - will spawn when player approaches ${this.biplaneTargetCountry}`);
+    }
     this.biplaneSpawned = false;
-    console.log(`[Biplane] Will spawn when player approaches ${this.biplaneTargetCountry}`);
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();
@@ -795,7 +803,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Check if we're over the Atlantic Ocean - always crash in water!
-    // But NOT if we're near a landing pad
+    // But NOT if we're near a landing pad or on the fishing boat
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
     const isOverWater = shuttle.x >= atlanticStart && shuttle.x < atlanticEnd;
@@ -806,7 +814,14 @@ export class GameScene extends Phaser.Scene {
       return horizontalDist < pad.width / 2 + 30; // Some tolerance
     });
 
-    if (isOverWater && !nearLandingPad) {
+    // Check if over the fishing boat (don't splash if landing on boat)
+    let overFisherBoat = false;
+    if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
+      const deckBounds = this.fisherBoat.getLandingBounds();
+      overFisherBoat = shuttle.x >= deckBounds.x && shuttle.x <= deckBounds.x + deckBounds.width;
+    }
+
+    if (isOverWater && !nearLandingPad && !overFisherBoat) {
       console.log(`CRASH P${playerNum}: Splashed into the Atlantic Ocean at`, { x: shuttle.x, y: shuttle.y });
 
       // In 2-player mode, only destroy this shuttle
@@ -1348,6 +1363,171 @@ export class GameScene extends Phaser.Scene {
           },
         });
       }
+    }
+  }
+
+  private checkBoatLanding(): void {
+    if (!this.fisherBoat || this.fisherBoat.isDestroyed) return;
+    if (this.gameState !== 'playing') return;
+    if (this.shuttleOnBoat) return; // Already landed, don't trigger again
+
+    const deckBounds = this.fisherBoat.getLandingBounds();
+    const deckY = this.fisherBoat.getDeckY();
+
+    for (const shuttle of this.shuttles) {
+      if (!shuttle.active) continue;
+
+      // Shuttle bottom is about 18 pixels below center
+      const shuttleBottom = shuttle.y + 18;
+      const distanceFromDeck = deckY - shuttleBottom;
+
+      // Check horizontal alignment
+      if (shuttle.x < deckBounds.x || shuttle.x > deckBounds.x + deckBounds.width) {
+        // Reset flag if shuttle leaves the boat
+        if (this.shuttleOnBoat) {
+          this.shuttleOnBoat = false;
+          this.fisherBoat!.hasShuttleLanded = false;
+        }
+        continue;
+      }
+
+      // Check vertical proximity (must be close to deck surface)
+      if (distanceFromDeck < -5 || distanceFromDeck > 15) {
+        continue;
+      }
+
+      // Check landing safety
+      const landingResult = shuttle.checkLandingSafety();
+      const velocity = shuttle.getVelocity();
+
+      // Need to be moving slowly enough to "land"
+      if (velocity.total > 2) {
+        continue;
+      }
+
+      if (!landingResult.safe) {
+        // Crash on deck
+        console.log('CRASH: Bad landing on boat deck');
+        const playerNum = shuttle === this.shuttle2 ? 2 : 1;
+
+        if (this.playerCount === 2) {
+          this.handleShuttleCrash(playerNum, `Crash landing on boat! ${landingResult.reason}`, 'landing');
+          return;
+        }
+
+        this.gameState = 'crashed';
+        shuttle.stopRocketSound();
+        this.spawnTombstone(shuttle.x, shuttle.y, 'landing');
+        shuttle.explode();
+
+        this.transitionToGameOver({
+          victory: false,
+          message: `Crash landing on boat! ${landingResult.reason}`,
+          score: this.destructionScore,
+          debugModeUsed: shuttle.wasDebugModeUsed(),
+          destroyedBuildings: this.destroyedBuildings,
+        });
+        return;
+      }
+
+      // Successful landing on boat!
+      console.log('Successful landing on fishing boat!');
+      this.shuttleOnBoat = true;
+      this.fisherBoat!.hasShuttleLanded = true; // Stop boat bobbing
+
+      // Unlock achievement
+      this.achievementSystem.onBoatLanding();
+
+      // Check for "fish" package pickup (15% chance boat has it)
+      if (this.fisherBoat!.hasFishPackage && !this.fisherBoat!.fishPackageCollected) {
+        this.fisherBoat!.fishPackageCollected = true;
+
+        // Add to inventory
+        const playerNum = shuttle === this.shuttle2 ? 2 : 1;
+        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+        invSys.add('FISH_PACKAGE');
+
+        // Show pickup message
+        const fishText = this.add.text(shuttle.x, shuttle.y - 90, '"Fish" acquired!', {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '16px',
+          color: '#FFFFFF',
+          fontStyle: 'bold',
+          stroke: '#000000',
+          strokeThickness: 3,
+        });
+        fishText.setOrigin(0.5, 0.5);
+        fishText.setDepth(101);
+
+        this.tweens.add({
+          targets: fishText,
+          y: fishText.y - 30,
+          alpha: 0,
+          duration: 2500,
+          onComplete: () => fishText.destroy(),
+        });
+
+        // Play boing sound for pickup
+        this.playBoingSound();
+      }
+
+      // Play landing sound
+      if (landingResult.quality === 'perfect') {
+        this.sound.play('landing_perfect', { volume: 1.0 });
+      } else if (landingResult.quality === 'good') {
+        this.sound.play('landing_good', { volume: 1.0 });
+      } else {
+        this.sound.play('landing_rough', { volume: 1.0 });
+      }
+
+      // Stop shuttle but don't fully land (boat is bobbing)
+      shuttle.setVelocity(0, 0);
+      shuttle.setAngularVelocity(0);
+
+      // Show boat landing message
+      const landingText = this.add.text(shuttle.x, shuttle.y - 60, 'BOAT LANDING!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '20px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 3,
+      });
+      landingText.setOrigin(0.5, 0.5);
+      landingText.setDepth(100);
+
+      this.tweens.add({
+        targets: landingText,
+        y: landingText.y - 40,
+        alpha: 0,
+        duration: 2000,
+        onComplete: () => landingText.destroy(),
+      });
+
+      // Make shuttle follow the boat's bobbing motion briefly
+      const startTime = this.time.now;
+      const followDuration = 3000; // Follow boat for 3 seconds
+
+      const followBoat = this.time.addEvent({
+        delay: 16,
+        repeat: Math.floor(followDuration / 16),
+        callback: () => {
+          if (!shuttle.active || this.fisherBoat?.isDestroyed) {
+            followBoat.destroy();
+            return;
+          }
+          // Keep shuttle on deck
+          shuttle.y = this.fisherBoat!.getDeckY() - 18;
+          shuttle.setVelocity(0, 0);
+
+          // After follow duration, allow takeoff
+          if (this.time.now - startTime > followDuration) {
+            followBoat.destroy();
+          }
+        },
+      });
+
+      break; // Only handle one landing at a time
     }
   }
 
@@ -2577,7 +2757,8 @@ export class GameScene extends Phaser.Scene {
 
   private showBiplaneDestroyed(x: number, y: number, points: number, country: string): void {
     // Show country-specific destruction message
-    const nameText = this.add.text(x, y - 20, `${country} propaganda plane shot down!`, {
+    const displayName = country === 'GAME_INFO' ? 'Info plane' : `${country} propaganda plane`;
+    const nameText = this.add.text(x, y - 20, `${displayName} shot down!`, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '20px',
       color: '#FF4500', // Orange-red
@@ -3854,33 +4035,48 @@ export class GameScene extends Phaser.Scene {
     const currentCountry = this.getCurrentCountry();
     this.achievementSystem.onCountryVisited(currentCountry.name);
 
-    // Spawn biplane when any player gets close to the target country
+    // Spawn biplane when any player gets close to the target country (or any country for GAME_INFO)
     if (!this.biplaneSpawned && this.biplaneTargetCountry) {
-      const targetCountryData = COUNTRIES.find(c => c.name === this.biplaneTargetCountry);
-      const nextCountryData = COUNTRIES.find(c => c.startX > (targetCountryData?.startX ?? 0));
-      if (targetCountryData) {
+      const spawnDistance = 1500; // Spawn when player is within 1500px of country center
+      const validCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+
+      // For GAME_INFO, check all countries; for propaganda, check only target country
+      const countriesToCheck = this.biplaneTargetCountry === 'GAME_INFO'
+        ? validCountries
+        : [this.biplaneTargetCountry];
+
+      for (const countryName of countriesToCheck) {
+        const targetCountryData = COUNTRIES.find(c => c.name === countryName);
+        const nextCountryData = COUNTRIES.find(c => c.startX > (targetCountryData?.startX ?? 0));
+        if (!targetCountryData) continue;
+
         const countryStartX = targetCountryData.startX;
         const countryEndX = nextCountryData ? nextCountryData.startX : countryStartX + 6000;
         const countryCenter = countryStartX + (countryEndX - countryStartX) / 2;
-        const spawnDistance = 1500; // Spawn when player is within 1500px of country center
 
         // Check all active shuttles
         for (const shuttle of this.shuttles) {
           if (!shuttle.active) continue;
           const distToCenter = Math.abs(shuttle.x - countryCenter);
           if (distToCenter < spawnDistance) {
-            this.biplane = new Biplane(this, this.biplaneTargetCountry, shuttle.x);
+            // For GAME_INFO, spawn at the country player is approaching
+            const spawnCountry = this.biplaneTargetCountry === 'GAME_INFO' ? countryName : this.biplaneTargetCountry;
+            this.biplane = new Biplane(this, this.biplaneTargetCountry, shuttle.x, spawnCountry);
             this.biplaneSpawned = true;
-            console.log(`[Biplane] Player approaching ${this.biplaneTargetCountry} - spawning biplane!`);
+            console.log(`[Biplane] Player approaching ${countryName} - spawning ${this.biplaneTargetCountry} biplane!`);
             break;
           }
         }
+        if (this.biplaneSpawned) break;
       }
     }
 
-    // Update fisherboat (bob with waves)
+    // Update fisherboat (bob with waves) and check for landing
     if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
       this.fisherBoat.update(this.terrain.getWaveOffset());
+
+      // Check if any shuttle is landing on the boat deck
+      this.checkBoatLanding();
     }
 
     // Update golf cart (patrol and flee from nearest shuttle)

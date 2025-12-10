@@ -60,6 +60,9 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       this.setTint(0x66CCFF); // Light blue tint for P2
     }
 
+    // Set depth so shuttle appears between boat cabin (5) and hull (15)
+    this.setDepth(10);
+
     // No glow for cartoon style
 
     // Create thruster particles

@@ -5,11 +5,17 @@ export class FisherBoat extends Phaser.GameObjects.Container {
   public isDestroyed: boolean = false;
   public readonly pointValue: number = 300;
   public readonly boatName: string = 'Drug Kingpin boat';
+  public hasShuttleLanded: boolean = false; // Stop bobbing when shuttle is on deck
+  public hasFishPackage: boolean = false; // 15% chance to have contraband
+  public fishPackageCollected: boolean = false; // Already picked up
 
-  private graphics: Phaser.GameObjects.Graphics;
+  private hullGraphics: Phaser.GameObjects.Graphics;  // Hull and deck - in front of shuttle
+  private cabinGraphics: Phaser.GameObjects.Graphics; // Cabin - behind shuttle
   private baseY: number;
   private collisionWidth: number = 70;
   private collisionHeight: number = 50;
+  private deckWidth: number = 64;
+  private deckY: number = -5; // Relative to container
 
   constructor(scene: Phaser.Scene, x: number) {
     // Position at ocean surface level
@@ -17,17 +23,23 @@ export class FisherBoat extends Phaser.GameObjects.Container {
     super(scene, x, oceanHeight);
 
     this.baseY = oceanHeight;
-    this.graphics = scene.add.graphics();
-    this.add(this.graphics);
+
+    // Cabin graphics (behind shuttle at depth 10, so depth 5)
+    this.cabinGraphics = scene.add.graphics();
+    this.cabinGraphics.setDepth(5);
+
+    // Hull graphics (in front of shuttle at depth 10, so depth 15)
+    this.hullGraphics = scene.add.graphics();
+    this.hullGraphics.setDepth(15);
 
     this.drawBoat();
-    this.setDepth(10); // Above ocean, below shuttle
 
     scene.add.existing(this);
   }
 
   private drawBoat(): void {
-    this.graphics.clear();
+    this.hullGraphics.clear();
+    this.cabinGraphics.clear();
 
     // Colors
     const hullColor = 0x8B4513;      // Saddle brown (dark wood)
@@ -38,130 +50,145 @@ export class FisherBoat extends Phaser.GameObjects.Container {
     const flagColor = 0xFF0000;      // Red flag
     const deckColor = 0xDEB887;      // Burlywood (deck planks)
 
-    // Hull (boat bottom) - curved shape
-    this.graphics.fillStyle(hullColor, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(-35, 0);           // Left top of hull
-    this.graphics.lineTo(-30, 15);          // Left curve down
-    this.graphics.lineTo(-20, 22);          // Bottom left curve
-    this.graphics.lineTo(20, 22);           // Bottom flat
-    this.graphics.lineTo(30, 15);           // Bottom right curve
-    this.graphics.lineTo(35, 0);            // Right top of hull
-    this.graphics.closePath();
-    this.graphics.fillPath();
-
-    // Hull highlight (left side)
-    this.graphics.fillStyle(hullHighlight, 0.6);
-    this.graphics.beginPath();
-    this.graphics.moveTo(-35, 0);
-    this.graphics.lineTo(-30, 15);
-    this.graphics.lineTo(-25, 18);
-    this.graphics.lineTo(-25, 0);
-    this.graphics.closePath();
-    this.graphics.fillPath();
-
-    // Deck (flat top of hull)
-    this.graphics.fillStyle(deckColor, 1);
-    this.graphics.fillRect(-32, -5, 64, 8);
-
-    // Deck planks (lines)
-    this.graphics.lineStyle(1, hullColor, 0.5);
-    for (let px = -28; px < 30; px += 8) {
-      this.graphics.beginPath();
-      this.graphics.moveTo(px, -5);
-      this.graphics.lineTo(px, 3);
-      this.graphics.strokePath();
-    }
-
+    // === CABIN LAYER (behind shuttle) ===
     // Cabin (wheelhouse)
-    this.graphics.fillStyle(cabinColor, 1);
-    this.graphics.fillRect(-12, -25, 24, 20);
+    this.cabinGraphics.fillStyle(cabinColor, 1);
+    this.cabinGraphics.fillRect(-12, -25, 24, 20);
 
     // Cabin window
-    this.graphics.fillStyle(0x87CEEB, 0.8); // Sky blue glass
-    this.graphics.fillRect(-8, -22, 16, 10);
+    this.cabinGraphics.fillStyle(0x87CEEB, 0.8); // Sky blue glass
+    this.cabinGraphics.fillRect(-8, -22, 16, 10);
 
     // Window frame
-    this.graphics.lineStyle(2, hullColor, 1);
-    this.graphics.strokeRect(-8, -22, 16, 10);
+    this.cabinGraphics.lineStyle(2, hullColor, 1);
+    this.cabinGraphics.strokeRect(-8, -22, 16, 10);
     // Window cross
-    this.graphics.beginPath();
-    this.graphics.moveTo(0, -22);
-    this.graphics.lineTo(0, -12);
-    this.graphics.moveTo(-8, -17);
-    this.graphics.lineTo(8, -17);
-    this.graphics.strokePath();
+    this.cabinGraphics.beginPath();
+    this.cabinGraphics.moveTo(0, -22);
+    this.cabinGraphics.lineTo(0, -12);
+    this.cabinGraphics.moveTo(-8, -17);
+    this.cabinGraphics.lineTo(8, -17);
+    this.cabinGraphics.strokePath();
 
     // Cabin roof
-    this.graphics.fillStyle(cabinRoof, 1);
-    this.graphics.fillRect(-14, -28, 28, 4);
+    this.cabinGraphics.fillStyle(cabinRoof, 1);
+    this.cabinGraphics.fillRect(-14, -28, 28, 4);
+
+    // Small flag on cabin roof
+    this.cabinGraphics.lineStyle(2, mastColor, 1);
+    this.cabinGraphics.beginPath();
+    this.cabinGraphics.moveTo(0, -28);
+    this.cabinGraphics.lineTo(0, -42);
+    this.cabinGraphics.strokePath();
+
+    this.cabinGraphics.fillStyle(flagColor, 1);
+    this.cabinGraphics.beginPath();
+    this.cabinGraphics.moveTo(0, -42);
+    this.cabinGraphics.lineTo(10, -38);
+    this.cabinGraphics.lineTo(0, -34);
+    this.cabinGraphics.closePath();
+    this.cabinGraphics.fillPath();
+
+    // === HULL LAYER (in front of shuttle) ===
+    // Hull (boat bottom) - curved shape
+    this.hullGraphics.fillStyle(hullColor, 1);
+    this.hullGraphics.beginPath();
+    this.hullGraphics.moveTo(-35, 0);           // Left top of hull
+    this.hullGraphics.lineTo(-30, 15);          // Left curve down
+    this.hullGraphics.lineTo(-20, 22);          // Bottom left curve
+    this.hullGraphics.lineTo(20, 22);           // Bottom flat
+    this.hullGraphics.lineTo(30, 15);           // Bottom right curve
+    this.hullGraphics.lineTo(35, 0);            // Right top of hull
+    this.hullGraphics.closePath();
+    this.hullGraphics.fillPath();
+
+    // Hull highlight (left side)
+    this.hullGraphics.fillStyle(hullHighlight, 0.6);
+    this.hullGraphics.beginPath();
+    this.hullGraphics.moveTo(-35, 0);
+    this.hullGraphics.lineTo(-30, 15);
+    this.hullGraphics.lineTo(-25, 18);
+    this.hullGraphics.lineTo(-25, 0);
+    this.hullGraphics.closePath();
+    this.hullGraphics.fillPath();
+
+    // Deck (flat top of hull)
+    this.hullGraphics.fillStyle(deckColor, 1);
+    this.hullGraphics.fillRect(-32, -5, 64, 8);
+
+    // Deck planks (lines)
+    this.hullGraphics.lineStyle(1, hullColor, 0.5);
+    for (let px = -28; px < 30; px += 8) {
+      this.hullGraphics.beginPath();
+      this.hullGraphics.moveTo(px, -5);
+      this.hullGraphics.lineTo(px, 3);
+      this.hullGraphics.strokePath();
+    }
 
     // Fishing pole (angled out from the boat)
     const poleColor = 0x8B4513; // Wood color
-    this.graphics.lineStyle(3, poleColor, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(20, -10); // Base of pole on deck
-    this.graphics.lineTo(50, -35); // Pole angled out and up
-    this.graphics.strokePath();
+    this.hullGraphics.lineStyle(3, poleColor, 1);
+    this.hullGraphics.beginPath();
+    this.hullGraphics.moveTo(20, -10); // Base of pole on deck
+    this.hullGraphics.lineTo(50, -35); // Pole angled out and up
+    this.hullGraphics.strokePath();
 
     // Pole tip (thinner)
-    this.graphics.lineStyle(2, poleColor, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(50, -35);
-    this.graphics.lineTo(55, -40); // Tip of pole
-    this.graphics.strokePath();
+    this.hullGraphics.lineStyle(2, poleColor, 1);
+    this.hullGraphics.beginPath();
+    this.hullGraphics.moveTo(50, -35);
+    this.hullGraphics.lineTo(55, -40); // Tip of pole
+    this.hullGraphics.strokePath();
 
     // Fishing line going straight down into water
-    this.graphics.lineStyle(1, 0x000000, 0.7);
-    this.graphics.beginPath();
-    this.graphics.moveTo(55, -40); // From pole tip
-    this.graphics.lineTo(55, 35); // Straight down into water
-    this.graphics.strokePath();
+    this.hullGraphics.lineStyle(1, 0x000000, 0.7);
+    this.hullGraphics.beginPath();
+    this.hullGraphics.moveTo(55, -40); // From pole tip
+    this.hullGraphics.lineTo(55, 35); // Straight down into water
+    this.hullGraphics.strokePath();
 
     // Bobber on the water surface
-    this.graphics.fillStyle(0xFF0000, 1); // Red bobber
-    this.graphics.fillCircle(55, 15, 4);
-    this.graphics.fillStyle(0xFFFFFF, 1); // White bottom of bobber
-    this.graphics.fillCircle(55, 18, 3);
-
-    // Small flag on cabin roof
-    this.graphics.lineStyle(2, mastColor, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(0, -28);
-    this.graphics.lineTo(0, -42);
-    this.graphics.strokePath();
-
-    this.graphics.fillStyle(flagColor, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(0, -42);
-    this.graphics.lineTo(10, -38);
-    this.graphics.lineTo(0, -34);
-    this.graphics.closePath();
-    this.graphics.fillPath();
+    this.hullGraphics.fillStyle(0xFF0000, 1); // Red bobber
+    this.hullGraphics.fillCircle(55, 15, 4);
+    this.hullGraphics.fillStyle(0xFFFFFF, 1); // White bottom of bobber
+    this.hullGraphics.fillCircle(55, 18, 3);
 
     // Hull outline
-    this.graphics.lineStyle(2, 0x5D3A1A, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(-35, 0);
-    this.graphics.lineTo(-30, 15);
-    this.graphics.lineTo(-20, 22);
-    this.graphics.lineTo(20, 22);
-    this.graphics.lineTo(30, 15);
-    this.graphics.lineTo(35, 0);
-    this.graphics.strokePath();
+    this.hullGraphics.lineStyle(2, 0x5D3A1A, 1);
+    this.hullGraphics.beginPath();
+    this.hullGraphics.moveTo(-35, 0);
+    this.hullGraphics.lineTo(-30, 15);
+    this.hullGraphics.lineTo(-20, 22);
+    this.hullGraphics.lineTo(20, 22);
+    this.hullGraphics.lineTo(30, 15);
+    this.hullGraphics.lineTo(35, 0);
+    this.hullGraphics.strokePath();
   }
 
   update(waveOffset: number): void {
     if (this.isDestroyed) return;
 
-    // Bob up and down with the waves
-    const bobAmplitude = 8;
-    const bobY = Math.sin(waveOffset * 1.5) * bobAmplitude;
-    this.y = this.baseY + bobY - 15; // Offset to sit on water surface
+    // Don't bob if shuttle is landed on deck - stay stable
+    if (!this.hasShuttleLanded) {
+      // Bob up and down with the waves
+      const bobAmplitude = 8;
+      const bobY = Math.sin(waveOffset * 1.5) * bobAmplitude;
+      this.y = this.baseY + bobY - 15; // Offset to sit on water surface
 
-    // Slight rotation with waves
-    const rotationAmplitude = 0.06;
-    this.rotation = Math.sin(waveOffset * 0.8 + 0.5) * rotationAmplitude;
+      // Slight rotation with waves
+      const rotationAmplitude = 0.06;
+      this.rotation = Math.sin(waveOffset * 0.8 + 0.5) * rotationAmplitude;
+    } else {
+      // Stable position when shuttle is on deck
+      this.y = this.baseY - 15;
+      this.rotation = 0;
+    }
+
+    // Update graphics positions to follow the container
+    this.hullGraphics.setPosition(this.x, this.y);
+    this.hullGraphics.setRotation(this.rotation);
+    this.cabinGraphics.setPosition(this.x, this.y);
+    this.cabinGraphics.setRotation(this.rotation);
   }
 
   getCollisionBounds(): { x: number; y: number; width: number; height: number } {
@@ -171,6 +198,21 @@ export class FisherBoat extends Phaser.GameObjects.Container {
       width: this.collisionWidth,
       height: this.collisionHeight + 20, // Extend down into water
     };
+  }
+
+  // Landing deck bounds - where the shuttle can land
+  getLandingBounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.x - this.deckWidth / 2,
+      y: this.y + this.deckY,
+      width: this.deckWidth,
+      height: 8, // Deck thickness
+    };
+  }
+
+  // Get the deck surface Y position for landing
+  getDeckY(): number {
+    return this.y + this.deckY;
   }
 
   explode(): { name: string; points: number } {
@@ -254,14 +296,16 @@ export class FisherBoat extends Phaser.GameObjects.Container {
       });
     }
 
-    // Hide the boat
-    this.setVisible(false);
+    // Hide the boat graphics
+    this.hullGraphics.setVisible(false);
+    this.cabinGraphics.setVisible(false);
 
     return { name: this.boatName, points: this.pointValue };
   }
 
   destroy(fromScene?: boolean): void {
-    this.graphics.destroy();
+    this.hullGraphics.destroy();
+    this.cabinGraphics.destroy();
     super.destroy(fromScene);
   }
 }

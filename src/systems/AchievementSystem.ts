@@ -180,6 +180,10 @@ export class AchievementSystem {
     this.unlock('red_baron');
   }
 
+  onBoatLanding(): void {
+    this.unlock('pablos_parking');
+  }
+
   onCountryVisited(country: string): void {
     this.sessionStats.countriesVisited.add(country);
     // Check if all countries visited (Washington, USA, UK, France, Germany, Poland, Russia)
