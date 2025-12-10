@@ -103,17 +103,25 @@ export class Biplane extends Phaser.GameObjects.Container {
   private collisionHeight: number = 35;
   private baseY: number;
 
-  constructor(scene: Phaser.Scene) {
-    // Randomly select a country to spawn over
-    const countryName = VALID_COUNTRIES[Math.floor(Math.random() * VALID_COUNTRIES.length)];
+  constructor(scene: Phaser.Scene, targetCountry: string, cameraX: number) {
+    // Use the specified country
+    const countryName = targetCountry;
     const countryData = COUNTRIES.find(c => c.name === countryName)!;
     const nextCountry = COUNTRIES.find(c => c.startX > countryData.startX);
 
     const countryStartX = countryData.startX;
     const countryEndX = nextCountry ? nextCountry.startX : countryData.startX + 6000;
 
-    // Spawn in middle of country, high in sky
-    const spawnX = countryStartX + (countryEndX - countryStartX) / 2;
+    // Spawn just off-screen in the direction opposite to where player came from
+    // If player is to the left of country center, spawn on the right side (and fly left)
+    // If player is to the right of country center, spawn on the left side (and fly right)
+    const countryCenter = countryStartX + (countryEndX - countryStartX) / 2;
+    const playerComingFromLeft = cameraX < countryCenter;
+
+    // Spawn slightly off-screen on the opposite side
+    const spawnX = playerComingFromLeft
+      ? countryCenter + 400  // Spawn to the right, will fly left toward player
+      : countryCenter - 400; // Spawn to the left, will fly right toward player
     const spawnY = 100 + Math.random() * 40; // 100-140px from top
 
     super(scene, spawnX, spawnY);
@@ -126,8 +134,8 @@ export class Biplane extends Phaser.GameObjects.Container {
     const messages = BANNER_MESSAGES[countryName] || BANNER_MESSAGES['USA'];
     this.message = messages[Math.floor(Math.random() * messages.length)];
 
-    // Random direction
-    this.direction = Math.random() > 0.5 ? 1 : -1;
+    // Fly toward the player
+    this.direction = playerComingFromLeft ? -1 : 1;
 
     this.graphics = scene.add.graphics();
     this.bannerContainer = scene.add.container(0, 0);
@@ -144,6 +152,8 @@ export class Biplane extends Phaser.GameObjects.Container {
       this.setScale(-1, 1);
     }
 
+    console.log(`[Biplane] Spawned over ${this.country} at X=${Math.round(this.x)}, heading ${this.direction === 1 ? 'RIGHT' : 'LEFT'}, message: "${this.message}"`);
+
     scene.add.existing(this);
   }
 
@@ -152,14 +162,15 @@ export class Biplane extends Phaser.GameObjects.Container {
 
     const { primary, secondary, accent } = this.colors;
 
-    // === SIMPLE CLASSIC BIPLANE DESIGN ===
+    // === BIPLANE PAINTED IN COUNTRY FLAG COLORS ===
 
-    // UPPER WING (longer, sits above fuselage)
+    // UPPER WING - 3 color stripes like a flag
+    this.graphics.fillStyle(primary, 1);
+    this.graphics.fillRect(-32, -14, 21, 6);
     this.graphics.fillStyle(secondary, 1);
-    this.graphics.fillRect(-32, -14, 64, 6);
+    this.graphics.fillRect(-11, -14, 22, 6);
     this.graphics.fillStyle(accent, 1);
-    this.graphics.fillRect(-32, -14, 8, 6); // Left tip
-    this.graphics.fillRect(24, -14, 8, 6);  // Right tip
+    this.graphics.fillRect(11, -14, 21, 6);
     this.graphics.lineStyle(1, 0x222222, 0.8);
     this.graphics.strokeRect(-32, -14, 64, 6);
 
@@ -172,11 +183,11 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.graphics.lineTo(18, 6);
     this.graphics.strokePath();
 
-    // FUSELAGE (simple rounded rectangle body)
+    // FUSELAGE - primary color with secondary stripe
     this.graphics.fillStyle(primary, 1);
     this.graphics.fillRoundedRect(-28, -5, 56, 12, 3);
 
-    // Fuselage stripe
+    // Fuselage stripe in secondary color
     this.graphics.fillStyle(secondary, 1);
     this.graphics.fillRect(-20, -1, 40, 4);
 
@@ -184,12 +195,13 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.graphics.lineStyle(1.5, 0x222222, 0.8);
     this.graphics.strokeRoundedRect(-28, -5, 56, 12, 3);
 
-    // LOWER WING (shorter, attached to fuselage)
+    // LOWER WING - 3 color stripes like a flag
+    this.graphics.fillStyle(primary, 1);
+    this.graphics.fillRect(-26, 6, 17, 5);
     this.graphics.fillStyle(secondary, 1);
-    this.graphics.fillRect(-26, 6, 52, 5);
+    this.graphics.fillRect(-9, 6, 18, 5);
     this.graphics.fillStyle(accent, 1);
-    this.graphics.fillRect(-26, 6, 6, 5);  // Left tip
-    this.graphics.fillRect(20, 6, 6, 5);   // Right tip
+    this.graphics.fillRect(9, 6, 17, 5);
     this.graphics.lineStyle(1, 0x222222, 0.8);
     this.graphics.strokeRect(-26, 6, 52, 5);
 
@@ -214,7 +226,7 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.graphics.fillStyle(0x222222, 1);
     this.graphics.fillRect(7, -7, 5, 2); // Goggles
 
-    // TAIL FIN (vertical)
+    // TAIL FIN (vertical) - accent color
     this.graphics.fillStyle(accent, 1);
     this.graphics.beginPath();
     this.graphics.moveTo(-24, -5);
@@ -225,8 +237,8 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.graphics.lineStyle(1, 0x222222, 0.8);
     this.graphics.strokePath();
 
-    // TAIL STABILIZER (horizontal)
-    this.graphics.fillStyle(accent, 1);
+    // TAIL STABILIZER (horizontal) - secondary color
+    this.graphics.fillStyle(secondary, 1);
     this.graphics.fillRect(-34, 0, 12, 3);
     this.graphics.lineStyle(1, 0x222222, 0.8);
     this.graphics.strokeRect(-34, 0, 12, 3);
@@ -386,6 +398,7 @@ export class Biplane extends Phaser.GameObjects.Container {
 
   update(time: number, _delta: number): void {
     if (this.isDestroyed || this.isWaiting) return;
+    if (!this.scene || !this.scene.cameras || !this.scene.cameras.main) return;
 
     // Move in current direction
     this.x += this.speed * this.direction;

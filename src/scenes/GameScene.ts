@@ -105,6 +105,8 @@ export class GameScene extends Phaser.Scene {
   // Propaganda biplane
   private biplane: Biplane | null = null;
   private propagandaBanners: Phaser.GameObjects.Container[] = [];
+  private biplaneTargetCountry: string | null = null; // Country where biplane will spawn when player enters
+  private biplaneSpawned: boolean = false;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -208,8 +210,11 @@ export class GameScene extends Phaser.Scene {
       this.golfCart = new GolfCart(this, 1000, 800, 1200);
     }
 
-    // Create propaganda biplane flying high in the sky (random country)
-    this.biplane = new Biplane(this);
+    // Pick a random country for the biplane to spawn when player gets close
+    const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+    this.biplaneTargetCountry = biplaneCountries[Math.floor(Math.random() * biplaneCountries.length)];
+    this.biplaneSpawned = false;
+    console.log(`[Biplane] Will spawn when player approaches ${this.biplaneTargetCountry}`);
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();
@@ -2791,6 +2796,7 @@ export class GameScene extends Phaser.Scene {
     banner.setDepth(50);
     banner.setData('collected', false);
     banner.setData('grounded', false);
+    banner.setData('sinking', false);
     banner.setData('propagandaType', propagandaType);
 
     // Banner graphic - tattered shape
@@ -2829,8 +2835,13 @@ export class GameScene extends Phaser.Scene {
     // Calculate terrain landing position
     const terrainY = this.terrain.getHeightAt(startX) - 15;
 
-    // Falling leaf animation - swaying side to side while descending
-    const fallDuration = 6000;
+    // Check if landing in water (Atlantic Ocean)
+    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
+    const isOverWater = startX >= atlanticStart && startX < atlanticEnd;
+
+    // Falling leaf animation - swaying side to side while descending (50% faster)
+    const fallDuration = 3000;
     const swayAmount = 120;
     const swayFrequency = 3;
 
@@ -2839,7 +2850,7 @@ export class GameScene extends Phaser.Scene {
       delay: 16,
       repeat: Math.floor(fallDuration / 16),
       callback: () => {
-        if (!banner || !banner.active) {
+        if (!banner || !banner.active || banner.getData('collected')) {
           leafUpdate.destroy();
           return;
         }
@@ -2859,29 +2870,50 @@ export class GameScene extends Phaser.Scene {
         const swayVelocity = Math.cos(swayProgress);
         banner.angle = swayVelocity * 35;
 
-        // Check if landed on terrain
+        // Check if landed on terrain/water
         if (banner.y >= terrainY - 5) {
           banner.y = terrainY;
           banner.angle = (Math.random() - 0.5) * 20; // Random resting angle
           banner.setData('grounded', true);
           leafUpdate.destroy();
 
-          // Fade out after 15 seconds if not collected
-          this.time.delayedCall(15000, () => {
-            if (banner && banner.active && !banner.getData('collected')) {
-              const idx = this.propagandaBanners.indexOf(banner);
-              if (idx >= 0) {
-                this.propagandaBanners.splice(idx, 1);
-              }
+          // If landed in water, start sinking
+          if (isOverWater) {
+            banner.setData('sinking', true);
+            const sinkDepth = terrainY + 150;
 
-              this.tweens.add({
-                targets: banner,
-                alpha: 0,
-                duration: 500,
-                onComplete: () => banner.destroy(),
-              });
-            }
-          });
+            this.tweens.add({
+              targets: banner,
+              y: sinkDepth,
+              alpha: 0,
+              duration: 3000,
+              ease: 'Quad.easeIn',
+              onComplete: () => {
+                const idx = this.propagandaBanners.indexOf(banner);
+                if (idx >= 0) {
+                  this.propagandaBanners.splice(idx, 1);
+                }
+                banner.destroy();
+              },
+            });
+          } else {
+            // Fade out after 15 seconds if not collected (on land)
+            this.time.delayedCall(15000, () => {
+              if (banner && banner.active && !banner.getData('collected')) {
+                const idx = this.propagandaBanners.indexOf(banner);
+                if (idx >= 0) {
+                  this.propagandaBanners.splice(idx, 1);
+                }
+
+                this.tweens.add({
+                  targets: banner,
+                  alpha: 0,
+                  duration: 500,
+                  onComplete: () => banner.destroy(),
+                });
+              }
+            });
+          }
         }
       },
     });
@@ -2890,19 +2922,16 @@ export class GameScene extends Phaser.Scene {
   private updatePropagandaBanners(): void {
     const pickupRadius = 60;
 
-    // Check if shuttle is landed (very low velocity)
-    const velocity = this.shuttle.getVelocity();
-    const isLanded = velocity.total < 0.5;
-
     for (let i = this.propagandaBanners.length - 1; i >= 0; i--) {
       const banner = this.propagandaBanners[i];
-      if (!banner || !banner.active || banner.getData('collected') || !banner.getData('grounded')) continue;
+      if (!banner || !banner.active || banner.getData('collected') || banner.getData('sinking')) continue;
 
       const dx = this.shuttle.x - banner.x;
       const dy = this.shuttle.y - banner.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist < pickupRadius && isLanded) {
+      // Can catch mid-air or on ground
+      if (dist < pickupRadius) {
         banner.setData('collected', true);
 
         // Play boing sound
@@ -3824,6 +3853,30 @@ export class GameScene extends Phaser.Scene {
     // Track country visits for achievement
     const currentCountry = this.getCurrentCountry();
     this.achievementSystem.onCountryVisited(currentCountry.name);
+
+    // Spawn biplane when any player gets close to the target country
+    if (!this.biplaneSpawned && this.biplaneTargetCountry) {
+      const targetCountryData = COUNTRIES.find(c => c.name === this.biplaneTargetCountry);
+      const nextCountryData = COUNTRIES.find(c => c.startX > (targetCountryData?.startX ?? 0));
+      if (targetCountryData) {
+        const countryStartX = targetCountryData.startX;
+        const countryEndX = nextCountryData ? nextCountryData.startX : countryStartX + 6000;
+        const countryCenter = countryStartX + (countryEndX - countryStartX) / 2;
+        const spawnDistance = 1500; // Spawn when player is within 1500px of country center
+
+        // Check all active shuttles
+        for (const shuttle of this.shuttles) {
+          if (!shuttle.active) continue;
+          const distToCenter = Math.abs(shuttle.x - countryCenter);
+          if (distToCenter < spawnDistance) {
+            this.biplane = new Biplane(this, this.biplaneTargetCountry, shuttle.x);
+            this.biplaneSpawned = true;
+            console.log(`[Biplane] Player approaching ${this.biplaneTargetCountry} - spawning biplane!`);
+            break;
+          }
+        }
+      }
+    }
 
     // Update fisherboat (bob with waves)
     if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
