@@ -23,6 +23,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   private thrusterParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private chemtrailEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private isThrusting: boolean = false;
+  private chemtrailParticleCount: number = 0; // Total chemtrail particles emitted
   private fuelSystem: { consume: (amount: number) => boolean; isEmpty: () => boolean } | null = null;
   private legsExtended: boolean = true;
   private legsKey: Phaser.Input.Keyboard.Key | null = null;
@@ -310,6 +311,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
         // Emit chemtrail particles (more with speed boost power-up)
         const baseChemtrail = this.thrustMultiplier > 1 ? 2 : 1;
         this.chemtrailEmitter.emitParticleAt(exhaustX, exhaustY, baseChemtrail);
+        this.chemtrailParticleCount += baseChemtrail;
         if (speed > 3 || this.thrustMultiplier > 1) {
           // Extra particles at higher speeds or with power-up
           const extraCount = this.thrustMultiplier > 1 ? 2 : 1;
@@ -318,6 +320,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
             exhaustY + (Math.random() - 0.5) * 10,
             extraCount
           );
+          this.chemtrailParticleCount += extraCount;
         }
       }
 
@@ -353,6 +356,10 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
   getIsThrusting(): boolean {
     return this.isThrusting;
+  }
+
+  getChemtrailParticleCount(): number {
+    return this.chemtrailParticleCount;
   }
 
   getThrustPosition(): { x: number; y: number } {

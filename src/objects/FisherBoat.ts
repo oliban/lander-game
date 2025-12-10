@@ -5,9 +5,9 @@ export class FisherBoat extends Phaser.GameObjects.Container {
   public isDestroyed: boolean = false;
   public readonly pointValue: number = 300;
   public readonly boatName: string = 'Drug Kingpin boat';
-  public hasShuttleLanded: boolean = false; // Stop bobbing when shuttle is on deck
   public hasFishPackage: boolean = false; // 15% chance to have contraband
   public fishPackageCollected: boolean = false; // Already picked up
+  public shuttleNearby: boolean = false; // Stop bobbing when shuttle is close
 
   private hullGraphics: Phaser.GameObjects.Graphics;  // Hull and deck - in front of shuttle
   private cabinGraphics: Phaser.GameObjects.Graphics; // Cabin - behind shuttle
@@ -15,7 +15,8 @@ export class FisherBoat extends Phaser.GameObjects.Container {
   private collisionWidth: number = 70;
   private collisionHeight: number = 50;
   private deckWidth: number = 64;
-  private deckY: number = -5; // Relative to container
+  private deckY: number = -5; // Relative to container (matches deck graphic at y=-5)
+  private deckBody: MatterJS.BodyType | null = null;
 
   constructor(scene: Phaser.Scene, x: number) {
     // Position at ocean surface level
@@ -33,6 +34,25 @@ export class FisherBoat extends Phaser.GameObjects.Container {
     this.hullGraphics.setDepth(15);
 
     this.drawBoat();
+
+    // Create physics body for deck (static, acts like landing pad)
+    const Matter = (scene as any).matter;
+    if (Matter) {
+      this.deckBody = Matter.add.rectangle(
+        x,
+        oceanHeight - 15 + this.deckY + 4, // Deck surface Y (stable position)
+        this.deckWidth,
+        8,
+        {
+          isStatic: true,
+          label: 'boatDeck',
+          collisionFilter: {
+            category: 2, // terrain category
+            mask: 1, // collide with shuttles
+          },
+        }
+      );
+    }
 
     scene.add.existing(this);
   }
@@ -168,8 +188,8 @@ export class FisherBoat extends Phaser.GameObjects.Container {
   update(waveOffset: number): void {
     if (this.isDestroyed) return;
 
-    // Don't bob if shuttle is landed on deck - stay stable
-    if (!this.hasShuttleLanded) {
+    // Don't bob if shuttle is nearby - stay stable for landing
+    if (!this.shuttleNearby) {
       // Bob up and down with the waves
       const bobAmplitude = 8;
       const bobY = Math.sin(waveOffset * 1.5) * bobAmplitude;
@@ -179,7 +199,7 @@ export class FisherBoat extends Phaser.GameObjects.Container {
       const rotationAmplitude = 0.06;
       this.rotation = Math.sin(waveOffset * 0.8 + 0.5) * rotationAmplitude;
     } else {
-      // Stable position when shuttle is on deck
+      // Stable position when shuttle is nearby
       this.y = this.baseY - 15;
       this.rotation = 0;
     }
@@ -189,6 +209,17 @@ export class FisherBoat extends Phaser.GameObjects.Container {
     this.hullGraphics.setRotation(this.rotation);
     this.cabinGraphics.setPosition(this.x, this.y);
     this.cabinGraphics.setRotation(this.rotation);
+
+    // Keep physics deck body in sync with boat position
+    if (this.deckBody) {
+      const Matter = (this.scene as any).matter;
+      if (Matter) {
+        Matter.body.setPosition(this.deckBody, {
+          x: this.x,
+          y: this.y + this.deckY + 4, // Deck surface
+        });
+      }
+    }
   }
 
   getCollisionBounds(): { x: number; y: number; width: number; height: number } {
@@ -219,6 +250,15 @@ export class FisherBoat extends Phaser.GameObjects.Container {
     if (this.isDestroyed) return { name: this.boatName, points: 0 };
 
     this.isDestroyed = true;
+
+    // Remove physics body
+    if (this.deckBody) {
+      const Matter = (this.scene as any).matter;
+      if (Matter) {
+        Matter.world.remove(Matter.world.engine.world, this.deckBody);
+      }
+      this.deckBody = null;
+    }
 
     const scene = this.scene;
     const x = this.x;
