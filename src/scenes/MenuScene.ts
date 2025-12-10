@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../constants';
+import { getAchievementSystem } from '../systems/AchievementSystem';
+import { TIER_COLORS } from '../data/achievements';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -98,45 +100,48 @@ export class MenuScene extends Phaser.Scene {
     });
     quoteAttrib.setOrigin(0.5, 0);
 
+    // Bottom section: 3 panels in a row, then start button below
+    const panelY = 520;
+    const panelH = 105;
+    const panelW = 170;
+    const panelSpacing = 185;
+
     // HIGH SCORES panel on the left
-    const scoresPanelX = 100;
-    const scoresPanelY = 520;
-    const scoresPanelW = 180;
-    const scoresPanelH = 130;
+    const scoresPanelX = GAME_WIDTH / 2 - panelSpacing;
 
     const scoresPanel = this.add.graphics();
     scoresPanel.fillStyle(0x000000, 0.6);
-    scoresPanel.fillRoundedRect(scoresPanelX - scoresPanelW / 2, scoresPanelY, scoresPanelW, scoresPanelH, 8);
+    scoresPanel.fillRoundedRect(scoresPanelX - panelW / 2, panelY, panelW, panelH, 8);
     scoresPanel.lineStyle(2, 0xFFD700, 0.5);
-    scoresPanel.strokeRoundedRect(scoresPanelX - scoresPanelW / 2, scoresPanelY, scoresPanelW, scoresPanelH, 8);
+    scoresPanel.strokeRoundedRect(scoresPanelX - panelW / 2, panelY, panelW, panelH, 8);
 
-    const scoresTitle = this.add.text(scoresPanelX, scoresPanelY + 15, 'TOP SCORES', {
-      fontSize: '14px',
+    const scoresTitle = this.add.text(scoresPanelX, panelY + 12, 'TOP SCORES', {
+      fontSize: '12px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
     scoresTitle.setOrigin(0.5, 0);
 
-    // Load and display high scores
+    // Load and display high scores (top 5)
     const highScores = this.loadHighScores();
     for (let i = 0; i < 5; i++) {
       const score = highScores[i];
-      const yPos = scoresPanelY + 38 + i * 18;
+      const yPos = panelY + 30 + i * 14;
       const rank = i + 1;
       const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
 
       if (score) {
         const scoreText = this.add.text(scoresPanelX, yPos,
-          `${rank}. ${score.name.substring(0, 10)} - ${score.score}`, {
-          fontSize: '12px',
+          `${rank}. ${score.name.substring(0, 8)} ${score.score}`, {
+          fontSize: '11px',
           color: color,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
         scoreText.setOrigin(0.5, 0);
       } else {
         const emptyText = this.add.text(scoresPanelX, yPos, `${rank}. ---`, {
-          fontSize: '12px',
+          fontSize: '11px',
           color: '#555555',
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
@@ -144,20 +149,20 @@ export class MenuScene extends Phaser.Scene {
       }
     }
 
+    // ACHIEVEMENTS panel in center
+    this.createAchievementsPanel(GAME_WIDTH / 2, panelY, panelW, panelH);
+
     // CONTROLS panel on the right
-    const controlsPanelX = GAME_WIDTH - 100;
-    const controlsPanelY = 520;
-    const controlsPanelW = 180;
-    const controlsPanelH = 130;
+    const controlsPanelX = GAME_WIDTH / 2 + panelSpacing;
 
     const controlsPanel = this.add.graphics();
     controlsPanel.fillStyle(0x000000, 0.6);
-    controlsPanel.fillRoundedRect(controlsPanelX - controlsPanelW / 2, controlsPanelY, controlsPanelW, controlsPanelH, 8);
+    controlsPanel.fillRoundedRect(controlsPanelX - panelW / 2, panelY, panelW, panelH, 8);
     controlsPanel.lineStyle(2, 0x4CAF50, 0.5);
-    controlsPanel.strokeRoundedRect(controlsPanelX - controlsPanelW / 2, controlsPanelY, controlsPanelW, controlsPanelH, 8);
+    controlsPanel.strokeRoundedRect(controlsPanelX - panelW / 2, panelY, panelW, panelH, 8);
 
-    const controlsTitle = this.add.text(controlsPanelX, controlsPanelY + 15, 'CONTROLS', {
-      fontSize: '14px',
+    const controlsTitle = this.add.text(controlsPanelX, panelY + 12, 'CONTROLS', {
+      fontSize: '12px',
       color: '#4CAF50',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
@@ -165,23 +170,23 @@ export class MenuScene extends Phaser.Scene {
     controlsTitle.setOrigin(0.5, 0);
 
     const controlsList = [
-      'UP = Thrust',
-      'LEFT/RIGHT = Rotate',
-      'SPACE = Landing Gear',
-      'DOWN = Drop Bomb',
+      '↑ = Thrust',
+      '←→ = Rotate',
+      'SPACE = Gear',
+      '↓ = Bomb',
     ];
 
     for (let i = 0; i < controlsList.length; i++) {
-      const controlText = this.add.text(controlsPanelX, controlsPanelY + 40 + i * 20, controlsList[i], {
-        fontSize: '12px',
+      const controlText = this.add.text(controlsPanelX, panelY + 30 + i * 16, controlsList[i], {
+        fontSize: '11px',
         color: '#FFFFFF',
         fontFamily: 'Arial, Helvetica, sans-serif',
       });
       controlText.setOrigin(0.5, 0);
     }
 
-    // Start button - centered between the two panels
-    const startButton = this.createButton(GAME_WIDTH / 2, 580, 'START MISSION', () => {
+    // Start button - below all panels with enough space
+    const startButton = this.createButton(GAME_WIDTH / 2, panelY + panelH + 45, 'START MISSION', () => {
       this.startGame(1);
     });
 
@@ -196,8 +201,8 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Press Enter hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, 625, 'Press 1 for 1 Player  |  Press 2 for 2 Players', {
-      fontSize: '14px',
+    const enterHint = this.add.text(GAME_WIDTH / 2, panelY + panelH + 80, 'Press 1 for 1 Player  |  Press 2 for 2 Players', {
+      fontSize: '13px',
       color: '#666666',
       fontFamily: 'Arial, Helvetica, sans-serif',
     });
@@ -220,18 +225,81 @@ export class MenuScene extends Phaser.Scene {
       this.startGame(2);
     });
 
-    // Version/credits
-    const credits = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 10,
-      'A satirical comedy game - All in good fun!', {
-      fontSize: '11px',
-      color: '#555555',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-    });
-    credits.setOrigin(0.5, 1);
-  }
+    }
 
   private startGame(playerCount: number = 1): void {
     this.scene.start('GameScene', { playerCount });
+  }
+
+  private createAchievementsPanel(panelX: number, panelY: number, panelW: number, panelH: number): void {
+    const achievementSystem = getAchievementSystem();
+    const unlocked = achievementSystem.getUnlockedCount();
+    const total = achievementSystem.getTotalCount();
+
+    // Panel background
+    const panel = this.add.graphics();
+    panel.fillStyle(0x000000, 0.6);
+    panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+    panel.lineStyle(2, 0xffd700, 0.5);
+    panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+
+    // Title with trophy icon and progress
+    const titleText = this.add.text(panelX, panelY + 12, `🏆 ${unlocked}/${total}`, {
+      fontSize: '12px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    titleText.setOrigin(0.5, 0);
+
+    // Show list of recent unlocks (up to 4)
+    const recentUnlocks = achievementSystem.getRecentUnlocks(4);
+
+    if (recentUnlocks.length > 0) {
+      for (let i = 0; i < recentUnlocks.length; i++) {
+        const achievement = recentUnlocks[i];
+        const yPos = panelY + 30 + i * 14;
+        const tierColor = '#' + TIER_COLORS[achievement.tier].toString(16).padStart(6, '0');
+
+        const achievementText = this.add.text(panelX, yPos, `✓ ${achievement.name}`, {
+          fontSize: '10px',
+          color: tierColor,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+        });
+        achievementText.setOrigin(0.5, 0);
+      }
+    } else {
+      // No achievements yet - show hint
+      const hintText = this.add.text(panelX, panelY + 38, 'Land safely for\nyour first trophy!', {
+        fontSize: '10px',
+        color: '#888888',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        align: 'center',
+      });
+      hintText.setOrigin(0.5, 0);
+    }
+
+    // View All button at bottom of panel
+    const viewBtn = this.add.text(panelX, panelY + panelH - 12, '[ VIEW ALL ]', {
+      fontSize: '10px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    viewBtn.setOrigin(0.5, 0.5);
+    viewBtn.setInteractive({ useHandCursor: true });
+
+    viewBtn.on('pointerover', () => {
+      viewBtn.setColor('#66BB6A');
+    });
+
+    viewBtn.on('pointerout', () => {
+      viewBtn.setColor('#4CAF50');
+    });
+
+    viewBtn.on('pointerdown', () => {
+      this.scene.start('AchievementsScene');
+    });
   }
 
   private loadHighScores(): { name: string; score: number; date: string }[] {

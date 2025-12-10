@@ -12,6 +12,7 @@ import { GolfCart } from '../objects/GolfCart';
 import { OilTower } from '../objects/OilTower';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
+import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -115,6 +116,10 @@ export class GameScene extends Phaser.Scene {
   private tombstoneBodies: MatterJS.BodyType[] = [];
   private static readonly TOMBSTONE_STORAGE_KEY = 'peaceShuttle_tombstones';
 
+  // Achievement system
+  private achievementSystem!: AchievementSystem;
+  private cannonsDestroyedThisGame: number = 0;
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -148,6 +153,12 @@ export class GameScene extends Phaser.Scene {
     // Initialize systems
     this.fuelSystem = new FuelSystem();
     this.inventorySystem = new InventorySystem();
+    this.cannonsDestroyedThisGame = 0;
+
+    // Initialize achievement system
+    this.achievementSystem = getAchievementSystem();
+    this.achievementSystem.startSession();
+    // Note: Achievement popup is created in UIScene so it appears on top of all UI elements
 
     // Initialize P2 systems if 2-player mode
     if (this.playerCount === 2) {
@@ -742,6 +753,9 @@ export class GameScene extends Phaser.Scene {
       shuttle.stopRocketSound();
       this.sound.play('water_splash');
 
+      // Track death achievement
+      this.achievementSystem.onDeath('water');
+
       // Spawn tombstone at water crash location (will appear after ship sinks)
       this.spawnTombstone(shuttle.x, shuttle.y, 'water');
 
@@ -784,6 +798,9 @@ export class GameScene extends Phaser.Scene {
 
     this.gameState = 'crashed';
     shuttle.stopRocketSound();
+
+    // Track death achievement
+    this.achievementSystem.onDeath('terrain');
 
     // Spawn tombstone at terrain crash location
     this.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
@@ -1094,6 +1111,9 @@ export class GameScene extends Phaser.Scene {
     // Successful landing
     this.gameState = 'landed';
 
+    // Track landing achievement
+    this.achievementSystem.onLanding(landingResult.quality);
+
     // Play landing sound based on quality (louder volumes for better audibility)
     if (landingResult.quality === 'perfect') {
       this.sound.play('landing_perfect', { volume: 1.0 });
@@ -1134,6 +1154,9 @@ export class GameScene extends Phaser.Scene {
 
       // Check if debug mode was used (disqualifies from high score)
       const debugModeUsed = this.shuttle.wasDebugModeUsed();
+
+      // Track victory achievements
+      this.achievementSystem.onVictory(this.hasPeaceMedal, this.destroyedBuildings.length);
 
       this.time.delayedCall(1500, () => {
         this.scene.stop('UIScene');
@@ -1410,6 +1433,9 @@ export class GameScene extends Phaser.Scene {
 
     console.log(`P${playerNum} crashed: ${message}`);
 
+    // Track death achievement
+    this.achievementSystem.onDeath(cause);
+
     // Spawn tombstone at crash location
     this.spawnTombstone(shuttle.x, shuttle.y, cause);
 
@@ -1596,6 +1622,13 @@ export class GameScene extends Phaser.Scene {
     } else {
       // Regular collectible - add 1 to inventory
       invSys.add(collectible.collectibleType);
+
+      // Track casino chip achievement (check total value after adding)
+      if (collectible.collectibleType === 'CASINO_CHIP') {
+        const chipValues = invSys.getCasinoChipValues();
+        const lastValue = chipValues[chipValues.length - 1] || 0;
+        this.achievementSystem.onCasinoChipCollected(lastValue);
+      }
     }
 
     collectible.collect();
@@ -1876,6 +1909,9 @@ export class GameScene extends Phaser.Scene {
               this.p2Kills++;
             }
 
+            // Track kill achievement
+            this.achievementSystem.onPlayerKill(killerPlayer);
+
             // Emit event for UI to update kill tally
             this.events.emit('playerKill', { killer: killerPlayer, victim: victimPlayer, p1Kills: this.p1Kills, p2Kills: this.p2Kills });
 
@@ -1930,6 +1966,9 @@ export class GameScene extends Phaser.Scene {
           const { name, points, textureKey, country } = decoration.explode();
           this.destructionScore += points;
           this.destroyedBuildings.push({ name, points, textureKey, country });
+
+          // Track building destruction achievement
+          this.achievementSystem.onBuildingDestroyed();
 
           // Clear any scorch marks that were on the destroyed building
           this.clearScorchMarksInArea(bounds);
@@ -1989,6 +2028,10 @@ export class GameScene extends Phaser.Scene {
           this.destructionScore += 200;
           this.showDestructionPoints(cannon.x, cannon.y - 30, 200, 'Cannon');
 
+          // Track cannon destruction achievement
+          this.cannonsDestroyedThisGame++;
+          this.achievementSystem.onCannonDestroyed();
+
           // Don't remove cannon from array yet - let its projectiles finish
           // The cannon.explode() already hides it and stops firing
 
@@ -2026,6 +2069,9 @@ export class GameScene extends Phaser.Scene {
           const { name, points } = this.fisherBoat.explode();
           this.destructionScore += points;
 
+          // Track fisherboat destruction achievement
+          this.achievementSystem.onFisherBoatDestroyed();
+
           // Show special destruction message
           this.showFisherBoatDestroyed(this.fisherBoat.x, this.fisherBoat.y - 50, points);
 
@@ -2057,6 +2103,9 @@ export class GameScene extends Phaser.Scene {
           // Get cart info and destroy it
           const { name, points, filePositions } = this.golfCart.explode();
           this.destructionScore += points;
+
+          // Track golf cart destruction achievement
+          this.achievementSystem.onGolfCartDestroyed();
 
           // Show special destruction message
           this.showGolfCartDestroyed(this.golfCart.x, this.golfCart.y - 50, points);
@@ -3390,6 +3439,10 @@ export class GameScene extends Phaser.Scene {
     // Stop here if not playing
     if (this.gameState !== 'playing') return;
 
+    // Track country visits for achievement
+    const currentCountry = this.getCurrentCountry();
+    this.achievementSystem.onCountryVisited(currentCountry.name);
+
     // Update fisherboat (bob with waves)
     if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
       this.fisherBoat.update(this.terrain.getWaveOffset());
@@ -3555,6 +3608,10 @@ export class GameScene extends Phaser.Scene {
     if (this.shuttle.y > GAME_HEIGHT + 100) {
       this.gameState = 'crashed';
       this.shuttle.stopRocketSound();
+
+      // Track death achievement
+      this.achievementSystem.onDeath('void');
+
       // Spawn tombstone at last known position (bottom of visible area)
       this.spawnTombstone(this.shuttle.x, GAME_HEIGHT, 'void');
       this.transitionToGameOver({
