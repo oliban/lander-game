@@ -19,6 +19,8 @@ interface UISceneData {
   getP2Velocity?: () => { x: number; y: number; total: number };
   getP2LegsExtended?: () => boolean;
   isP2Active?: () => boolean;
+  // Kill tally for 2-player mode
+  getKillCounts?: () => { p1Kills: number; p2Kills: number };
 }
 
 export class UIScene extends Phaser.Scene {
@@ -65,6 +67,11 @@ export class UIScene extends Phaser.Scene {
   private p2FuelText: Phaser.GameObjects.Text | null = null;
   private lastP2Velocity: number = -1;
   private lastP2LegsState: boolean = false;
+  // Kill tally (2-player mode)
+  private killTallyContainer: Phaser.GameObjects.Container | null = null;
+  private p1TallyGraphics: Phaser.GameObjects.Graphics | null = null;
+  private p2TallyGraphics: Phaser.GameObjects.Graphics | null = null;
+  private getKillCounts: () => { p1Kills: number; p2Kills: number } = () => ({ p1Kills: 0, p2Kills: 0 });
 
   constructor() {
     super({ key: 'UIScene' });
@@ -86,6 +93,7 @@ export class UIScene extends Phaser.Scene {
     this.getP2Velocity = data.getP2Velocity ?? (() => ({ x: 0, y: 0, total: 0 }));
     this.getP2LegsExtended = data.getP2LegsExtended ?? (() => false);
     this.isP2Active = data.isP2Active ?? (() => false);
+    this.getKillCounts = data.getKillCounts ?? (() => ({ p1Kills: 0, p2Kills: 0 }));
 
     // Reset state variables (Phaser may reuse scene instances)
     this.lastVelocity = -1;
@@ -99,6 +107,9 @@ export class UIScene extends Phaser.Scene {
     this.p2FuelBar = null;
     this.p2FuelText = null;
     this.p2InventoryContainer = null;
+    this.killTallyContainer = null;
+    this.p1TallyGraphics = null;
+    this.p2TallyGraphics = null;
 
     this.createFuelGauge();
     this.createVelocityMeter();
@@ -114,6 +125,7 @@ export class UIScene extends Phaser.Scene {
     if (this.playerCount === 2) {
       this.createP2FuelGauge();
       this.createP2InventoryDisplay();
+      this.createKillTally();
     }
 
     // Listen for inventory changes
@@ -145,6 +157,13 @@ export class UIScene extends Phaser.Scene {
     gameScene.events.on('destructionScore', (score: number) => {
       this.updateScore(score);
     });
+
+    // Listen for player kills (2-player mode)
+    if (this.playerCount === 2) {
+      gameScene.events.on('playerKill', (data: { killer: number; victim: number; p1Kills: number; p2Kills: number }) => {
+        this.updateKillTally(data.p1Kills, data.p2Kills);
+      });
+    }
   }
 
   private createFuelGauge(): void {
@@ -759,6 +778,106 @@ export class UIScene extends Phaser.Scene {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     this.timerText.setText(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+  }
+
+  private createKillTally(): void {
+    // WW2-style kill tally display at top left corner
+    const x = 130;
+    const y = 15;
+
+    this.killTallyContainer = this.add.container(x, y);
+
+    // Background panel - weathered metal look
+    const bg = this.add.graphics();
+    bg.fillStyle(0x4A5D23, 0.9); // Military olive drab
+    bg.fillRoundedRect(-5, -12, 160, 28, 4);
+    bg.lineStyle(2, 0x2F3D15); // Darker border
+    bg.strokeRoundedRect(-5, -12, 160, 28, 4);
+    // Add some weathering lines
+    bg.lineStyle(1, 0x5C7030, 0.5);
+    bg.lineBetween(0, -5, 15, -5);
+    bg.lineBetween(140, 5, 150, 5);
+    this.killTallyContainer.add(bg);
+
+    // P1 side (left) - rocket icon
+    const p1Label = this.add.text(5, 0, '🚀', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '14px',
+    });
+    p1Label.setOrigin(0.5, 0.5);
+    this.killTallyContainer.add(p1Label);
+
+    // P1 tally graphics
+    this.p1TallyGraphics = this.add.graphics();
+    this.killTallyContainer.add(this.p1TallyGraphics);
+
+    // P2 side - UFO icon
+    const p2Label = this.add.text(80, 0, '🛸', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '14px',
+    });
+    p2Label.setOrigin(0.5, 0.5);
+    this.killTallyContainer.add(p2Label);
+
+    // P2 tally graphics
+    this.p2TallyGraphics = this.add.graphics();
+    this.killTallyContainer.add(this.p2TallyGraphics);
+
+    // Initial display with current kill counts
+    const { p1Kills, p2Kills } = this.getKillCounts();
+    this.updateKillTally(p1Kills, p2Kills);
+  }
+
+  private drawTallyMarks(graphics: Phaser.GameObjects.Graphics, kills: number, startX: number, color: number): void {
+    graphics.clear();
+
+    if (kills === 0) {
+      // Draw a dash for zero
+      graphics.lineStyle(2, color, 0.5);
+      graphics.lineBetween(startX, 0, startX + 8, 0);
+      return;
+    }
+
+    const groups = Math.floor(kills / 5);
+    const remainder = kills % 5;
+    const lineHeight = 14;
+    const lineSpacing = 5;
+    const groupSpacing = 12;
+
+    let currentX = startX;
+
+    // Draw complete groups of 5 (4 vertical lines with diagonal crossing through)
+    for (let g = 0; g < groups; g++) {
+      // Draw 4 vertical lines
+      graphics.lineStyle(2, color, 1);
+      for (let i = 0; i < 4; i++) {
+        const lx = currentX + i * lineSpacing;
+        graphics.lineBetween(lx, -lineHeight / 2, lx, lineHeight / 2);
+      }
+      // Draw diagonal line crossing through all 4
+      const diagStartX = currentX - 2;
+      const diagEndX = currentX + 3 * lineSpacing + 2;
+      graphics.lineBetween(diagStartX, lineHeight / 2, diagEndX, -lineHeight / 2);
+
+      currentX += 4 * lineSpacing + groupSpacing;
+    }
+
+    // Draw remaining vertical lines (1-4)
+    graphics.lineStyle(2, color, 1);
+    for (let i = 0; i < remainder; i++) {
+      const lx = currentX + i * lineSpacing;
+      graphics.lineBetween(lx, -lineHeight / 2, lx, lineHeight / 2);
+    }
+  }
+
+  private updateKillTally(p1Kills: number, p2Kills: number): void {
+    if (!this.p1TallyGraphics || !this.p2TallyGraphics) return;
+
+    // Draw P1 tally marks (white)
+    this.drawTallyMarks(this.p1TallyGraphics, p1Kills, 18, 0xFFFFFF);
+
+    // Draw P2 tally marks (light blue)
+    this.drawTallyMarks(this.p2TallyGraphics, p2Kills, 93, 0x87CEEB);
   }
 
   private createControlsHint(): void {
