@@ -110,6 +110,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: 'Die 10 times',
     tier: 'silver',
   },
+  {
+    id: 'running_on_empty',
+    name: 'Running on Empty',
+    description: 'Crash with zero fuel',
+    tier: 'bronze',
+  },
 
   // 2-Player Combat (3)
   {

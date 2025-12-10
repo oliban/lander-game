@@ -3,7 +3,7 @@ import { Shuttle, ShuttleControls } from '../objects/Shuttle';
 import { Terrain } from '../objects/Terrain';
 import { LandingPad } from '../objects/LandingPad';
 import { Cannon } from '../objects/Cannon';
-import { Collectible, spawnCollectibles } from '../objects/Collectible';
+import { Collectible, spawnCollectibles, CollectibleType } from '../objects/Collectible';
 import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
 import { MedalHouse } from '../objects/MedalHouse';
 import { Bomb } from '../objects/Bomb';
@@ -25,7 +25,7 @@ import {
 } from '../constants';
 
 type GameState = 'playing' | 'landed' | 'crashed' | 'victory';
-type CauseOfDeath = 'water' | 'terrain' | 'landing' | 'duck' | 'void' | string;
+type CauseOfDeath = 'water' | 'terrain' | 'landing' | 'duck' | 'void' | 'fuel' | string;
 
 export class GameScene extends Phaser.Scene {
   private shuttle!: Shuttle; // Primary shuttle (P1) - kept for compatibility
@@ -54,6 +54,7 @@ export class GameScene extends Phaser.Scene {
   private gameStartTime: number = 0; // Track when game started for timer
   private hasPeaceMedal: boolean = false; // Whether player picked up the peace medal
   private peaceMedalGraphics: Phaser.GameObjects.Graphics | null = null; // Medal hanging under shuttle
+  private medalCarrier: Shuttle | null = null; // Which shuttle is carrying the medal
 
   // Physics state for medal pendulum
   private medalAngle: number = 0; // Current angle of the medal swing (radians)
@@ -87,6 +88,10 @@ export class GameScene extends Phaser.Scene {
   // Player vs player kill tracking (2-player mode)
   private p1Kills: number = 0;
   private p2Kills: number = 0;
+
+  // Death messages for 2-player mode
+  private p1DeathMessage: string = '';
+  private p2DeathMessage: string = '';
 
   // Fisherboat in Atlantic
   private fisherBoat: FisherBoat | null = null;
@@ -149,6 +154,9 @@ export class GameScene extends Phaser.Scene {
     this.tombstoneBodies = [];
     this.gameInitialized = false; // Reset to prevent splash effects on load
     // Note: p1Kills and p2Kills persist across restarts within a session
+    // Reset death messages for new game
+    this.p1DeathMessage = '';
+    this.p2DeathMessage = '';
 
     // Initialize systems
     this.fuelSystem = new FuelSystem();
@@ -200,6 +208,7 @@ export class GameScene extends Phaser.Scene {
     // Reset peace medal state
     this.hasPeaceMedal = false;
     this.peaceMedalGraphics = null;
+    this.medalCarrier = null;
 
     // Reset score and destroyed buildings
     this.destructionScore = 0;
@@ -318,10 +327,10 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('UIScene', {
       fuelSystem: this.fuelSystem,
       inventorySystem: this.inventorySystem,
-      getShuttleVelocity: () => this.shuttle.getVelocity(),
+      getShuttleVelocity: () => this.shuttle?.getVelocity() ?? { x: 0, y: 0, total: 0 },
       getProgress: () => this.getProgress(),
       getCurrentCountry: () => this.getCurrentCountry(),
-      getLegsExtended: () => this.shuttle.areLandingLegsExtended(),
+      getLegsExtended: () => this.shuttle?.areLandingLegsExtended() ?? false,
       getElapsedTime: () => this.getElapsedTime(),
       hasPeaceMedal: () => this.hasPeaceMedal,
       // P2 data for 2-player mode
@@ -788,11 +797,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    console.log(`CRASH P${playerNum}: Terrain collision at`, { x: shuttle.x, y: shuttle.y }, 'terrainHeight:', terrainHeight.toFixed(1), 'velocity:', velocity.total.toFixed(2));
+    // Check if out of fuel - special cause and message
+    const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+    const outOfFuel = fuelSys.isEmpty();
+    const cause: CauseOfDeath = outOfFuel ? 'fuel' : 'terrain';
+    const message = outOfFuel ? 'Ran out of fuel!' : 'Crashed into terrain!';
+
+    console.log(`CRASH P${playerNum}: Terrain collision at`, { x: shuttle.x, y: shuttle.y }, 'terrainHeight:', terrainHeight.toFixed(1), 'velocity:', velocity.total.toFixed(2), 'outOfFuel:', outOfFuel);
 
     // In 2-player mode, only destroy this shuttle
     if (this.playerCount === 2) {
-      this.handleShuttleCrash(playerNum, 'Crashed into terrain!', 'terrain');
+      this.handleShuttleCrash(playerNum, message, cause);
       return;
     }
 
@@ -800,38 +815,40 @@ export class GameScene extends Phaser.Scene {
     shuttle.stopRocketSound();
 
     // Track death achievement
-    this.achievementSystem.onDeath('terrain');
+    this.achievementSystem.onDeath(cause);
 
     // Spawn tombstone at terrain crash location
-    this.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
+    this.spawnTombstone(shuttle.x, shuttle.y, cause);
 
     shuttle.explode();
     this.sound.play('car_crash', { volume: 0.8 });
 
     this.transitionToGameOver({
       victory: false,
-      message: 'You crashed into the terrain!',
+      message: outOfFuel ? 'You ran out of fuel!' : 'You crashed into the terrain!',
       score: this.destructionScore,
       debugModeUsed: shuttle.wasDebugModeUsed(),
       destroyedBuildings: this.destroyedBuildings,
     });
   }
 
-  private handleWaterSplash(): void {
-    const splashX = this.shuttle.x;
-    const splashY = this.shuttle.y;
+  private handleWaterSplash(shuttle?: Shuttle, message?: string, playerNum?: number): void {
+    const targetShuttle = shuttle || this.shuttle;
+    const is2PlayerMode = this.playerCount === 2;
+    const splashX = targetShuttle.x;
+    const splashY = targetShuttle.y;
     const waterLevel = this.terrain.getHeightAt(splashX);
 
     // Capture velocity before stopping (for splash direction)
-    const velocity = this.shuttle.getVelocity();
+    const velocity = targetShuttle.getVelocity();
     const impactAngle = Math.atan2(-velocity.y, -velocity.x); // Opposite of travel direction
     const impactSpeed = velocity.total;
 
     // Stop shuttle physics and thrusters, make it sink
-    this.shuttle.setVelocity(0, 0);
-    this.shuttle.setAngularVelocity(0);
-    this.shuttle.setStatic(true);
-    this.shuttle.stopThrusters();
+    targetShuttle.setVelocity(0, 0);
+    targetShuttle.setAngularVelocity(0);
+    targetShuttle.setStatic(true);
+    targetShuttle.stopThrusters();
 
     // Create water splash effect - splash goes opposite to direction ship came from!
 
@@ -955,16 +972,27 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Animate shuttle sinking deeper
-    this.tweens.add({
-      targets: this.shuttle,
+    const sinkTween = this.tweens.add({
+      targets: targetShuttle,
       y: waterLevel + 180, // Sink deep below water
       alpha: 0.15,
       duration: 3500,
       ease: 'Quad.easeIn',
+      onComplete: () => {
+        // In 2-player mode, check game over after sinking
+        if (is2PlayerMode) {
+          console.log('Water sink complete, checking game over. Shuttles remaining:', this.shuttles.length);
+          // Hide shuttle after sinking animation completes
+          if (targetShuttle) {
+            targetShuttle.setVisible(false);
+          }
+          this.checkGameOverAfterCrash();
+        }
+      },
     });
 
-    // If player has the peace medal, make it sink with the shuttle
-    if (this.hasPeaceMedal && this.peaceMedalGraphics) {
+    // If the sinking shuttle has the peace medal, make it sink too
+    if (this.hasPeaceMedal && this.peaceMedalGraphics && this.medalCarrier === targetShuttle) {
       this.tweens.add({
         targets: this.peaceMedalGraphics,
         y: waterLevel + 200, // Sink slightly deeper than shuttle
@@ -977,7 +1005,7 @@ export class GameScene extends Phaser.Scene {
     // Bubbles rising as shuttle sinks (more bubbles over longer time)
     for (let i = 0; i < 25; i++) {
       this.time.delayedCall(200 + i * 150, () => {
-        if (this.gameState !== 'crashed') return;
+        if (!is2PlayerMode && this.gameState !== 'crashed') return;
         const bubble = this.add.graphics();
         bubble.fillStyle(0xADD8E6, 0.6);
         bubble.fillCircle(0, 0, 2 + Math.random() * 3);
@@ -998,7 +1026,10 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Go to game over after sinking animation (3s sink + 1s fade)
+    // In 2-player mode, don't do fade/game over - that's handled by finalizeShuttleCrash
+    if (is2PlayerMode) return;
+
+    // Go to game over after sinking animation (3s sink + 1s fade) - single player only
     // Create fade overlay
     const fadeOverlay = this.add.rectangle(
       this.cameras.main.scrollX + this.cameras.main.width / 2,
@@ -1181,17 +1212,17 @@ export class GameScene extends Phaser.Scene {
       pad.hidePeaceMedal();
 
       // Create the medal graphics that will hang under the shuttle
-      this.createPeaceMedalGraphics();
+      this.createPeaceMedalGraphics(shuttle);
 
       // Make shuttle heavier
-      this.shuttle.setMass(8); // Heavier with medal
+      shuttle.setMass(8); // Heavier with medal
 
       // Reset medal physics
       this.medalAngle = 0;
       this.medalAngularVelocity = 0;
 
       // Show pickup message
-      const pickupText = this.add.text(this.shuttle.x, this.shuttle.y - 80, 'PEACE MEDAL ACQUIRED!', {
+      const pickupText = this.add.text(shuttle.x, shuttle.y - 80, 'PEACE MEDAL ACQUIRED!', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '24px',
         color: '#FFD700',
@@ -1213,7 +1244,8 @@ export class GameScene extends Phaser.Scene {
       if (this.playerCount === 2) {
         const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
         const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        this.performAutoTrade(shuttle, invSys, fuelSys, landingResult.quality, playerNum);
+        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
         this.gameState = 'playing';
       } else {
         // Open trading scene at Washington too (single player)
@@ -1238,7 +1270,8 @@ export class GameScene extends Phaser.Scene {
       if (this.playerCount === 2) {
         const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
         const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        this.performAutoTrade(shuttle, invSys, fuelSys, landingResult.quality, playerNum);
+        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
         this.gameState = 'playing';
       } else {
         // Open trading scene (single player)
@@ -1261,17 +1294,19 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private createPeaceMedalGraphics(): void {
+  private createPeaceMedalGraphics(shuttle: Shuttle): void {
     // Create graphics object for the peace medal that hangs under the shuttle
     this.peaceMedalGraphics = this.add.graphics();
     this.peaceMedalGraphics.setDepth(50); // Above terrain, below UI
+    this.medalCarrier = shuttle; // Track which shuttle carries the medal
   }
 
   private updateMedalPhysics(): void {
-    if (!this.hasPeaceMedal) return;
+    if (!this.hasPeaceMedal || !this.medalCarrier) return;
 
-    const velocity = this.shuttle.getVelocity();
-    const shuttleRotation = this.shuttle.rotation;
+    const carrier = this.medalCarrier;
+    const velocity = carrier.getVelocity();
+    const shuttleRotation = carrier.rotation;
 
     // Calculate shuttle acceleration (change in velocity per frame)
     const accelX = velocity.x - this.lastShuttleVelX;
@@ -1307,7 +1342,7 @@ export class GameScene extends Phaser.Scene {
     const gravityTorque = -restoreFactor * Math.sin(angleFromEffectiveDown);
 
     // Shuttle rotation imparts momentum to medal through the wire
-    const shuttleAngularVel = (this.shuttle.body as MatterJS.BodyType).angularVelocity;
+    const shuttleAngularVel = (carrier.body as MatterJS.BodyType).angularVelocity;
     const rotationTorque = -shuttleAngularVel * 0.8;
 
     // Update angular velocity
@@ -1324,16 +1359,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePeaceMedalGraphics(): void {
-    if (!this.peaceMedalGraphics || !this.hasPeaceMedal) return;
+    if (!this.peaceMedalGraphics || !this.hasPeaceMedal || !this.medalCarrier) return;
 
     // Update physics first
     this.updateMedalPhysics();
 
     this.peaceMedalGraphics.clear();
 
-    const shuttleX = this.shuttle.x;
-    const shuttleY = this.shuttle.y;
-    const shuttleRotation = this.shuttle.rotation;
+    const carrier = this.medalCarrier;
+    const shuttleX = carrier.x;
+    const shuttleY = carrier.y;
+    const shuttleRotation = carrier.rotation;
 
     // Attachment point at bottom of shuttle (in shuttle's local space, then rotated)
     const attachOffsetY = 18; // Distance from shuttle center to bottom
@@ -1431,7 +1467,17 @@ export class GameScene extends Phaser.Scene {
     const shuttle = playerNum === 2 ? this.shuttle2 : this.shuttle;
     if (!shuttle || !shuttle.active) return;
 
+    // Mark shuttle inactive immediately to prevent duplicate collision handling
+    shuttle.setActive(false);
+
     console.log(`P${playerNum} crashed: ${message}`);
+
+    // Store death message for this player
+    if (playerNum === 1) {
+      this.p1DeathMessage = message;
+    } else {
+      this.p2DeathMessage = message;
+    }
 
     // Track death achievement
     this.achievementSystem.onDeath(cause);
@@ -1439,22 +1485,41 @@ export class GameScene extends Phaser.Scene {
     // Spawn tombstone at crash location
     this.spawnTombstone(shuttle.x, shuttle.y, cause);
 
-    // Stop thrust sound and explode the shuttle
+    // Stop thrust sound
     shuttle.stopRocketSound();
-    shuttle.explode();
-    this.sound.play('car_crash', { volume: 0.8 });
 
-    // Remove from active shuttles
+    // Remove from active shuttles immediately (before animation)
     const idx = this.shuttles.indexOf(shuttle);
     if (idx >= 0) {
       this.shuttles.splice(idx, 1);
     }
 
-    // Check if any shuttles remain
+    // Handle water crash differently - sink instead of explode
+    if (cause === 'water') {
+      this.sound.play('water_splash');
+      this.handleWaterSplash(shuttle, message, playerNum);
+    } else {
+      // Normal explosion for terrain/other crashes
+      shuttle.explode();
+      this.sound.play('car_crash', { volume: 0.8 });
+      this.checkGameOverAfterCrash();
+    }
+  }
+
+  // Check if game should end after a crash (2-player mode)
+  private checkGameOverAfterCrash(): void {
     const remainingActive = this.shuttles.filter(s => s.active);
     if (remainingActive.length === 0) {
       // All shuttles dead - game over
       this.gameState = 'crashed';
+
+      // Build combined message for 2-player mode
+      let message = '';
+      if (this.playerCount === 2) {
+        message = `P1: ${this.p1DeathMessage}\nP2: ${this.p2DeathMessage}`;
+      } else {
+        message = this.p1DeathMessage || 'Mission failed!';
+      }
 
       this.transitionToGameOver({
         victory: false,
@@ -1467,12 +1532,22 @@ export class GameScene extends Phaser.Scene {
     // Otherwise, surviving player continues
   }
 
+  
   private handleProjectileHitOnShuttle(projectileSpriteKey: string | undefined, shuttle: Shuttle): void {
     if (this.gameState !== 'playing') return;
     if (!shuttle.active) return; // Already dead
     // Note: Bribed cannons stand down and don't fire, but existing projectiles can still hit!
 
-    console.log('CRASH: Hit by projectile at', { x: shuttle.x, y: shuttle.y }, 'player:', shuttle.getPlayerIndex(), 'type:', projectileSpriteKey);
+    const playerNum = shuttle.getPlayerIndex();
+    console.log('CRASH: Hit by projectile at', { x: shuttle.x, y: shuttle.y }, 'player:', playerNum, 'type:', projectileSpriteKey);
+
+    // Generate and store death message
+    const message = this.getProjectileDeathMessage(projectileSpriteKey);
+    if (playerNum === 1) {
+      this.p1DeathMessage = message;
+    } else {
+      this.p2DeathMessage = message;
+    }
 
     // Spawn tombstone at crash location with projectile type as cause
     this.spawnTombstone(shuttle.x, shuttle.y, projectileSpriteKey || 'cannonball');
@@ -1492,24 +1567,8 @@ export class GameScene extends Phaser.Scene {
       this.shuttles.splice(idx, 1);
     }
 
-    // Check if any shuttles remain
-    const remainingActive = this.shuttles.filter(s => s.active);
-    if (remainingActive.length === 0) {
-      // All shuttles dead - game over
-      this.gameState = 'crashed';
-
-      // Generate death message based on projectile type
-      const message = this.getProjectileDeathMessage(projectileSpriteKey);
-
-      this.transitionToGameOver({
-        victory: false,
-        message: message,
-        score: this.destructionScore,
-        debugModeUsed: this.shuttle.wasDebugModeUsed(),
-        destroyedBuildings: this.destroyedBuildings,
-      });
-    }
-    // Otherwise, surviving player continues
+    // Check if game over
+    this.checkGameOverAfterCrash();
   }
 
   private getProjectileDeathMessage(spriteKey?: string): string {
@@ -3678,7 +3737,7 @@ export class GameScene extends Phaser.Scene {
     const casinoChipValues = inventorySystem.getCasinoChipValues();
 
     // Accumulate from cheapest items until fuel need is met
-    const itemsToSell: Map<string, number> = new Map();
+    const itemsToSell: Map<CollectibleType, number> = new Map();
     let fuelGained = 0;
     let chipIdx = 0;
     let pointsLost = 0;
@@ -3789,6 +3848,7 @@ export class GameScene extends Phaser.Scene {
       case 'landing': return '🛬';
       case 'duck': return '🦆';
       case 'void': return '🌌';
+      case 'fuel': return '⛽';
       case 'p1_bombed': return '🟢'; // P1 (green) was bombed
       case 'p2_bombed': return '🔵'; // P2 (blue) was bombed
     }
@@ -3914,6 +3974,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       // Normal death - spawn physics tombstone at death location
       // It will fall if in mid-air, and can be knocked around by explosions
+      console.log('Spawning tombstone at', deathX, deathY, 'cause:', cause);
 
       // Save to localStorage (use terrain Y for persistence, body will settle there)
       this.saveTombstone(deathX, terrainY, cause);
