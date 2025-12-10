@@ -85,6 +85,13 @@ export const ACHIEVEMENTS: Achievement[] = [
     tier: 'silver',
     hidden: true,
   },
+  {
+    id: 'pablos_parking',
+    name: "Pablo's Parking",
+    description: 'Land on the fishing boat',
+    tier: 'silver',
+    hidden: true,
+  },
 
   // Deaths & Mishaps (5)
   {

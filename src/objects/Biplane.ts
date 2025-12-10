@@ -9,6 +9,7 @@ const BIPLANE_COLORS: Record<string, { primary: number; secondary: number; accen
   'Germany': { primary: 0xFFCC00, secondary: 0x000000, accent: 0xDD0000 },
   'Poland': { primary: 0xFFFFFF, secondary: 0xDC143C, accent: 0xDC143C },
   'Russia': { primary: 0xFFFFFF, secondary: 0x0039A6, accent: 0xD52B1E },
+  'GAME_INFO': { primary: 0xCCCCCC, secondary: 0x888888, accent: 0x666666 }, // Neutral gray
 };
 
 // Country to propaganda item type mapping
@@ -76,8 +77,23 @@ const BANNER_MESSAGES: Record<string, string[]> = {
     "KREMLIN HR: 0 DAYS SINCE ACCIDENT",
     "GULAG AIRLINES - ONE WAY ONLY",
     "NOVICHOK: NOW IN AEROSOL",
-    "BLYAT! FUEL IS JUST SUGGESTION",
-    "PUTIN WANTS YOU... ALIVE OR DEAD",
+    "FALL FROM BUILDING? VERY TRAGIC SUICIDE",
+    "DEMOCRACY IS WESTERN PROPAGANDA",
+    "VODKA: BOTH FUEL AND PILOT",
+    "NORD STREAM: SELF-DESTRUCTING PIPELINES",
+    "PRIGOZHIN AIR - FLIGHTS MAY BE SHORT",
+  ],
+  'GAME_INFO': [
+    "TIP: PRESS 2 FOR MULTIPLAYER MODE",
+    "TIP: LAND GENTLY TO KEEP YOUR SHIP",
+    "TIP: COLLECT FOOD FOR BONUS FUEL",
+    "TIP: BOMBS DESTROY CANNONS",
+    "TIP: TRADE ITEMS AT FUEL DEPOTS",
+    "TIP: REACH RUSSIA TO WIN",
+    "TIP: PRESS SPACE TO FIRE THRUST",
+    "TIP: ARROW KEYS CONTROL YOUR SHIP",
+    "TIP: DESTROY TARGETS FOR POINTS",
+    "TIP: ACHIEVEMENTS UNLOCK TROPHIES",
   ],
 };
 
@@ -103,10 +119,10 @@ export class Biplane extends Phaser.GameObjects.Container {
   private collisionHeight: number = 35;
   private baseY: number;
 
-  constructor(scene: Phaser.Scene, targetCountry: string, cameraX: number) {
-    // Use the specified country
-    const countryName = targetCountry;
-    const countryData = COUNTRIES.find(c => c.name === countryName)!;
+  constructor(scene: Phaser.Scene, targetCountry: string, cameraX: number, spawnCountry?: string) {
+    // Use spawn country for position, target country for colors/messages
+    const positionCountry = spawnCountry || targetCountry;
+    const countryData = COUNTRIES.find(c => c.name === positionCountry)!;
     const nextCountry = COUNTRIES.find(c => c.startX > countryData.startX);
 
     const countryStartX = countryData.startX;
@@ -126,12 +142,12 @@ export class Biplane extends Phaser.GameObjects.Container {
 
     super(scene, spawnX, spawnY);
 
-    this.country = countryName;
+    this.country = targetCountry;
     this.baseY = spawnY;
-    this.colors = BIPLANE_COLORS[countryName] || BIPLANE_COLORS['USA'];
+    this.colors = BIPLANE_COLORS[targetCountry] || BIPLANE_COLORS['USA'];
 
-    // Pick random message for this country
-    const messages = BANNER_MESSAGES[countryName] || BANNER_MESSAGES['USA'];
+    // Pick random message for this country/type
+    const messages = BANNER_MESSAGES[targetCountry] || BANNER_MESSAGES['USA'];
     this.message = messages[Math.floor(Math.random() * messages.length)];
 
     // Fly toward the player
@@ -152,7 +168,7 @@ export class Biplane extends Phaser.GameObjects.Container {
       this.setScale(-1, 1);
     }
 
-    console.log(`[Biplane] Spawned over ${this.country} at X=${Math.round(this.x)}, heading ${this.direction === 1 ? 'RIGHT' : 'LEFT'}, message: "${this.message}"`);
+    console.log(`[Biplane] Spawned ${this.country} plane at X=${Math.round(this.x)}, heading ${this.direction === 1 ? 'RIGHT' : 'LEFT'}, message: "${this.message}"`);
 
     scene.add.existing(this);
   }

@@ -86,6 +86,9 @@ export const COLLECTIBLE_TYPES = {
   POLAND_PROPAGANDA: { name: 'Polish Propaganda', fuelValue: 5, rarity: 0, color: 0xDC143C },
   RUSSIA_PROPAGANDA: { name: 'Russian Facts', fuelValue: 5, rarity: 0, color: 0x0039A6 },
 
+  // Fisher boat contraband (15% chance per game)
+  FISH_PACKAGE: { name: '"Fish"', fuelValue: 100, rarity: 0, color: 0x4682B4, contraband: true }, // Steel blue
+
   // Easter egg
   TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C }, // Tan
 
