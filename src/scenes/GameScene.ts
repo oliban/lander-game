@@ -1879,6 +1879,12 @@ export class GameScene extends Phaser.Scene {
             // Emit event for UI to update kill tally
             this.events.emit('playerKill', { killer: killerPlayer, victim: victimPlayer, p1Kills: this.p1Kills, p2Kills: this.p2Kills });
 
+            // Play gotcha sound after 1 second (killer's sound)
+            this.time.delayedCall(1000, () => {
+              const gotchaSound = killerPlayer === 1 ? 'p1_gotcha' : 'p2_gotcha';
+              this.sound.play(gotchaSound);
+            });
+
             // Kill the target shuttle with friendly fire cause
             const causeEmoji = victimPlayer === 1 ? 'p1_bombed' : 'p2_bombed';
             this.handleShuttleCrash(victimPlayer, `Bombed by P${killerPlayer}!`, causeEmoji);
