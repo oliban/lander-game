@@ -131,6 +131,9 @@ export class AchievementSystem {
 
   // Session tracking methods
   startSession(): void {
+    // Clear old listeners from previous game sessions
+    this.listeners = [];
+
     this.sessionStats = {
       buildingsDestroyed: 0,
       cannonsDestroyed: 0,
@@ -199,6 +202,8 @@ export class AchievementSystem {
       this.unlock('duck_hunt');
     } else if (cause === 'void') {
       this.unlock('lost_in_space');
+    } else if (cause === 'fuel') {
+      this.unlock('running_on_empty');
     }
 
     // Cumulative deaths

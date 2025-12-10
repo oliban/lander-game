@@ -660,9 +660,8 @@ export class GameOverScene extends Phaser.Scene {
   private selectedCrashQuoteIndex: number = 0;
 
   private createCrashScreen(data: GameOverData): void {
-    // Play random crash quote (use same index for audio and text)
+    // Select random crash quote index for text display
     this.selectedCrashQuoteIndex = Math.floor(Math.random() * CRASH_QUOTES.length);
-    this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
 
     const score = data.score || 0;
     this.currentScore = score;
@@ -694,11 +693,7 @@ export class GameOverScene extends Phaser.Scene {
     });
     title.setOrigin(0.5, 0.5);
 
-    // Shake effect (skip for water deaths)
-    if (!data.noShake) {
-      this.cameras.main.shake(500, 0.01);
-    }
-
+    
     // Message
     const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
       fontFamily: 'Arial, Helvetica, sans-serif',

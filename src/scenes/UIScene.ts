@@ -796,26 +796,26 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createKillTally(): void {
-    // WW2-style kill tally display at top left corner
-    const x = 130;
-    const y = 15;
+    // WW2-style kill tally display at true top left corner (with margin)
+    const x = 15;
+    const y = 20;
 
     this.killTallyContainer = this.add.container(x, y);
 
     // Background panel - weathered metal look
     const bg = this.add.graphics();
     bg.fillStyle(0x4A5D23, 0.9); // Military olive drab
-    bg.fillRoundedRect(-5, -12, 160, 28, 4);
+    bg.fillRoundedRect(0, -12, 160, 28, 4);
     bg.lineStyle(2, 0x2F3D15); // Darker border
-    bg.strokeRoundedRect(-5, -12, 160, 28, 4);
+    bg.strokeRoundedRect(0, -12, 160, 28, 4);
     // Add some weathering lines
     bg.lineStyle(1, 0x5C7030, 0.5);
-    bg.lineBetween(0, -5, 15, -5);
-    bg.lineBetween(140, 5, 150, 5);
+    bg.lineBetween(5, -5, 20, -5);
+    bg.lineBetween(145, 5, 155, 5);
     this.killTallyContainer.add(bg);
 
     // P1 side (left) - rocket icon
-    const p1Label = this.add.text(5, 0, '🚀', {
+    const p1Label = this.add.text(10, 0, '🚀', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '14px',
     });
@@ -827,7 +827,7 @@ export class UIScene extends Phaser.Scene {
     this.killTallyContainer.add(this.p1TallyGraphics);
 
     // P2 side - UFO icon
-    const p2Label = this.add.text(80, 0, '🛸', {
+    const p2Label = this.add.text(85, 0, '🛸', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '14px',
     });
@@ -889,10 +889,10 @@ export class UIScene extends Phaser.Scene {
     if (!this.p1TallyGraphics || !this.p2TallyGraphics) return;
 
     // Draw P1 tally marks (white)
-    this.drawTallyMarks(this.p1TallyGraphics, p1Kills, 18, 0xFFFFFF);
+    this.drawTallyMarks(this.p1TallyGraphics, p1Kills, 23, 0xFFFFFF);
 
     // Draw P2 tally marks (light blue)
-    this.drawTallyMarks(this.p2TallyGraphics, p2Kills, 93, 0x87CEEB);
+    this.drawTallyMarks(this.p2TallyGraphics, p2Kills, 98, 0x87CEEB);
   }
 
   private createControlsHint(): void {
