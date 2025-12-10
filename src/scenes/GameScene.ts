@@ -10,6 +10,7 @@ import { Bomb } from '../objects/Bomb';
 import { FisherBoat } from '../objects/FisherBoat';
 import { GolfCart } from '../objects/GolfCart';
 import { OilTower } from '../objects/OilTower';
+import { Biplane } from '../objects/Biplane';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
@@ -22,6 +23,7 @@ import {
   LANDING_PADS,
   BOMB_DROPPABLE_TYPES,
   FOOD_PICKUP_AMOUNT,
+  COLLECTIBLE_TYPES,
 } from '../constants';
 
 type GameState = 'playing' | 'landed' | 'crashed' | 'victory';
@@ -99,6 +101,10 @@ export class GameScene extends Phaser.Scene {
   // Golf cart in USA
   private golfCart: GolfCart | null = null;
   private epsteinFiles: Phaser.GameObjects.Container[] = [];
+
+  // Propaganda biplane
+  private biplane: Biplane | null = null;
+  private propagandaBanners: Phaser.GameObjects.Container[] = [];
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -201,6 +207,9 @@ export class GameScene extends Phaser.Scene {
     if (Math.random() < 0.33) {
       this.golfCart = new GolfCart(this, 1000, 800, 1200);
     }
+
+    // Create propaganda biplane flying high in the sky (random country)
+    this.biplane = new Biplane(this);
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();
@@ -2258,6 +2267,48 @@ export class GameScene extends Phaser.Scene {
 
       if (bombDestroyed) continue;
 
+      // Check collision with biplane
+      if (this.biplane && !this.biplane.isDestroyed) {
+        const bounds = this.biplane.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit the biplane!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Play explosion sound
+          const explosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Get plane info and destroy it
+          const { name, points, bannerPosition, propagandaType, message, accentColor } = this.biplane.explode();
+          this.destructionScore += points;
+
+          // Track biplane destruction achievement
+          this.achievementSystem.onBiplaneDestroyed();
+
+          // Show special destruction message
+          this.showBiplaneDestroyed(this.biplane.x, this.biplane.y, points, this.biplane.country);
+
+          // Spawn collectible propaganda banner
+          this.spawnPropagandaBanner(bannerPosition.x, bannerPosition.y, propagandaType, message, accentColor);
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
       // Check collision with terrain (LAST, after checking buildings and cannons)
       const terrainY = this.terrain.getHeightAt(bombX);
       if (bombY >= terrainY - 5) {
@@ -2519,6 +2570,62 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('destructionScore', this.destructionScore);
   }
 
+  private showBiplaneDestroyed(x: number, y: number, points: number, country: string): void {
+    // Show country-specific destruction message
+    const nameText = this.add.text(x, y - 20, `${country} propaganda plane shot down!`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '20px',
+      color: '#FF4500', // Orange-red
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    nameText.setOrigin(0.5, 0.5);
+    nameText.setDepth(150);
+
+    // Show points
+    const pointsText = this.add.text(x, y + 15, `+${points} POINTS!`, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '28px',
+      color: '#FFD700',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    pointsText.setOrigin(0.5, 0.5);
+    pointsText.setDepth(150);
+
+    // Show "RED BARON" achievement hint
+    const achievementText = this.add.text(x, y + 50, 'RED BARON!', {
+      fontFamily: 'Arial Black, Arial',
+      fontSize: '24px',
+      color: '#C0C0C0', // Silver
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4,
+    });
+    achievementText.setOrigin(0.5, 0.5);
+    achievementText.setDepth(150);
+
+    // Animate all texts - stay visible longer then fade
+    this.tweens.add({
+      targets: [nameText, pointsText, achievementText],
+      y: '-=100',
+      alpha: 0,
+      duration: 4000,
+      delay: 1000, // Hold longer for this special message
+      ease: 'Power1',
+      onComplete: () => {
+        nameText.destroy();
+        pointsText.destroy();
+        achievementText.destroy();
+      },
+    });
+
+    // Emit event to UIScene to update score display
+    this.events.emit('destructionScore', this.destructionScore);
+  }
+
   private spawnEpsteinFiles(positions: { x: number; y: number }[]): void {
     // Spawn collectible Epstein Files at the given positions
     for (const pos of positions) {
@@ -2672,6 +2779,179 @@ export class GameScene extends Phaser.Scene {
               this.epsteinFiles.splice(idx, 1);
             }
             file.destroy();
+          },
+        });
+      }
+    }
+  }
+
+  private spawnPropagandaBanner(startX: number, startY: number, propagandaType: string, message: string, accentColor: number): void {
+    // Create banner container
+    const banner = this.add.container(startX, startY);
+    banner.setDepth(50);
+    banner.setData('collected', false);
+    banner.setData('grounded', false);
+    banner.setData('propagandaType', propagandaType);
+
+    // Banner graphic - tattered shape
+    const bannerGraphics = this.add.graphics();
+    const bw = 70;
+
+    bannerGraphics.fillStyle(0xFFFFF5, 0.9);
+    bannerGraphics.beginPath();
+    bannerGraphics.moveTo(-bw / 2, -8);
+    bannerGraphics.lineTo(bw / 2 - 8, -10);
+    bannerGraphics.lineTo(bw / 2, 6);
+    bannerGraphics.lineTo(bw / 2 - 15, 10);
+    bannerGraphics.lineTo(-bw / 2 + 5, 8);
+    bannerGraphics.lineTo(-bw / 2, -8);
+    bannerGraphics.closePath();
+    bannerGraphics.fillPath();
+
+    bannerGraphics.lineStyle(2, accentColor, 0.8);
+    bannerGraphics.strokePath();
+
+    banner.add(bannerGraphics);
+
+    // Add truncated message text
+    const shortMessage = message.length > 12 ? message.substring(0, 12) + '...' : message;
+    const msgText = this.add.text(0, 0, shortMessage, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '7px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    msgText.setOrigin(0.5, 0.5);
+    banner.add(msgText);
+
+    this.propagandaBanners.push(banner);
+
+    // Calculate terrain landing position
+    const terrainY = this.terrain.getHeightAt(startX) - 15;
+
+    // Falling leaf animation - swaying side to side while descending
+    const fallDuration = 6000;
+    const swayAmount = 120;
+    const swayFrequency = 3;
+
+    let elapsed = 0;
+    const leafUpdate = this.time.addEvent({
+      delay: 16,
+      repeat: Math.floor(fallDuration / 16),
+      callback: () => {
+        if (!banner || !banner.active) {
+          leafUpdate.destroy();
+          return;
+        }
+
+        elapsed += 16;
+        const progress = Math.min(elapsed / fallDuration, 1);
+
+        // Vertical fall with slight acceleration, but stop at terrain
+        const targetY = startY + progress * progress * (terrainY - startY);
+        banner.y = Math.min(targetY, terrainY);
+
+        // Horizontal sway (sinusoidal)
+        const swayProgress = progress * swayFrequency * Math.PI * 2;
+        banner.x = startX + Math.sin(swayProgress) * swayAmount * (1 - progress * 0.5);
+
+        // Rotation follows the sway direction (tilts into the turn)
+        const swayVelocity = Math.cos(swayProgress);
+        banner.angle = swayVelocity * 35;
+
+        // Check if landed on terrain
+        if (banner.y >= terrainY - 5) {
+          banner.y = terrainY;
+          banner.angle = (Math.random() - 0.5) * 20; // Random resting angle
+          banner.setData('grounded', true);
+          leafUpdate.destroy();
+
+          // Fade out after 15 seconds if not collected
+          this.time.delayedCall(15000, () => {
+            if (banner && banner.active && !banner.getData('collected')) {
+              const idx = this.propagandaBanners.indexOf(banner);
+              if (idx >= 0) {
+                this.propagandaBanners.splice(idx, 1);
+              }
+
+              this.tweens.add({
+                targets: banner,
+                alpha: 0,
+                duration: 500,
+                onComplete: () => banner.destroy(),
+              });
+            }
+          });
+        }
+      },
+    });
+  }
+
+  private updatePropagandaBanners(): void {
+    const pickupRadius = 60;
+
+    // Check if shuttle is landed (very low velocity)
+    const velocity = this.shuttle.getVelocity();
+    const isLanded = velocity.total < 0.5;
+
+    for (let i = this.propagandaBanners.length - 1; i >= 0; i--) {
+      const banner = this.propagandaBanners[i];
+      if (!banner || !banner.active || banner.getData('collected') || !banner.getData('grounded')) continue;
+
+      const dx = this.shuttle.x - banner.x;
+      const dy = this.shuttle.y - banner.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < pickupRadius && isLanded) {
+        banner.setData('collected', true);
+
+        // Play boing sound
+        this.playBoingSound();
+
+        // Add to cargo inventory
+        const propagandaType = banner.getData('propagandaType') as keyof typeof COLLECTIBLE_TYPES;
+        this.inventorySystem.add(propagandaType);
+
+        // Get display name from constants
+        const itemData = COLLECTIBLE_TYPES[propagandaType];
+        const displayName = itemData ? itemData.name : 'Propaganda';
+
+        // Show pickup text
+        const pickupText = this.add.text(banner.x, banner.y - 20, `+1 ${displayName.toUpperCase()}`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '12px',
+          color: '#3C3B6E',
+          fontStyle: 'bold',
+          stroke: '#FFFFFF',
+          strokeThickness: 2,
+        });
+        pickupText.setOrigin(0.5, 0.5);
+        pickupText.setDepth(150);
+
+        this.tweens.add({
+          targets: pickupText,
+          y: '-=30',
+          alpha: 0,
+          duration: 1500,
+          onComplete: () => pickupText.destroy(),
+        });
+
+        // Collect animation - banner flies to shuttle
+        this.tweens.killTweensOf(banner);
+        this.tweens.add({
+          targets: banner,
+          x: this.shuttle.x,
+          y: this.shuttle.y,
+          scale: 0,
+          alpha: 0,
+          duration: 300,
+          ease: 'Quad.easeIn',
+          onComplete: () => {
+            const idx = this.propagandaBanners.indexOf(banner);
+            if (idx >= 0) {
+              this.propagandaBanners.splice(idx, 1);
+            }
+            banner.destroy();
           },
         });
       }
@@ -3568,8 +3848,59 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Update biplane (fly across sky) and check shuttle collision
+    if (this.biplane && !this.biplane.isDestroyed) {
+      this.biplane.update(time, 16); // ~60fps delta
+
+      // Check collision with shuttles - bounce off, don't destroy
+      const bounds = this.biplane.getCollisionBounds();
+      for (const shuttle of this.shuttles) {
+        if (!shuttle.active) continue;
+
+        // Simple AABB collision check
+        const shuttleBounds = {
+          x: shuttle.x - 14,
+          y: shuttle.y - 18,
+          width: 28,
+          height: 36,
+        };
+
+        if (
+          shuttleBounds.x < bounds.x + bounds.width &&
+          shuttleBounds.x + shuttleBounds.width > bounds.x &&
+          shuttleBounds.y < bounds.y + bounds.height &&
+          shuttleBounds.y + shuttleBounds.height > bounds.y
+        ) {
+          // Collision! Bounce shuttle off the plane (don't destroy)
+          const body = shuttle.body as MatterJS.BodyType;
+          if (body) {
+            // Calculate bounce direction based on relative position
+            const dx = shuttle.x - this.biplane.x;
+            const dy = shuttle.y - this.biplane.y;
+
+            // Strong bounce away from plane
+            const bounceStrength = 8;
+            const normalX = dx / (Math.abs(dx) + Math.abs(dy) + 0.1);
+            const normalY = dy / (Math.abs(dx) + Math.abs(dy) + 0.1);
+
+            this.matter.body.setVelocity(body, {
+              x: body.velocity.x + normalX * bounceStrength,
+              y: body.velocity.y + normalY * bounceStrength - 2, // Slight upward bias
+            });
+
+            // Play boing sound for bouncy collision
+            this.playBoingSound();
+          }
+          break;
+        }
+      }
+    }
+
     // Update Epstein Files (check for pickup)
     this.updateEpsteinFiles();
+
+    // Update Propaganda Banners (check for pickup)
+    this.updatePropagandaBanners();
 
     // Update all shuttles
     for (const shuttle of this.shuttles) {

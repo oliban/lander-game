@@ -176,6 +176,10 @@ export class AchievementSystem {
     this.unlock('fore');
   }
 
+  onBiplaneDestroyed(): void {
+    this.unlock('red_baron');
+  }
+
   onCountryVisited(country: string): void {
     this.sessionStats.countriesVisited.add(country);
     // Check if all countries visited (Washington, USA, UK, France, Germany, Poland, Russia)
