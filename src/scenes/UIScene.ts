@@ -838,6 +838,9 @@ export class UIScene extends Phaser.Scene {
     this.p2TallyGraphics = this.add.graphics();
     this.killTallyContainer.add(this.p2TallyGraphics);
 
+    // Start hidden - only show after first kill
+    this.killTallyContainer.setVisible(false);
+
     // Initial display with current kill counts
     const { p1Kills, p2Kills } = this.getKillCounts();
     this.updateKillTally(p1Kills, p2Kills);
@@ -887,6 +890,11 @@ export class UIScene extends Phaser.Scene {
 
   private updateKillTally(p1Kills: number, p2Kills: number): void {
     if (!this.p1TallyGraphics || !this.p2TallyGraphics) return;
+
+    // Show tally container once there's at least one kill
+    if ((p1Kills > 0 || p2Kills > 0) && this.killTallyContainer) {
+      this.killTallyContainer.setVisible(true);
+    }
 
     // Draw P1 tally marks (white)
     this.drawTallyMarks(this.p1TallyGraphics, p1Kills, 23, 0xFFFFFF);

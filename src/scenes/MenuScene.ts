@@ -123,25 +123,25 @@ export class MenuScene extends Phaser.Scene {
     });
     scoresTitle.setOrigin(0.5, 0);
 
-    // Load and display high scores (top 5)
+    // Load and display high scores (top 10)
     const highScores = this.loadHighScores();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       const score = highScores[i];
-      const yPos = panelY + 30 + i * 14;
+      const yPos = panelY + 30 + i * 12;
       const rank = i + 1;
       const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
 
       if (score) {
         const scoreText = this.add.text(scoresPanelX, yPos,
-          `${rank}. ${score.name.substring(0, 8)} ${score.score}`, {
-          fontSize: '11px',
+          `${rank.toString().padStart(2, ' ')}. ${score.name.substring(0, 8)} ${score.score}`, {
+          fontSize: '10px',
           color: color,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
         scoreText.setOrigin(0.5, 0);
       } else {
-        const emptyText = this.add.text(scoresPanelX, yPos, `${rank}. ---`, {
-          fontSize: '11px',
+        const emptyText = this.add.text(scoresPanelX, yPos, `${rank.toString().padStart(2, ' ')}. ---`, {
+          fontSize: '10px',
           color: '#555555',
           fontFamily: 'Arial, Helvetica, sans-serif',
         });

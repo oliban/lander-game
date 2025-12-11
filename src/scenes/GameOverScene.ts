@@ -90,7 +90,7 @@ export class GameOverScene extends Phaser.Scene {
 
   private isHighScore(score: number): { isHigh: boolean; rank: number } {
     const highScores = this.loadHighScores();
-    if (highScores.length < 5) {
+    if (highScores.length < 10) {
       return { isHigh: true, rank: highScores.length };
     }
     for (let i = 0; i < highScores.length; i++) {
@@ -122,9 +122,9 @@ export class GameOverScene extends Phaser.Scene {
       highScores.push(newEntry);
     }
 
-    // Keep only top 5
-    const topFive = highScores.slice(0, 5);
-    this.saveHighScores(topFive);
+    // Keep only top 10
+    const topTen = highScores.slice(0, 10);
+    this.saveHighScores(topTen);
   }
 
   create(data: GameOverData): void {
