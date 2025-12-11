@@ -11,6 +11,7 @@ import { FisherBoat } from '../objects/FisherBoat';
 import { GolfCart } from '../objects/GolfCart';
 import { OilTower } from '../objects/OilTower';
 import { Biplane } from '../objects/Biplane';
+import { Shark } from '../objects/Shark';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
@@ -100,6 +101,10 @@ export class GameScene extends Phaser.Scene {
   private fisherBoat: FisherBoat | null = null;
   private shuttleOnBoat: boolean = false; // Track if shuttle has landed on boat
 
+  // Sharks in Atlantic
+  private sharks: Shark[] = [];
+  private sunkenFood: { x: number; y: number; sprite: Phaser.GameObjects.Sprite }[] = [];
+
   // Landing pad debounce (prevent re-triggering trade after closing)
   private lastLandingTime: number = 0;
   private lastTradedPad: LandingPad | null = null; // Track pad we just traded at
@@ -173,6 +178,8 @@ export class GameScene extends Phaser.Scene {
     this.tombstoneBodies = [];
     this.fisherBoat = null;
     this.shuttleOnBoat = false;
+    this.sharks = [];
+    this.sunkenFood = [];
     this.gameInitialized = false; // Reset to prevent splash effects on load
     // Note: p1Kills and p2Kills persist across restarts within a session
     // Reset death messages for new game
@@ -216,6 +223,9 @@ export class GameScene extends Phaser.Scene {
     this.fisherBoat = new FisherBoat(this, 3500);
     // 15% chance the boat has a "fish" package
     this.fisherBoat.hasFishPackage = Math.random() < 0.15;
+
+    // Create sharks in Atlantic Ocean
+    this.spawnSharks();
 
     // Create golf cart in USA section (patrols x: 800-1200) - 1/3 chance to spawn
     if (Math.random() < 0.33) {
@@ -564,6 +574,71 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private spawnSharks(): void {
+    const atlanticStart = 2000;
+    const atlanticEnd = 5000;
+    const sharkCount = 2 + Math.floor(Math.random() * 2); // 2-3 sharks
+
+    // Divide Atlantic into zones to spread sharks out
+    const zoneWidth = (atlanticEnd - atlanticStart) / sharkCount;
+
+    for (let i = 0; i < sharkCount; i++) {
+      const zoneStart = atlanticStart + i * zoneWidth;
+      const zoneEnd = zoneStart + zoneWidth;
+
+      // Spawn in center of zone with some randomness
+      const x = zoneStart + zoneWidth * 0.5 + (Math.random() - 0.5) * zoneWidth * 0.3;
+
+      // Patrol within zone (with some overlap allowed)
+      const patrolMinX = zoneStart + 50;
+      const patrolMaxX = zoneEnd - 50;
+
+      const shark = new Shark(this, x, patrolMinX, patrolMaxX);
+      this.sharks.push(shark);
+    }
+  }
+
+  private getFoodTargetsInOcean(): { x: number; y: number }[] {
+    const targets: { x: number; y: number }[] = [];
+    const waterSurface = GAME_HEIGHT * 0.75;
+
+    // Add sunken food positions
+    for (const food of this.sunkenFood) {
+      targets.push({ x: food.x, y: food.y });
+    }
+
+    // Add currently falling bombs that are in Atlantic Ocean and underwater
+    for (const bomb of this.bombs) {
+      if (bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
+        targets.push({ x: bomb.x, y: bomb.y });
+      }
+    }
+
+    return targets;
+  }
+
+  private checkSharkEatsSunkenFood(shark: Shark): void {
+    if (!shark.canEatBomb()) return;
+
+    const eatingBounds = shark.getEatingBounds();
+
+    for (let i = this.sunkenFood.length - 1; i >= 0; i--) {
+      const food = this.sunkenFood[i];
+      if (
+        food.x >= eatingBounds.x &&
+        food.x <= eatingBounds.x + eatingBounds.width &&
+        food.y >= eatingBounds.y &&
+        food.y <= eatingBounds.y + eatingBounds.height
+      ) {
+        // Shark eats the food!
+        shark.eatBomb();
+        food.sprite.destroy();
+        this.sunkenFood.splice(i, 1);
+        break; // Only eat one at a time
+      }
+    }
+  }
+
   private createCannons(): void {
     // Place cannons based on country cannon density
     for (const country of COUNTRIES) {
@@ -754,6 +829,13 @@ export class GameScene extends Phaser.Scene {
           this.handleTombstoneBounce(tombstoneBody.id);
         }
 
+        // Check shuttle collision with brick wall
+        if (this.isShuttleCollision(bodyA, bodyB, 'brick_wall')) {
+          const shuttleBody = bodyA.label === 'brick_wall' ? bodyB : bodyA;
+          const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
+          this.handleBrickWallCollision(isP2 ? 2 : 1);
+        }
+
         // Check tombstone collision with terrain (resets juggle count)
         if ((bodyA.label === 'tombstone' && bodyB.label === 'terrain') ||
             (bodyB.label === 'tombstone' && bodyA.label === 'terrain')) {
@@ -915,6 +997,48 @@ export class GameScene extends Phaser.Scene {
     this.transitionToGameOver({
       victory: false,
       message: outOfFuel ? 'You ran out of fuel!' : 'You crashed into the terrain!',
+      score: this.destructionScore,
+      debugModeUsed: shuttle.wasDebugModeUsed(),
+      destroyedBuildings: this.destroyedBuildings,
+    });
+  }
+
+  private handleBrickWallCollision(playerNum: number = 1): void {
+    if (this.gameState !== 'playing') return;
+    if (this.invulnerable) return;
+
+    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+    if (!shuttle || !shuttle.active) return;
+
+    const velocity = shuttle.getVelocity();
+    const WALL_CRASH_VELOCITY = 6.0; // Crash threshold for wall impact
+
+    if (velocity.total < WALL_CRASH_VELOCITY) {
+      // Bounce off the wall - physics engine handles it
+      console.log(`Wall bounce P${playerNum} at velocity:`, velocity.total.toFixed(2));
+      return;
+    }
+
+    console.log(`CRASH P${playerNum}: Hit brick wall at velocity:`, velocity.total.toFixed(2));
+
+    // In 2-player mode, only destroy this shuttle
+    if (this.playerCount === 2) {
+      this.handleShuttleCrash(playerNum, 'Crashed into the wall!', 'terrain');
+      return;
+    }
+
+    this.gameState = 'crashed';
+    shuttle.stopRocketSound();
+
+    this.achievementSystem.onDeath('terrain');
+    this.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
+
+    shuttle.explode();
+    this.sound.play('car_crash', { volume: 0.8 });
+
+    this.transitionToGameOver({
+      victory: false,
+      message: 'You crashed into the wall!',
       score: this.destructionScore,
       debugModeUsed: shuttle.wasDebugModeUsed(),
       destroyedBuildings: this.destroyedBuildings,
@@ -2387,6 +2511,54 @@ export class GameScene extends Phaser.Scene {
 
       if (bombDestroyed) continue;
 
+      // Check collision with sharks
+      for (let j = this.sharks.length - 1; j >= 0; j--) {
+        const shark = this.sharks[j];
+        if (shark.isDestroyed) continue;
+
+        const bounds = shark.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit a shark!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Play underwater explosion sound (quieter)
+          const explosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${explosionNum}`, { volume: 0.3 });
+
+          // Apply shockwave to shuttle (reduced underwater)
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Get shark info and destroy it
+          const { name, points, wasDead } = shark.explode();
+          this.destructionScore += points;
+
+          // Track shark destruction achievement
+          this.achievementSystem.onSharkKill();
+
+          // Show destruction message
+          this.showDestructionPoints(
+            shark.x,
+            shark.y - 30,
+            points,
+            wasDead ? 'Dead Shark' : 'Shark'
+          );
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
+          break;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
       // Check collision with golf cart
       if (this.golfCart && !this.golfCart.isDestroyed) {
         const bounds = this.golfCart.getCollisionBounds();
@@ -2545,8 +2717,25 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private sinkBombInWater(bomb: Bomb, waterLevel: number): void {
+  private sinkBombInWater(bomb: Bomb, waterLevel: number): boolean {
     const bombX = bomb.x;
+
+    // Check if any shark can intercept and eat this bomb
+    for (const shark of this.sharks) {
+      if (shark.isDestroyed || !shark.canEatBomb()) continue;
+
+      const eatingBounds = shark.getEatingBounds();
+      // Check if bomb is within horizontal range and shark is below bomb
+      if (
+        bombX >= eatingBounds.x &&
+        bombX <= eatingBounds.x + eatingBounds.width
+      ) {
+        // Shark eats the bomb!
+        shark.eatBomb();
+        bomb.destroy();
+        return true; // Bomb was eaten
+      }
+    }
 
     // Map food types to sprite keys
     const spriteMap: { [key: string]: string } = {
@@ -2600,15 +2789,22 @@ export class GameScene extends Phaser.Scene {
     sinkingFood.setScale(0.06); // Same scale as bomb
     sinkingFood.setDepth(50);
 
+    // Track the food for shark attraction
+    const finalY = waterLevel + 120;
+    const foodData = { x: bombX, y: finalY, sprite: sinkingFood };
+
     // Sink slowly to the bottom and stay there
     this.tweens.add({
       targets: sinkingFood,
-      y: waterLevel + 120, // Sink to bottom
+      y: finalY, // Sink to bottom
       alpha: 0.5,
       angle: sinkingFood.angle + 30, // Slight rotation as it sinks
       duration: 2000,
       ease: 'Quad.easeOut',
-      // Don't destroy - let it stay at the bottom
+      onComplete: () => {
+        // Add to sunken food array when it reaches bottom
+        this.sunkenFood.push(foodData);
+      },
     });
 
     // Small bubbles as it sinks
@@ -2633,6 +2829,7 @@ export class GameScene extends Phaser.Scene {
 
     // Destroy the original bomb object
     bomb.destroy();
+    return false; // Bomb sank normally (wasn't eaten)
   }
 
   private showDestructionPoints(x: number, y: number, points: number, name: string): void {
@@ -3781,8 +3978,8 @@ export class GameScene extends Phaser.Scene {
       this.totalWaterPollutionParticles++;
     }
 
-    // Increase water pollution level
-    this.waterPollutionLevel = Math.min(1, this.waterPollutionLevel + 0.005 * intensity); // 50% slower pollution rate
+    // Increase water pollution level (slow rate)
+    this.waterPollutionLevel = Math.min(1, this.waterPollutionLevel + 0.0025 * intensity);
   }
 
   private updateWaterPollution(): void {
@@ -4119,6 +4316,16 @@ export class GameScene extends Phaser.Scene {
       // Check shuttle proximity to stop bobbing
       this.checkBoatProximity();
       this.fisherBoat.update(this.terrain.getWaveOffset());
+    }
+
+    // Update sharks
+    const foodTargets = this.getFoodTargetsInOcean();
+    for (const shark of this.sharks) {
+      if (!shark.isDestroyed) {
+        shark.update(this.terrain.getWaveOffset(), this.waterPollutionLevel, foodTargets);
+        // Check if shark can eat any sunken food
+        this.checkSharkEatsSunkenFood(shark);
+      }
     }
 
     // Clear lastTradedPad when shuttle leaves the pad

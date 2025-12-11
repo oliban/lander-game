@@ -320,10 +320,10 @@ export class Biplane extends Phaser.GameObjects.Container {
     // Clear previous banner
     this.bannerContainer.removeAll(true);
 
-    const textWidth = this.message.length * 7.5;
-    const bannerWidth = Math.max(textWidth + 30, 100);
-    const bannerHeight = 20;
-    const ropeLength = 45;
+    const textWidth = this.message.length * 11;
+    const bannerWidth = Math.max(textWidth + 40, 140);
+    const bannerHeight = 30;
+    const ropeLength = 50;
 
     // Banner position (behind the plane)
     const bannerX = -42 - ropeLength - bannerWidth / 2;
@@ -389,7 +389,7 @@ export class Biplane extends Phaser.GameObjects.Container {
 
     // Banner text
     const bannerText = this.scene.add.text(bannerX, bannerY, this.message, {
-      fontSize: '10px',
+      fontSize: '14px',
       fontFamily: 'Arial Black, Arial',
       color: '#1a1a1a',
       fontStyle: 'bold',

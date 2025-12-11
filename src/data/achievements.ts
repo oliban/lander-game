@@ -92,6 +92,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     tier: 'silver',
     hidden: true,
   },
+  {
+    id: 'shark_hunter',
+    name: 'Shark Hunter',
+    description: 'Hit a shark with a bomb',
+    tier: 'bronze',
+  },
 
   // Deaths & Mishaps (5)
   {

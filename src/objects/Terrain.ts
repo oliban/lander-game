@@ -218,6 +218,63 @@ export class Terrain {
         this.bodies.push(body);
       }
     }
+
+    // Create brick wall physics bodies at ocean edges
+    this.createBrickWallBodies();
+  }
+
+  private createBrickWallBodies(): void {
+    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const oceanHeight = GAME_HEIGHT * 0.75;
+
+    // Get terrain heights at ocean edges (go far enough to get actual land, not flattened ocean)
+    const leftLandHeight = Math.min(this.getHeightAt(atlanticStart - 50) ?? oceanHeight, oceanHeight);
+    const rightLandHeight = Math.min(this.getHeightAt(atlanticEnd + 50) ?? oceanHeight, oceanHeight);
+
+    const wallWidth = 12;
+
+    // Left wall
+    const leftWallHeight = GAME_HEIGHT - leftLandHeight;
+    const leftWallBody = this.scene.matter.add.rectangle(
+      atlanticStart,
+      leftLandHeight + leftWallHeight / 2,
+      wallWidth,
+      leftWallHeight,
+      {
+        isStatic: true,
+        label: 'brick_wall',
+        friction: 0.9,
+        restitution: 0.3, // Some bounce
+        collisionFilter: {
+          category: 2,
+        },
+      }
+    );
+    if (leftWallBody) {
+      this.bodies.push(leftWallBody);
+    }
+
+    // Right wall
+    const rightWallHeight = GAME_HEIGHT - rightLandHeight;
+    const rightWallBody = this.scene.matter.add.rectangle(
+      atlanticEnd,
+      rightLandHeight + rightWallHeight / 2,
+      wallWidth,
+      rightWallHeight,
+      {
+        isStatic: true,
+        label: 'brick_wall',
+        friction: 0.9,
+        restitution: 0.3, // Some bounce
+        collisionFilter: {
+          category: 2,
+        },
+      }
+    );
+    if (rightWallBody) {
+      this.bodies.push(rightWallBody);
+    }
   }
 
   private draw(): void {
@@ -264,26 +321,32 @@ export class Terrain {
       this.graphics.fillPath();
 
       // Middle dirt layer (on top of rock)
+      // Draw with bottom edge following terrain profile offset by 60px
       this.graphics.fillStyle(dirtColor, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
         this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
       }
-      this.graphics.lineTo(countryVertices[countryVertices.length - 1].x, countryVertices[countryVertices.length - 1].y + 60);
-      this.graphics.lineTo(countryVertices[0].x, countryVertices[0].y + 60);
+      // Draw bottom edge in reverse, offset by 60px
+      for (let i = countryVertices.length - 1; i >= 0; i--) {
+        this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y + 60);
+      }
       this.graphics.closePath();
       this.graphics.fillPath();
 
       // Top grass/surface layer
+      // Draw with bottom edge following terrain profile offset by 30px
       this.graphics.fillStyle(country.color, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
         this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
       }
-      this.graphics.lineTo(countryVertices[countryVertices.length - 1].x, countryVertices[countryVertices.length - 1].y + 30);
-      this.graphics.lineTo(countryVertices[0].x, countryVertices[0].y + 30);
+      // Draw bottom edge in reverse, offset by 30px
+      for (let i = countryVertices.length - 1; i >= 0; i--) {
+        this.graphics.lineTo(countryVertices[i].x, countryVertices[i].y + 30);
+      }
       this.graphics.closePath();
       this.graphics.fillPath();
 
@@ -560,6 +623,55 @@ export class Terrain {
       this.oceanGraphics.fillCircle(foamX, foamY, 8);
       this.oceanGraphics.fillCircle(foamX + 15, foamY + 3, 5);
       this.oceanGraphics.fillCircle(foamX - 10, foamY + 5, 6);
+    }
+
+    // Draw brick walls at ocean edges - from land height down to bottom
+    // Need to go far enough from ocean edge to get actual land height (not flattened ocean)
+    const leftLandHeight = this.getHeightAt(atlanticStart - 50) ?? oceanHeight;
+    const rightLandHeight = this.getHeightAt(atlanticEnd + 50) ?? oceanHeight;
+
+    // Draw walls at the actual ocean boundaries
+    this.drawBrickWall(atlanticStart, Math.min(leftLandHeight, oceanHeight), GAME_HEIGHT);
+    this.drawBrickWall(atlanticEnd, Math.min(rightLandHeight, oceanHeight), GAME_HEIGHT);
+  }
+
+  private drawBrickWall(x: number, topY: number, bottomY: number): void {
+    const wallWidth = 12;
+    const brickHeight = 8;
+    const brickWidth = wallWidth - 2;
+    const mortarColor = 0x888888;
+    const brickColor = 0x8B4513; // Saddle brown
+    const brickColorDark = 0x6B3310;
+    const brickColorLight = 0x9B5523;
+
+    // Draw mortar background
+    this.oceanGraphics.fillStyle(mortarColor, 1);
+    this.oceanGraphics.fillRect(x - wallWidth / 2, topY, wallWidth, bottomY - topY);
+
+    // Draw bricks in alternating pattern
+    let row = 0;
+    for (let y = topY; y < bottomY; y += brickHeight) {
+      const offset = (row % 2) * (brickWidth / 2); // Alternate brick offset
+
+      for (let bx = -1; bx <= 1; bx++) {
+        const brickX = x - wallWidth / 2 + 1 + offset + bx * brickWidth;
+        const brickY = y + 1;
+        const actualHeight = Math.min(brickHeight - 2, bottomY - brickY);
+
+        if (actualHeight <= 0) continue;
+
+        // Vary brick colors slightly for texture
+        const colorVariant = ((row + bx) % 3);
+        const color = colorVariant === 0 ? brickColor : colorVariant === 1 ? brickColorDark : brickColorLight;
+
+        this.oceanGraphics.fillStyle(color, 1);
+        this.oceanGraphics.fillRect(brickX, brickY, brickWidth - 1, actualHeight);
+
+        // Add subtle highlight on top edge
+        this.oceanGraphics.fillStyle(0xAA6633, 0.5);
+        this.oceanGraphics.fillRect(brickX, brickY, brickWidth - 1, 1);
+      }
+      row++;
     }
   }
 
