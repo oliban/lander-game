@@ -69,6 +69,7 @@ export class GameScene extends Phaser.Scene {
   private bribeEndTime: number = 0;
   private hasSpeedBoost: boolean = false;
   private speedBoostEndTime: number = 0;
+  private speedBoostPlayer: number = 1; // Which player has the speed boost
   private bribeGraphics: Phaser.GameObjects.Graphics | null = null;
   private speedBoostTrail: Phaser.GameObjects.Graphics | null = null;
   private tieSegments: { x: number; y: number }[] = []; // For floppy tie physics
@@ -252,6 +253,7 @@ export class GameScene extends Phaser.Scene {
     this.bribeEndTime = 0;
     this.hasSpeedBoost = false;
     this.speedBoostEndTime = 0;
+    this.speedBoostPlayer = 1;
     this.bribeGraphics = null;
     this.speedBoostTrail = null;
 
@@ -1873,7 +1875,7 @@ export class GameScene extends Phaser.Scene {
     if (collectible.special === 'bribe_cannons') {
       this.activateBribeCannons();
     } else if (collectible.special === 'speed_boost') {
-      this.activateSpeedBoost();
+      this.activateSpeedBoost(playerNum);
     } else if (collectible.collectibleType === 'COVFEFE') {
       // Covfefe gives instant 10% fuel
       const fuelToAdd = fuelSys.getMaxFuel() * 0.1;
@@ -2017,15 +2019,18 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.flash(300, 34, 139, 34);
   }
 
-  private activateSpeedBoost(): void {
+  private activateSpeedBoost(playerNum: number = 1): void {
     const duration = 6000; // 6 seconds of speed boost
+    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+
     this.hasSpeedBoost = true;
     this.speedBoostEndTime = this.time.now + duration;
+    this.speedBoostPlayer = playerNum; // Track which player has the boost
 
     // Sound is played by playPickupSound()
 
     // Modify shuttle thrust temporarily
-    this.shuttle.setThrustMultiplier(1.8);
+    shuttle.setThrustMultiplier(1.8);
 
     // Create speed trail effect (floppy tie)
     if (!this.speedBoostTrail) {
@@ -2036,11 +2041,11 @@ export class GameScene extends Phaser.Scene {
     // Initialize tie segments at shuttle position
     this.tieSegments = [];
     for (let i = 0; i < 8; i++) {
-      this.tieSegments.push({ x: this.shuttle.x, y: this.shuttle.y + i * 6 });
+      this.tieSegments.push({ x: shuttle.x, y: shuttle.y + i * 6 });
     }
 
     // Show "SPEED BOOST" text
-    const speedText = this.add.text(this.shuttle.x, this.shuttle.y - 60, 'RED TIE POWER!', {
+    const speedText = this.add.text(shuttle.x, shuttle.y - 60, 'RED TIE POWER!', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '18px',
       color: '#DC143C',
@@ -3304,9 +3309,10 @@ export class GameScene extends Phaser.Scene {
 
     // Update speed boost
     if (this.hasSpeedBoost) {
+      const boostShuttle = this.speedBoostPlayer === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
       if (now >= this.speedBoostEndTime) {
         this.hasSpeedBoost = false;
-        this.shuttle.setThrustMultiplier(1.0);
+        boostShuttle.setThrustMultiplier(1.0);
         if (this.speedBoostTrail) {
           this.speedBoostTrail.clear();
         }
@@ -3319,8 +3325,8 @@ export class GameScene extends Phaser.Scene {
           const alpha = timeLeft < 2000 ? (Math.sin(now * 0.02) * 0.3 + 0.5) : 0.9;
 
           // Tie attaches to bottom of shuttle
-          const attachX = this.shuttle.x;
-          const attachY = this.shuttle.y + 15;
+          const attachX = boostShuttle.x;
+          const attachY = boostShuttle.y + 15;
 
           // Update tie physics - each segment follows the one before it
           // First segment follows the shuttle
@@ -3341,7 +3347,7 @@ export class GameScene extends Phaser.Scene {
             curr.y += 0.8;
 
             // Add some wind/flutter based on shuttle velocity
-            const vel = this.shuttle.getVelocity();
+            const vel = boostShuttle.getVelocity();
             curr.x -= vel.x * 0.05;
             curr.y -= vel.y * 0.03;
 
