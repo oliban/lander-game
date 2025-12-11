@@ -184,6 +184,10 @@ export class AchievementSystem {
     this.unlock('pablos_parking');
   }
 
+  onSharkKill(): void {
+    this.unlock('shark_hunter');
+  }
+
   onCountryVisited(country: string): void {
     this.sessionStats.countriesVisited.add(country);
     // Check if all countries visited (Washington, USA, UK, France, Germany, Poland, Russia)
