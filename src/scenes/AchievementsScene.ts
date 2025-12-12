@@ -78,9 +78,12 @@ export class AchievementsScene extends Phaser.Scene {
     const achievements = achievementSystem.getAll();
     this.maxScroll = Math.max(0, achievements.length * ITEM_HEIGHT - listHeight + LIST_PADDING * 2);
 
+    // Reveal hints for locked achievements when player has 80%+ unlocked
+    const revealHints = (unlocked / total) >= 0.8;
+
     achievements.forEach((achievement, index) => {
       const itemY = LIST_PADDING + index * ITEM_HEIGHT;
-      this.createAchievementItem(achievement, itemY, achievementSystem.isUnlocked(achievement.id));
+      this.createAchievementItem(achievement, itemY, achievementSystem.isUnlocked(achievement.id), revealHints);
     });
 
     // Scroll handling
@@ -123,7 +126,7 @@ export class AchievementsScene extends Phaser.Scene {
     });
   }
 
-  private createAchievementItem(achievement: Achievement, y: number, isUnlocked: boolean): void {
+  private createAchievementItem(achievement: Achievement, y: number, isUnlocked: boolean, revealHints: boolean): void {
     const itemWidth = GAME_WIDTH - LIST_PADDING * 2;
     const x = LIST_PADDING;
 
@@ -146,9 +149,10 @@ export class AchievementsScene extends Phaser.Scene {
     icon.setOrigin(0.5, 0.5);
     this.listContainer.add(icon);
 
-    // Name
-    const nameColor = isUnlocked ? '#FFFFFF' : '#666666';
-    const name = this.add.text(x + 70, y + 18, isUnlocked ? achievement.name : '???', {
+    // Name - reveal if unlocked OR if hints are revealed (80%+ progress)
+    const showDetails = isUnlocked || revealHints;
+    const nameColor = isUnlocked ? '#FFFFFF' : '#888888';
+    const name = this.add.text(x + 70, y + 18, showDetails ? achievement.name : '???', {
       fontSize: '18px',
       color: nameColor,
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -156,9 +160,9 @@ export class AchievementsScene extends Phaser.Scene {
     });
     this.listContainer.add(name);
 
-    // Description
-    const descColor = isUnlocked ? '#AAAAAA' : '#444444';
-    const desc = this.add.text(x + 70, y + 42, isUnlocked ? achievement.description : 'Hidden achievement', {
+    // Description - reveal if unlocked OR if hints are revealed (80%+ progress)
+    const descColor = isUnlocked ? '#AAAAAA' : '#666666';
+    const desc = this.add.text(x + 70, y + 42, showDetails ? achievement.description : 'Hidden achievement', {
       fontSize: '13px',
       color: descColor,
       fontFamily: 'Arial, Helvetica, sans-serif',

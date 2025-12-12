@@ -12,6 +12,7 @@ import { GolfCart } from '../objects/GolfCart';
 import { OilTower } from '../objects/OilTower';
 import { Biplane } from '../objects/Biplane';
 import { Shark } from '../objects/Shark';
+import { GreenlandIce } from '../objects/GreenlandIce';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
@@ -104,6 +105,16 @@ export class GameScene extends Phaser.Scene {
   // Sharks in Atlantic
   private sharks: Shark[] = [];
   private sunkenFood: { x: number; y: number; sprite: Phaser.GameObjects.Sprite }[] = [];
+
+  // Greenland ice block
+  private greenlandIce: GreenlandIce | null = null;
+  private hasGreenlandIce: boolean = false;
+  private iceAngle: number = 0;
+  private iceAngularVelocity: number = 0;
+  private iceCarrier: Shuttle | null = null;
+  private greenlandIceGraphics: Phaser.GameObjects.Graphics | null = null;
+  private lastIceVelX: number = 0;
+  private lastIceVelY: number = 0;
 
   // Landing pad debounce (prevent re-triggering trade after closing)
   private lastLandingTime: number = 0;
@@ -227,6 +238,9 @@ export class GameScene extends Phaser.Scene {
     // Create sharks in Atlantic Ocean
     this.spawnSharks();
 
+    // Create Greenland ice block in Atlantic Ocean
+    this.spawnGreenlandIce();
+
     // Create golf cart in USA section (patrols x: 800-1200) - 1/3 chance to spawn
     if (Math.random() < 0.33) {
       this.golfCart = new GolfCart(this, 1000, 800, 1200);
@@ -253,6 +267,15 @@ export class GameScene extends Phaser.Scene {
     this.hasPeaceMedal = false;
     this.peaceMedalGraphics = null;
     this.medalCarrier = null;
+
+    // Reset Greenland ice state (note: greenlandIce object is created in spawnGreenlandIce above)
+    this.hasGreenlandIce = false;
+    this.iceAngle = 0;
+    this.iceAngularVelocity = 0;
+    this.iceCarrier = null;
+    this.greenlandIceGraphics = null;
+    this.lastIceVelX = 0;
+    this.lastIceVelY = 0;
 
     // Reset score and destroyed buildings
     this.destructionScore = 0;
@@ -596,6 +619,21 @@ export class GameScene extends Phaser.Scene {
       const shark = new Shark(this, x, patrolMinX, patrolMaxX);
       this.sharks.push(shark);
     }
+  }
+
+  private spawnGreenlandIce(): void {
+    // Positions to avoid:
+    // - Fisher boat at x=3500 (avoid 3400-3600)
+    // - Mid-Atlantic Platform at x=4300 (avoid 4200-4400)
+    // Valid spawn zones: 2800-3400 or 3600-4100
+    const zones = [
+      { min: 2800, max: 3400 },  // Before fisher boat
+      { min: 3600, max: 4100 },  // After fisher boat, before oil platform
+    ];
+    const zone = zones[Math.floor(Math.random() * zones.length)];
+    const x = zone.min + Math.random() * (zone.max - zone.min);
+    this.greenlandIce = new GreenlandIce(this, x);
+    console.log(`[Greenland Ice] Spawned at x=${x.toFixed(0)}`);
   }
 
   private getFoodTargetsInOcean(): { x: number; y: number }[] {
@@ -1392,6 +1430,39 @@ export class GameScene extends Phaser.Scene {
         this.events.emit('destructionScore', this.destructionScore);
       }
 
+      // Add Greenland ice bonus if carrying (2500 points!)
+      if (this.hasGreenlandIce) {
+        this.destructionScore += 2500;
+        this.events.emit('destructionScore', this.destructionScore);
+        this.achievementSystem.onGreenlandDeliveredToRussia();
+
+        // Show bonus message
+        const iceBonus = this.add.text(shuttle.x, shuttle.y - 150, '+2500 VODKA ON THE ROCKS!', {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '24px',
+          color: '#87CEEB',
+          fontStyle: 'bold',
+          stroke: '#000000',
+          strokeThickness: 3,
+        });
+        iceBonus.setOrigin(0.5, 0.5);
+        iceBonus.setDepth(100);
+
+        this.tweens.add({
+          targets: iceBonus,
+          y: iceBonus.y - 50,
+          alpha: 0,
+          duration: 2500,
+          onComplete: () => iceBonus.destroy(),
+        });
+
+        // Clean up ice
+        this.hasGreenlandIce = false;
+        this.iceCarrier = null;
+        this.greenlandIceGraphics?.destroy();
+        this.greenlandIceGraphics = null;
+      }
+
       // Special message if carrying peace medal - Putino speaks!
       const putinoPhrases = [
         '"Ochen khorosho! Very good, my friend! This medal, it is... how you say... TREMENDOUS!"',
@@ -1427,6 +1498,98 @@ export class GameScene extends Phaser.Scene {
           destroyedBuildings: this.destroyedBuildings,
         });
       });
+    } else if (pad.isWashington && this.hasGreenlandIce) {
+      // Deliver Greenland ice to Washington!
+      this.destructionScore += 2500;
+      this.events.emit('destructionScore', this.destructionScore);
+
+      // Trigger achievement
+      this.achievementSystem.onGreenlandDeliveredToWashington();
+
+      // Show bonus message
+      const bonusText = this.add.text(shuttle.x, shuttle.y - 120, '+2500 GREENLAND DEAL!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '24px',
+        color: '#87CEEB',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 3,
+      });
+      bonusText.setOrigin(0.5, 0.5);
+      bonusText.setDepth(100);
+
+      this.tweens.add({
+        targets: bonusText,
+        y: bonusText.y - 50,
+        alpha: 0,
+        duration: 2500,
+        onComplete: () => bonusText.destroy(),
+      });
+
+      // Remove ice and reset shuttle mass
+      this.hasGreenlandIce = false;
+      this.iceCarrier = null;
+      this.greenlandIceGraphics?.destroy();
+      this.greenlandIceGraphics = null;
+
+      // Also pick up the Peace Medal if not already carried
+      if (!this.hasPeaceMedal) {
+        this.hasPeaceMedal = true;
+        pad.hidePeaceMedal();
+        this.createPeaceMedalGraphics(shuttle);
+        shuttle.setMass(8); // Medal weight
+        this.medalAngle = 0;
+        this.medalAngularVelocity = 0;
+
+        // Show medal pickup message (slightly delayed so it appears after ice message)
+        this.time.delayedCall(500, () => {
+          const medalText = this.add.text(shuttle.x, shuttle.y - 80, 'PEACE MEDAL ACQUIRED!', {
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '20px',
+            color: '#FFD700',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+          });
+          medalText.setOrigin(0.5, 0.5);
+          medalText.setDepth(100);
+
+          this.tweens.add({
+            targets: medalText,
+            y: medalText.y - 50,
+            alpha: 0,
+            duration: 2000,
+            onComplete: () => medalText.destroy(),
+          });
+        });
+      } else {
+        shuttle.setMass(5); // Reset to normal mass (no medal)
+      }
+
+      // In debug mode, show trading dialogue. Otherwise auto-trade
+      if (shuttle.wasDebugModeUsed()) {
+        this.scene.pause();
+        this.scene.launch('TradingScene', {
+          inventorySystem: this.inventorySystem,
+          fuelSystem: this.fuelSystem,
+          padName: pad.name,
+          landingQuality: landingResult.quality,
+          onScoreChange: (delta: number) => {
+            this.destructionScore += delta;
+            this.events.emit('destructionScore', this.destructionScore);
+          },
+          onComplete: () => {
+            this.scene.resume();
+            this.gameState = 'playing';
+          },
+        });
+      } else {
+        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+        this.gameState = 'playing';
+      }
     } else if (pad.isWashington && !this.hasPeaceMedal) {
       // Pick up the Peace Medal at Washington!
       this.hasPeaceMedal = true;
@@ -1823,6 +1986,252 @@ export class GameScene extends Phaser.Scene {
     );
     // Dove head
     this.peaceMedalGraphics.fillCircle(medalX - 4, medalY - 1, 2);
+  }
+
+  private checkGreenlandIcePickup(): void {
+    // Don't pick up if already have ice OR if carrying Peace Medal
+    if (!this.greenlandIce) {
+      return;
+    }
+    if (this.hasGreenlandIce) {
+      return;
+    }
+    if (this.hasPeaceMedal) {
+      return;
+    }
+    if (this.greenlandIce.isDestroyed) {
+      return;
+    }
+
+    // Use main shuttle directly - shuttles array may have inactive entries
+    const shuttle = this.shuttle;
+    if (!shuttle || !shuttle.active) return;
+
+    // Check distance to the iceberg center (not just top)
+    // Ice bobs around y = GAME_HEIGHT * 0.75 = 540
+    // Sign is ~70px above water, ice peak is ~42px above water
+    const dist = Phaser.Math.Distance.Between(
+      shuttle.x, shuttle.y,
+      this.greenlandIce.x, this.greenlandIce.y - 40  // Check against ice peak area
+    );
+
+    // Debug logging when shuttle is in the general area (x within 500px)
+    const xDist = Math.abs(shuttle.x - this.greenlandIce.x);
+    if (xDist < 500) {
+      console.log(`[Greenland Ice] Near ice! Shuttle(${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}), Ice(${this.greenlandIce.x.toFixed(0)}, ${this.greenlandIce.y.toFixed(0)}), dist=${dist.toFixed(0)}`);
+    }
+
+    // Pickup range: 100px - generous range to make pickup easier
+    if (dist < 100) {
+      console.log(`[Greenland Ice] Picking up! Distance: ${dist.toFixed(0)}`);
+      this.pickupGreenlandIce(shuttle);
+    }
+  }
+
+  private pickupGreenlandIce(shuttle: Shuttle): void {
+    this.hasGreenlandIce = true;
+    this.iceCarrier = shuttle;
+    this.iceAngle = 0;
+    this.iceAngularVelocity = 0;
+    this.lastIceVelX = 0;
+    this.lastIceVelY = 0;
+
+    // Make shuttle heavier (more than medal: 8 → 10)
+    shuttle.setMass(10);
+
+    // Hide the floating ice
+    this.greenlandIce?.attach();
+
+    // Create hanging ice graphics
+    this.greenlandIceGraphics = this.add.graphics();
+    this.greenlandIceGraphics.setDepth(50);
+
+    // Show pickup message
+    const pickupText = this.add.text(shuttle.x, shuttle.y - 80, 'GREENLAND ACQUIRED!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '20px',
+      color: '#87CEEB',
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 3,
+    });
+    pickupText.setOrigin(0.5, 0.5);
+    pickupText.setDepth(100);
+
+    this.tweens.add({
+      targets: pickupText,
+      y: pickupText.y - 50,
+      alpha: 0,
+      duration: 2000,
+      onComplete: () => pickupText.destroy(),
+    });
+  }
+
+  private updateGreenlandIcePhysics(): void {
+    if (!this.hasGreenlandIce || !this.iceCarrier) return;
+
+    const carrier = this.iceCarrier;
+    const velocity = carrier.getVelocity();
+    const shuttleRotation = carrier.rotation;
+
+    // Calculate shuttle acceleration (change in velocity per frame)
+    const accelX = velocity.x - this.lastIceVelX;
+    const accelY = velocity.y - this.lastIceVelY;
+
+    this.lastIceVelX = velocity.x;
+    this.lastIceVelY = velocity.y;
+
+    // Pendulum physics constants (heavier than medal)
+    const wireLength = 55; // Longer than medal's 45
+    const gravity = 0.5;
+    const damping = 0.95; // More damping than medal's 0.97 (heavier = swings less)
+
+    // EFFECTIVE GRAVITY: real gravity minus shuttle acceleration
+    const effectiveGravityX = -accelX;
+    const effectiveGravityY = gravity - accelY;
+
+    // Calculate effective gravity magnitude and direction
+    const effGravMagnitude = Math.sqrt(effectiveGravityX * effectiveGravityX + effectiveGravityY * effectiveGravityY);
+    const effGravAngle = Math.atan2(effectiveGravityX, effectiveGravityY);
+
+    // Ice's world angle = shuttle rotation + local ice angle
+    const iceWorldAngle = shuttleRotation + this.iceAngle;
+
+    // Angle between ice and effective "down" direction
+    const angleFromEffectiveDown = iceWorldAngle - effGravAngle;
+
+    // Restoring torque
+    const restoreFactor = effGravMagnitude / wireLength;
+    const gravityTorque = -restoreFactor * Math.sin(angleFromEffectiveDown);
+
+    // Shuttle rotation imparts momentum to ice through the wire
+    const shuttleAngularVel = (carrier.body as MatterJS.BodyType).angularVelocity;
+    const rotationTorque = -shuttleAngularVel * 0.6; // Less responsive than medal (heavier)
+
+    // Update angular velocity
+    this.iceAngularVelocity += gravityTorque + rotationTorque;
+    this.iceAngularVelocity *= damping;
+    this.iceAngle += this.iceAngularVelocity;
+
+    // Soft clamp - bounce back at extreme angles (smaller max than medal due to weight)
+    const maxAngle = Math.PI * 0.5;
+    if (Math.abs(this.iceAngle) > maxAngle) {
+      this.iceAngle = Math.sign(this.iceAngle) * maxAngle;
+      this.iceAngularVelocity *= -0.2;
+    }
+  }
+
+  private updateGreenlandIceGraphics(): void {
+    if (!this.greenlandIceGraphics || !this.hasGreenlandIce || !this.iceCarrier) return;
+
+    // Update physics first
+    this.updateGreenlandIcePhysics();
+
+    this.greenlandIceGraphics.clear();
+
+    const carrier = this.iceCarrier;
+    const shuttleX = carrier.x;
+    const shuttleY = carrier.y;
+    const shuttleRotation = carrier.rotation;
+
+    // Attachment point at bottom of shuttle
+    const attachOffsetY = 18;
+    const attachX = shuttleX + Math.sin(shuttleRotation) * attachOffsetY;
+    const attachY = shuttleY + Math.cos(shuttleRotation) * attachOffsetY;
+
+    // Wire length for ice (longer than medal)
+    const wireLength = 55;
+
+    // Ice position: hanging from attachment point at the pendulum angle
+    const iceX = attachX + Math.sin(this.iceAngle) * wireLength;
+    const iceY = attachY + Math.cos(this.iceAngle) * wireLength;
+
+    // Draw wires (two wires from shuttle bottom to ice top)
+    this.greenlandIceGraphics.lineStyle(2, 0x555555, 1);
+
+    // Wire attachment points on shuttle
+    const wireSpread = 8;
+    const leftAttachX = attachX - wireSpread * Math.cos(shuttleRotation);
+    const leftAttachY = attachY + wireSpread * Math.sin(shuttleRotation);
+    const rightAttachX = attachX + wireSpread * Math.cos(shuttleRotation);
+    const rightAttachY = attachY - wireSpread * Math.sin(shuttleRotation);
+
+    // Wire endpoints on ice (scaled 1.5x)
+    const s = 1.5;
+    const iceTopY = iceY - 45;  // 30 * 1.5
+
+    // Left wire
+    this.greenlandIceGraphics.lineBetween(leftAttachX, leftAttachY, iceX - 15, iceTopY);
+    // Right wire
+    this.greenlandIceGraphics.lineBetween(rightAttachX, rightAttachY, iceX + 15, iceTopY);
+
+    // Draw ice block (rotates slightly with swing)
+    const iceTilt = this.iceAngle * 0.4;
+
+    // Ice colors
+    const iceLight = 0xE0FFFF;
+    const iceMid = 0xAFEEEE;
+    const iceDark = 0x87CEEB;
+
+    // Main ice block shape
+    this.greenlandIceGraphics.fillStyle(iceMid, 1);
+    this.greenlandIceGraphics.beginPath();
+
+    // Create rotated ice block polygon (scaled 1.5x to match floating ice)
+    const points = [
+      { x: -25 * s, y: -20 * s },  // Top left
+      { x: -20 * s, y: -30 * s },  // Upper left peak
+      { x: 0, y: -35 * s },        // Top center peak
+      { x: 15 * s, y: -25 * s },   // Upper right
+      { x: 22 * s, y: -15 * s },   // Right upper
+      { x: 20 * s, y: 10 * s },    // Right lower
+      { x: -5 * s, y: 15 * s },    // Bottom center
+      { x: -22 * s, y: 8 * s },    // Left lower
+    ];
+
+    // Transform points for rotation and position
+    const cos = Math.cos(iceTilt);
+    const sin = Math.sin(iceTilt);
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const rx = p.x * cos - p.y * sin + iceX;
+      const ry = p.x * sin + p.y * cos + iceY;
+      if (i === 0) {
+        this.greenlandIceGraphics.moveTo(rx, ry);
+      } else {
+        this.greenlandIceGraphics.lineTo(rx, ry);
+      }
+    }
+    this.greenlandIceGraphics.closePath();
+    this.greenlandIceGraphics.fillPath();
+
+    // Ice highlights
+    this.greenlandIceGraphics.fillStyle(iceLight, 0.8);
+    const highlightPoints = [
+      { x: -18 * s, y: -22 * s },
+      { x: -5 * s, y: -30 * s },
+      { x: 5 * s, y: -25 * s },
+      { x: -5 * s, y: -18 * s },
+    ];
+    this.greenlandIceGraphics.beginPath();
+    for (let i = 0; i < highlightPoints.length; i++) {
+      const p = highlightPoints[i];
+      const rx = p.x * cos - p.y * sin + iceX;
+      const ry = p.x * sin + p.y * cos + iceY;
+      if (i === 0) {
+        this.greenlandIceGraphics.moveTo(rx, ry);
+      } else {
+        this.greenlandIceGraphics.lineTo(rx, ry);
+      }
+    }
+    this.greenlandIceGraphics.closePath();
+    this.greenlandIceGraphics.fillPath();
+
+    // White shine spots
+    this.greenlandIceGraphics.fillStyle(0xFFFFFF, 0.7);
+    const shineX1 = -10 * s * cos - (-20 * s) * sin + iceX;
+    const shineY1 = -10 * s * sin + (-20 * s) * cos + iceY;
+    this.greenlandIceGraphics.fillCircle(shineX1, shineY1, 4);
   }
 
   private handleProjectileHit(playerNum: number = 1): void {
@@ -2556,6 +2965,54 @@ export class GameScene extends Phaser.Scene {
           this.bombs.splice(i, 1);
           bombDestroyed = true;
           break;
+        }
+      }
+
+      if (bombDestroyed) continue;
+
+      // Check collision with Greenland ice
+      if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.hasGreenlandIce) {
+        const bounds = this.greenlandIce.getCollisionBounds();
+
+        if (
+          bombX >= bounds.x &&
+          bombX <= bounds.x + bounds.width &&
+          bombY >= bounds.y &&
+          bombY <= bounds.y + bounds.height
+        ) {
+          // Hit the ice!
+          const explosionX = bombX;
+          const explosionY = bombY;
+          bomb.explode(this);
+
+          // Play explosion sound
+          const explosionNum = Math.floor(Math.random() * 3) + 1;
+          this.sound.play(`explosion${explosionNum}`, { volume: 0.4 });
+
+          // Apply shockwave to shuttle
+          this.applyExplosionShockwave(explosionX, explosionY);
+
+          // Destroy the ice
+          this.greenlandIce.explode();
+          this.greenlandIce.isDestroyed = true;
+
+          // Award points
+          this.destructionScore += 500;
+          this.events.emit('destructionScore', this.destructionScore);
+
+          // Trigger achievement
+          this.achievementSystem.onGreenlandDestroyed();
+
+          // Show destruction message
+          this.showDestructionPoints(
+            this.greenlandIce.x,
+            this.greenlandIce.y - 50,
+            500,
+            'Greenland'
+          );
+
+          this.bombs.splice(i, 1);
+          bombDestroyed = true;
         }
       }
 
@@ -4328,6 +4785,46 @@ export class GameScene extends Phaser.Scene {
         // Check if shark can eat any sunken food
         this.checkSharkEatsSunkenFood(shark);
       }
+    }
+
+    // Update Greenland ice - log every frame to debug
+    const shuttle = this.shuttle;
+    // Log once per second to avoid spam
+    if (Math.floor(Date.now() / 1000) !== (this as any)._lastIceLogTime) {
+      (this as any)._lastIceLogTime = Math.floor(Date.now() / 1000);
+      console.log(`[ICE STATUS] greenlandIce=${!!this.greenlandIce}, shuttle=${!!shuttle}, shuttleActive=${shuttle?.active}, shuttleX=${shuttle?.x?.toFixed(0)}, iceX=${this.greenlandIce?.x?.toFixed(0)}`);
+    }
+    if (shuttle && shuttle.active && this.greenlandIce) {
+      const xDist = Math.abs(shuttle.x - this.greenlandIce.x);
+      if (xDist < 500) {
+        console.log(`[ICE DEBUG] xDist=${xDist.toFixed(0)}, destroyed=${this.greenlandIce.isDestroyed}, hasIce=${this.hasGreenlandIce}, hasMedal=${this.hasPeaceMedal}`);
+      }
+    }
+
+    if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.hasGreenlandIce) {
+      this.greenlandIce.update(this.terrain.getWaveOffset());
+
+      // Direct pickup check here to ensure it runs
+      if (shuttle && shuttle.active) {
+        const xDist = Math.abs(shuttle.x - this.greenlandIce.x);
+        if (xDist < 500) {
+          const dist = Phaser.Math.Distance.Between(
+            shuttle.x, shuttle.y,
+            this.greenlandIce.x, this.greenlandIce.y - 40
+          );
+          console.log(`[ICE CHECK] Shuttle(${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}), Ice(${this.greenlandIce.x.toFixed(0)}, ${this.greenlandIce.y.toFixed(0)}), dist=${dist.toFixed(0)}`);
+
+          if (dist < 20 && !this.hasPeaceMedal) {
+            console.log(`[ICE] PICKUP! dist=${dist.toFixed(0)}`);
+            this.pickupGreenlandIce(shuttle);
+          }
+        }
+      }
+    }
+
+    // Update attached Greenland ice graphics
+    if (this.hasGreenlandIce) {
+      this.updateGreenlandIceGraphics();
     }
 
     // Clear lastTradedPad when shuttle leaves the pad
