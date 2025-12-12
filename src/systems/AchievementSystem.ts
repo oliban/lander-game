@@ -188,6 +188,18 @@ export class AchievementSystem {
     this.unlock('shark_hunter');
   }
 
+  onGreenlandDeliveredToWashington(): void {
+    this.unlock('greenland_deal');
+  }
+
+  onGreenlandDeliveredToRussia(): void {
+    this.unlock('vodka_on_the_rocks');
+  }
+
+  onGreenlandDestroyed(): void {
+    this.unlock('climate_change');
+  }
+
   onCountryVisited(country: string): void {
     this.sessionStats.countriesVisited.add(country);
     // Check if all countries visited (Washington, USA, UK, France, Germany, Poland, Russia)

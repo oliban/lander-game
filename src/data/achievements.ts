@@ -98,6 +98,24 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: 'Hit a shark with a bomb',
     tier: 'bronze',
   },
+  {
+    id: 'greenland_deal',
+    name: 'Greenland Deal',
+    description: 'Deliver Greenland to Washington',
+    tier: 'silver',
+  },
+  {
+    id: 'vodka_on_the_rocks',
+    name: 'Vodka on the Rocks',
+    description: "Deliver Greenland to Putino's Palace",
+    tier: 'silver',
+  },
+  {
+    id: 'climate_change',
+    name: 'Climate Change',
+    description: 'Destroy Greenland with a bomb',
+    tier: 'bronze',
+  },
 
   // Deaths & Mishaps (5)
   {
