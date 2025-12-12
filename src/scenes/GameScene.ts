@@ -1463,15 +1463,9 @@ export class GameScene extends Phaser.Scene {
         onComplete: () => pickupText.destroy(),
       });
 
-      // In 2-player mode, auto-trade without pausing
-      if (this.playerCount === 2) {
-        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
-        this.gameState = 'playing';
-      } else {
-        // Open trading scene at Washington too (single player)
+      // In debug mode, show trading dialogue. Otherwise auto-trade (like 2-player mode)
+      if (shuttle.wasDebugModeUsed()) {
+        // Open trading scene at Washington too (debug mode)
         this.scene.pause();
         this.scene.launch('TradingScene', {
           inventorySystem: this.inventorySystem,
@@ -1487,17 +1481,18 @@ export class GameScene extends Phaser.Scene {
             this.gameState = 'playing';
           },
         });
+      } else {
+        // Auto-trade without pausing (normal single-player and 2-player)
+        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+        this.gameState = 'playing';
       }
     } else {
-      // In 2-player mode, auto-trade without pausing
-      if (this.playerCount === 2) {
-        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
-        this.gameState = 'playing';
-      } else {
-        // Open trading scene (single player)
+      // In debug mode, show trading dialogue. Otherwise auto-trade (like 2-player mode)
+      if (shuttle.wasDebugModeUsed()) {
+        // Open trading scene (debug mode)
         this.scene.pause();
         this.scene.launch('TradingScene', {
           inventorySystem: this.inventorySystem,
@@ -1513,6 +1508,13 @@ export class GameScene extends Phaser.Scene {
             this.gameState = 'playing';
           },
         });
+      } else {
+        // Auto-trade without pausing (normal single-player and 2-player)
+        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+        this.gameState = 'playing';
       }
     }
   }
