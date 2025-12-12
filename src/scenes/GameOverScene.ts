@@ -479,8 +479,8 @@ export class GameOverScene extends Phaser.Scene {
 
     // High scores list
     const highScores = this.loadHighScores();
-    const medalEmojis = ['🥇', '🥈', '🥉', '4.', '5.'];
-    const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32', '#AAAAAA', '#AAAAAA'];
+    const medalEmojis = ['🥇', '🥈', '🥉', '4.', '5.', '6.', '7.', '8.', '9.', '10'];
+    const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32', '#AAAAAA', '#AAAAAA', '#AAAAAA', '#AAAAAA', '#AAAAAA', '#AAAAAA', '#AAAAAA'];
     let scoreY = panelTop + 55;
 
     if (highScores.length === 0) {
@@ -491,7 +491,7 @@ export class GameOverScene extends Phaser.Scene {
         align: 'center',
       }).setOrigin(0.5, 0.5);
     } else {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 10; i++) {
         if (i < highScores.length) {
           const entry = highScores[i];
           const isCurrentScore = entry.score === finalScore && this.highScoreRank === i;
@@ -499,53 +499,46 @@ export class GameOverScene extends Phaser.Scene {
           if (isCurrentScore) {
             const highlight = this.add.graphics();
             highlight.fillStyle(0xFFD700, 0.15);
-            highlight.fillRoundedRect(rightPanelX + 10, scoreY - 5, panelWidth - 20, 35, 5);
+            highlight.fillRoundedRect(rightPanelX + 10, scoreY - 2, panelWidth - 20, 28, 5);
           }
 
           // Medal/rank
           this.add.text(rightPanelX + 25, scoreY + 10, medalEmojis[i], {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '18px',
+            fontSize: '14px',
             color: medalColors[i],
           }).setOrigin(0.5, 0.5);
 
           // Name
-          this.add.text(rightPanelX + 50, scoreY + 3, entry.name, {
+          this.add.text(rightPanelX + 45, scoreY + 10, entry.name, {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '16px',
+            fontSize: '14px',
             color: isCurrentScore ? '#FFD700' : '#FFFFFF',
             fontStyle: isCurrentScore ? 'bold' : 'normal',
-          });
-
-          // Date
-          this.add.text(rightPanelX + 50, scoreY + 20, entry.date, {
-            fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '10px',
-            color: '#666666',
-          });
+          }).setOrigin(0, 0.5);
 
           // Score
           this.add.text(rightPanelX + panelWidth - 20, scoreY + 10, entry.score.toString(), {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '18px',
+            fontSize: '14px',
             color: isCurrentScore ? '#FFD700' : '#90EE90',
             fontStyle: 'bold',
           }).setOrigin(1, 0.5);
 
-          scoreY += 40;
+          scoreY += 35;
         } else {
           // Empty slot
           this.add.text(rightPanelX + 25, scoreY + 10, medalEmojis[i], {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '18px',
+            fontSize: '14px',
             color: '#444444',
           }).setOrigin(0.5, 0.5);
-          this.add.text(rightPanelX + 50, scoreY + 10, '---', {
+          this.add.text(rightPanelX + 45, scoreY + 10, '---', {
             fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '16px',
+            fontSize: '14px',
             color: '#444444',
-          });
-          scoreY += 40;
+          }).setOrigin(0, 0.5);
+          scoreY += 35;
         }
       }
     }
@@ -555,15 +548,15 @@ export class GameOverScene extends Phaser.Scene {
 
     // Quote at bottom (synced with audio)
     const quote = VICTORY_QUOTES[this.selectedVictoryQuoteIndex];
-    this.add.text(GAME_WIDTH / 2, panelTop + mainPanelHeight + 30, quote, {
+    this.add.text(GAME_WIDTH / 2, panelTop + mainPanelHeight + 15, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '12px',
+      fontSize: '11px',
       color: '#666666',
       fontStyle: 'italic',
     }).setOrigin(0.5, 0);
 
     // Show name entry or buttons
-    const buttonY = panelTop + mainPanelHeight + 65;
+    const buttonY = panelTop + mainPanelHeight + 55;
     if (this.isNewHighScore) {
       this.createNameEntryUI(GAME_WIDTH / 2, buttonY - 20, finalScore);
     } else {
@@ -577,10 +570,12 @@ export class GameOverScene extends Phaser.Scene {
       });
 
       // Enter key hint
-      this.add.text(GAME_WIDTH / 2, buttonY + 45, 'Press ENTER to play again', {
+      this.add.text(GAME_WIDTH / 2, buttonY + 50, 'Press ENTER to play again', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '12px',
-        color: '#888888',
+        fontSize: '14px',
+        color: '#CCCCCC',
+        stroke: '#000000',
+        strokeThickness: 2,
       }).setOrigin(0.5, 0.5);
 
       // Enter key to play again
