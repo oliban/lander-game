@@ -548,15 +548,15 @@ export class GameOverScene extends Phaser.Scene {
 
     // Quote at bottom (synced with audio)
     const quote = VICTORY_QUOTES[this.selectedVictoryQuoteIndex];
-    this.add.text(GAME_WIDTH / 2, panelTop + mainPanelHeight + 15, quote, {
+    this.add.text(GAME_WIDTH / 2, panelTop + mainPanelHeight + 25, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '11px',
-      color: '#666666',
+      fontSize: '12px',
+      color: '#4a5568',
       fontStyle: 'italic',
     }).setOrigin(0.5, 0);
 
     // Show name entry or buttons
-    const buttonY = panelTop + mainPanelHeight + 55;
+    const buttonY = panelTop + mainPanelHeight + 70;
     if (this.isNewHighScore) {
       this.createNameEntryUI(GAME_WIDTH / 2, buttonY - 20, finalScore);
     } else {
@@ -570,12 +570,11 @@ export class GameOverScene extends Phaser.Scene {
       });
 
       // Enter key hint
-      this.add.text(GAME_WIDTH / 2, buttonY + 50, 'Press ENTER to play again', {
+      this.add.text(GAME_WIDTH / 2, buttonY + 55, 'Press ENTER to play again', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '14px',
-        color: '#CCCCCC',
-        stroke: '#000000',
-        strokeThickness: 2,
+        fontSize: '13px',
+        color: '#2d3748',
+        fontStyle: 'italic',
       }).setOrigin(0.5, 0.5);
 
       // Enter key to play again

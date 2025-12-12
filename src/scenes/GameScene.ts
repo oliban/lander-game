@@ -2411,7 +2411,7 @@ export class GameScene extends Phaser.Scene {
       this.activateBribeCannons();
     } else if (collectible.special === 'speed_boost') {
       this.activateSpeedBoost(playerNum);
-    } else if (collectible.collectibleType === 'COVFEFE') {
+    } else if (collectible.special === 'fuel_boost') {
       // Covfefe gives instant 10% fuel
       const fuelToAdd = fuelSys.getMaxFuel() * 0.1;
       fuelSys.add(fuelToAdd);
@@ -4595,6 +4595,9 @@ export class GameScene extends Phaser.Scene {
     this.gameState = 'crashed';
     this.shuttle.stopRocketSound();
 
+    // Track death achievement
+    this.achievementSystem.onDeath('duck');
+
     // Spawn tombstone at crash location
     this.spawnTombstone(this.shuttle.x, this.shuttle.y, 'duck');
 
@@ -5160,8 +5163,14 @@ export class GameScene extends Phaser.Scene {
       inventorySystem.remove(type, count);
     }
 
-    // Add fuel
+    // Add fuel and track actual amount gained (may be capped)
+    const fuelBefore = fuelSystem.getFuel();
     fuelSystem.add(fuelGained);
+    const fuelAfter = fuelSystem.getFuel();
+    const actualFuelGained = Math.round(fuelAfter - fuelBefore);
+
+    // Check if tank is now full
+    const tankFull = fuelAfter >= fuelSystem.getMaxFuel();
 
     // Deduct score for selling
     if (pointsLost > 0) {
@@ -5169,8 +5178,13 @@ export class GameScene extends Phaser.Scene {
       this.events.emit('destructionScore', this.destructionScore);
     }
 
-    // Show trade message
-    this.showAutoTradeMessage(shuttle, `+${fuelGained} FUEL`, playerNum);
+    // Emit fuel boost event for UI effect
+    if (tankFull) {
+      this.events.emit('fuelTankFull', playerNum);
+    }
+
+    // Show trade message with actual fuel gained
+    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL`, playerNum);
   }
 
   private showAutoTradeMessage(shuttle: Shuttle, message: string, playerNum: number): void {
