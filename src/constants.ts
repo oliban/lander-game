@@ -51,15 +51,14 @@ export const LANDING_PADS = [
 //   - Mystery items (purple): unknown value
 export const COLLECTIBLE_TYPES = {
   // BOMB items - bright orange to indicate they're droppable explosives (not tradeable!)
-  BURGER: { name: 'Burger', fuelValue: 3, rarity: 0.15, color: 0xFF6B35 },
-  HAMBERDER: { name: 'Hamberder', fuelValue: 4, rarity: 0.12, color: 0xFF6B35 },
-  DIET_COKE: { name: 'Diet Coke', fuelValue: 5, rarity: 0.12, color: 0xFF6B35 },
-  TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 18, rarity: 0.05, color: 0xFF6B35 },
-  VODKA: { name: 'Vodka', fuelValue: 15, rarity: 0.05, color: 0xFF6B35, russianOnly: true },
+  BURGER: { name: 'Burger', fuelValue: 0, rarity: 0.15, color: 0xFF6B35 },
+  HAMBERDER: { name: 'Hamberder', fuelValue: 0, rarity: 0.12, color: 0xFF6B35 },
+  DIET_COKE: { name: 'Diet Coke', fuelValue: 0, rarity: 0.12, color: 0xFF6B35 },
+  TRUMP_STEAK: { name: 'Trump Steak', fuelValue: 0, rarity: 0.05, color: 0xFF6B35 },
+  VODKA: { name: 'Vodka', fuelValue: 0, rarity: 0.05, color: 0xFF6B35, russianOnly: true },
 
   // Tradeable items - various colors
   DOLLAR: { name: 'Dollar', fuelValue: 25, rarity: 0.10, color: 0x228B22 }, // Green for money
-  COVFEFE: { name: 'Covfefe', fuelValue: 30, rarity: 0.08, color: 0x8B4513 }, // Brown for coffee
   HAIR_SPRAY: { name: 'Hair Spray', fuelValue: 35, rarity: 0.07, color: 0xFFD700 }, // Gold
   TWITTER: { name: 'Twitter Bird', fuelValue: 50, rarity: 0.06, color: 0x1DA1F2 }, // Twitter blue
 
@@ -79,12 +78,12 @@ export const COLLECTIBLE_TYPES = {
   OLIGARCH_GOLD: { name: 'Oligarch Gold', fuelValue: 150, rarity: 0.05, color: 0xFFD700, russianOnly: true }, // Gold
 
   // Propaganda banners (from biplane)
-  USA_PROPAGANDA: { name: 'American Propaganda', fuelValue: 5, rarity: 0, color: 0x3C3B6E },
-  UK_PROPAGANDA: { name: 'British Propaganda', fuelValue: 5, rarity: 0, color: 0x012169 },
-  FRANCE_PROPAGANDA: { name: 'French Propaganda', fuelValue: 5, rarity: 0, color: 0x0055A4 },
-  GERMANY_PROPAGANDA: { name: 'German Propaganda', fuelValue: 5, rarity: 0, color: 0x000000 },
-  POLAND_PROPAGANDA: { name: 'Polish Propaganda', fuelValue: 5, rarity: 0, color: 0xDC143C },
-  RUSSIA_PROPAGANDA: { name: 'Russian Facts', fuelValue: 5, rarity: 0, color: 0x0039A6 },
+  USA_PROPAGANDA: { name: 'American Propaganda', fuelValue: 50, rarity: 0, color: 0x3C3B6E },
+  UK_PROPAGANDA: { name: 'British Propaganda', fuelValue: 50, rarity: 0, color: 0x012169 },
+  FRANCE_PROPAGANDA: { name: 'French Propaganda', fuelValue: 50, rarity: 0, color: 0x0055A4 },
+  GERMANY_PROPAGANDA: { name: 'German Propaganda', fuelValue: 50, rarity: 0, color: 0x000000 },
+  POLAND_PROPAGANDA: { name: 'Polish Propaganda', fuelValue: 50, rarity: 0, color: 0xDC143C },
+  RUSSIA_PROPAGANDA: { name: 'Russian Facts', fuelValue: 50, rarity: 0, color: 0x0039A6 },
 
   // Fisher boat contraband (15% chance per game)
   FISH_PACKAGE: { name: '"Fish"', fuelValue: 100, rarity: 0, color: 0x4682B4, contraband: true }, // Steel blue
@@ -92,7 +91,8 @@ export const COLLECTIBLE_TYPES = {
   // Easter egg
   TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C }, // Tan
 
-  // Special power-ups (gold tint to stand out)
+  // Special power-ups (immediately consumed)
+  COVFEFE: { name: 'Covfefe', fuelValue: 0, rarity: 0.08, color: 0x8B4513, special: 'fuel_boost' }, // Brown for coffee
   TRUMP_TOWER: { name: 'Trump Tower', fuelValue: 0, rarity: 0.01, color: 0xFFD700, special: 'bribe_cannons' },
   RED_TIE: { name: 'Red Tie', fuelValue: 0, rarity: 0.01, color: 0xDC143C, special: 'speed_boost' },
 };

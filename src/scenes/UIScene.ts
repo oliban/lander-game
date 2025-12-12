@@ -171,6 +171,11 @@ export class UIScene extends Phaser.Scene {
       });
     }
 
+    // Listen for fuel tank full event (visual effect)
+    gameScene.events.on('fuelTankFull', (playerNum: number) => {
+      this.showFuelFullEffect(playerNum);
+    });
+
     // Create achievement popup in UI scene (so it's on top of all UI elements)
     this.achievementPopup = new AchievementPopup(this);
 
@@ -247,6 +252,85 @@ export class UIScene extends Phaser.Scene {
       this.fuelBar.fillStyle(0xFFFFFF, 0.3);
       this.fuelBar.fillRoundedRect(x + 6, y + height - 4 - fillHeight + 2, 4, fillHeight - 4, 2);
     }
+  }
+
+  private showFuelFullEffect(playerNum: number): void {
+    // Create a glowing/pulsing effect on the fuel bar when tank is full
+    const x = playerNum === 2 ? 92 : 30;
+    const y = 100;
+    const width = 28;
+    const height = 200;
+
+    // Create outer glow (larger, softer)
+    const outerGlow = this.add.graphics();
+    outerGlow.fillStyle(0x00FF00, 0.4);
+    outerGlow.fillRoundedRect(x - 12, y - 12, width + 24, height + 24, 18);
+
+    // Create inner glow (brighter)
+    const innerGlow = this.add.graphics();
+    innerGlow.fillStyle(0x4CAF50, 0.7);
+    innerGlow.fillRoundedRect(x - 6, y - 6, width + 12, height + 12, 14);
+
+    // Create "FULL" text
+    const fullText = this.add.text(x + width / 2, y + height / 2, 'FULL!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '16px',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+      stroke: '#2E7D32',
+      strokeThickness: 4,
+    });
+    fullText.setOrigin(0.5, 0.5);
+    fullText.setAngle(-90);
+
+    // Pulsing outer glow effect for 2 seconds
+    this.tweens.add({
+      targets: outerGlow,
+      alpha: { from: 0.5, to: 0.2 },
+      scaleX: { from: 1, to: 1.15 },
+      scaleY: { from: 1, to: 1.05 },
+      duration: 400,
+      yoyo: true,
+      repeat: 2, // 3 pulses
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: outerGlow,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => outerGlow.destroy(),
+        });
+      },
+    });
+
+    // Pulsing inner glow effect
+    this.tweens.add({
+      targets: innerGlow,
+      alpha: { from: 0.8, to: 0.4 },
+      duration: 400,
+      yoyo: true,
+      repeat: 2,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: innerGlow,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => innerGlow.destroy(),
+        });
+      },
+    });
+
+    // Animate text - float up and fade after delay
+    this.tweens.add({
+      targets: fullText,
+      alpha: { from: 1, to: 0 },
+      y: y + height / 2 - 30,
+      delay: 1800,
+      duration: 500,
+      ease: 'Quad.easeOut',
+      onComplete: () => fullText.destroy(),
+    });
   }
 
   private createP2FuelGauge(): void {
@@ -366,12 +450,11 @@ export class UIScene extends Phaser.Scene {
     const bg = this.add.graphics();
     this.inventoryContainer.add(bg);
 
-    // Show 'P1 CARGO' in 2-player mode, 'CARGO' in single player
-    const titleText = this.playerCount === 2 ? 'P1 CARGO' : 'CARGO';
-    const title = this.add.text(0, 0, titleText, {
+    // Title placeholder (will be drawn on crate)
+    const title = this.add.text(0, 0, '', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '12px',
-      color: '#333333',
+      fontSize: '10px',
+      color: '#4A3728',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0);
@@ -387,10 +470,11 @@ export class UIScene extends Phaser.Scene {
     const bg = this.add.graphics();
     this.p2InventoryContainer.add(bg);
 
-    const title = this.add.text(0, 0, 'P2 CARGO', {
+    // Title placeholder (will be drawn on crate)
+    const title = this.add.text(0, 0, '', {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '12px',
-      color: '#1565C0', // Blue to match P2's shuttle tint
+      fontSize: '10px',
+      color: '#4A3728',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0);
@@ -434,88 +518,123 @@ export class UIScene extends Phaser.Scene {
     const regularItems = items.filter(item => item.count > 0 && !BOMB_DROPPABLE_TYPES.includes(item.type));
     const contrabandItems = items.filter(item => item.count > 0 && BOMB_DROPPABLE_TYPES.includes(item.type));
 
-    let yOffset = 18;
-    const panelWidth = 140;
+    const panelWidth = 130;
+    const plankHeight = 16; // Height of each plank row
+    const woodLight = 0xD4B896;  // Light wood plank
+    const woodDark = 0xB8956E;   // Dark wood plank
+    const woodBorder = 0x6B4423; // Dark border
+    const textColor = '#4A3520'; // Dark brown text
 
-    // Regular cargo items - single column with full names
+    // Count total rows needed: title + cargo items + total + bombs header + bomb items
+    let totalRows = 1; // Title row
+    if (regularItems.length > 0) {
+      totalRows += regularItems.length;
+      const totalValue = inventorySys.getTotalFuelValue();
+      if (totalValue > 0) {
+        totalRows += 1; // Total row
+      }
+    }
+    if (contrabandItems.length > 0) {
+      totalRows += 1 + contrabandItems.length; // Header + items
+    }
+
+    const hasContent = regularItems.length > 0 || contrabandItems.length > 0;
+    if (!hasContent) totalRows = 2; // Minimum rows for empty crate
+
+    const panelHeight = totalRows * plankHeight + 4; // +4 for top/bottom padding
+
+    // Draw wooden crate background
+    const bg = container.getAt(0) as Phaser.GameObjects.Graphics;
+    bg.clear();
+
+    // Main crate body with border
+    bg.fillStyle(woodBorder, 1);
+    bg.fillRect(-panelWidth / 2, -6, panelWidth, panelHeight);
+
+    // Draw alternating wood planks
+    for (let row = 0; row < totalRows; row++) {
+      const y = -4 + row * plankHeight;
+      const plankColor = (row % 2 === 0) ? woodLight : woodDark;
+      bg.fillStyle(plankColor, 1);
+      bg.fillRect(-panelWidth / 2 + 3, y, panelWidth - 6, plankHeight - 1);
+    }
+
+    // "CARGO" stamped text on first plank
+    const isP2 = container === this.p2InventoryContainer;
+    const titleText = this.playerCount === 2 ? (isP2 ? 'P2 CARGO' : 'P1 CARGO') : 'CARGO';
+    const title = container.getAt(1) as Phaser.GameObjects.Text;
+    title.setText(titleText);
+    title.setStyle({
+      fontFamily: 'Arial Black, Arial, sans-serif',
+      fontSize: '10px',
+      color: textColor,
+      fontStyle: 'bold',
+    });
+    title.setY(-4 + (plankHeight - 10) / 2); // Center in first plank
+
+    let currentRow = 1; // Start after title
+
+    // Regular cargo items - one per plank
     if (regularItems.length > 0) {
       for (let i = 0; i < regularItems.length; i++) {
         const item = regularItems[i];
-        const colorHex = '#' + item.color.toString(16).padStart(6, '0');
         const name = this.getItemDisplayName(item.type);
-        const text = this.add.text(0, yOffset, `${name} ×${item.count}`, {
+        const y = -4 + currentRow * plankHeight + (plankHeight - 10) / 2;
+        const text = this.add.text(0, y, `${name} ×${item.count}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '11px',
-          color: colorHex,
-          fontStyle: 'bold',
+          fontSize: '10px',
+          color: textColor,
         });
         text.setOrigin(0.5, 0);
         container.add(text);
-        yOffset += 16;
+        currentRow++;
       }
-      yOffset += 2;
+
+      // Total fuel value on its own plank
+      const totalValue = inventorySys.getTotalFuelValue();
+      if (totalValue > 0) {
+        const y = -4 + currentRow * plankHeight + (plankHeight - 10) / 2;
+        const totalText = this.add.text(0, y, `Total: ⛽${totalValue}`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '10px',
+          color: '#2E5D1A',
+          fontStyle: 'bold',
+        });
+        totalText.setOrigin(0.5, 0);
+        container.add(totalText);
+        currentRow++;
+      }
     }
 
-    // Contrabands section - single column
+    // Bombs section
     if (contrabandItems.length > 0) {
-      // Separator line
-      const sep = this.add.graphics();
-      sep.lineStyle(1, 0xCC0000, 0.5);
-      sep.lineBetween(-panelWidth / 2 + 10, yOffset, panelWidth / 2 - 10, yOffset);
-      container.add(sep);
-      yOffset += 6;
-
-      // Contrabands header
-      const contrabandHeader = this.add.text(0, yOffset, '💣 BOMBS', {
+      // Bombs header on its own plank
+      const headerY = -4 + currentRow * plankHeight + (plankHeight - 10) / 2;
+      const bombHeader = this.add.text(0, headerY, '💣 BOMBS', {
         fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '10px',
+        fontSize: '9px',
         color: '#8B0000',
         fontStyle: 'bold',
       });
-      contrabandHeader.setOrigin(0.5, 0);
-      container.add(contrabandHeader);
-      yOffset += 14;
+      bombHeader.setOrigin(0.5, 0);
+      container.add(bombHeader);
+      currentRow++;
 
-      // Contraband items in single column
+      // Bomb items - one per plank
       for (let i = 0; i < contrabandItems.length; i++) {
         const item = contrabandItems[i];
         const name = this.getItemDisplayName(item.type);
-        const text = this.add.text(0, yOffset, `${name} ×${item.count}`, {
+        const y = -4 + currentRow * plankHeight + (plankHeight - 10) / 2;
+        const text = this.add.text(0, y, `${name} ×${item.count}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '11px',
-          color: '#CC3333',
-          fontStyle: 'bold',
+          fontSize: '10px',
+          color: '#7A2020',
         });
         text.setOrigin(0.5, 0);
         container.add(text);
-        yOffset += 16;
+        currentRow++;
       }
-      yOffset += 2;
     }
-
-    // Total fuel value
-    const totalValue = inventorySys.getTotalFuelValue();
-    if (totalValue > 0) {
-      const totalText = this.add.text(0, yOffset, `⛽ ${totalValue}`, {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '11px',
-        color: '#2E7D32',
-        fontStyle: 'bold',
-      });
-      totalText.setOrigin(0.5, 0);
-      container.add(totalText);
-      yOffset += 16;
-    }
-
-    // Redraw background to fit content
-    const bg = container.getAt(0) as Phaser.GameObjects.Graphics;
-    const hasContent = regularItems.length > 0 || contrabandItems.length > 0 || totalValue > 0;
-    const panelHeight = hasContent ? yOffset + 8 : 30;
-    bg.clear();
-    bg.fillStyle(0xFFFFFF, 0.9);
-    bg.fillRoundedRect(-panelWidth / 2, -10, panelWidth, panelHeight, 10);
-    bg.lineStyle(2, 0x333333);
-    bg.strokeRoundedRect(-panelWidth / 2, -10, panelWidth, panelHeight, 10);
   }
 
   private createProgressBar(): void {
