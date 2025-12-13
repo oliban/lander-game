@@ -154,8 +154,8 @@ export class BootScene extends Phaser.Scene {
       this.load.audio(`explosion${i}`, `assets/audio/explosion${i}.mp3`);
     }
 
-    // Medal house images (for the White House/medal location in Washington)
-    for (let i = 0; i < 16; i++) {
+    // Medal house images
+    for (let i = 0; i < 2; i++) {
       this.load.image(`medal_house_${i}`, `assets/images/medal_house/FIFA_buildings_${i}.png`);
     }
 
