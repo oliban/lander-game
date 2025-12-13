@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 
-// The FIFA Kennedy Center - randomly picks one of 16 building images
 const BUILDING_NAME = 'FIFA Kennedy Center';
 
 export class MedalHouse extends Phaser.GameObjects.Sprite {
@@ -18,8 +17,7 @@ export class MedalHouse extends Phaser.GameObjects.Sprite {
     x: number,
     terrainY: number
   ) {
-    // Pick a random medal house image (0-15)
-    const houseIndex = Math.floor(Math.random() * 16);
+    const houseIndex = Math.floor(Math.random() * 2);
     const textureKey = `medal_house_${houseIndex}`;
     super(scene, x, terrainY, textureKey);
 

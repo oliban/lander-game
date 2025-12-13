@@ -267,9 +267,7 @@ export class LandingPad {
     // The medal house building is now created as a CountryDecoration in GameScene
     // Just draw the lawn and peace medal here
 
-    // Lawn in front of the building
-    this.graphics.fillStyle(0x228B22, 1);
-    this.graphics.fillRect(houseX - 100, whY - 5, 250, 10);
+    // No lawn needed - FIFA Kennedy Center building handles its own base
 
     // Peace Medal on display stand on the lawn (what the player will pick up)
     // Draw on separate graphics so it can be hidden when collected
