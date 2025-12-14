@@ -474,6 +474,158 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     this.scene.cameras.main.shake(300, 0.015);
   }
 
+  electrocute(): void {
+    // Capture position for effects
+    const crashX = this.x;
+    const crashY = this.y;
+    const rotation = this.rotation;
+
+    // Stop thruster
+    this.isThrusting = false;
+    if (this.thrusterParticles) {
+      this.thrusterParticles.stop();
+    }
+
+    // Completely disable the shuttle - stop physics and make non-interactive
+    this.setActive(false);
+    this.setVisible(false); // Hide the actual sprite immediately
+
+    // Stop the physics body completely
+    if (this.body) {
+      const matterBody = this.body as MatterJS.BodyType;
+      this.scene.matter.body.setStatic(matterBody, true);
+      this.scene.matter.body.setVelocity(matterBody, { x: 0, y: 0 });
+    }
+
+    // Create a temporary sprite to show the electrocution effect
+    const electrocutedShuttle = this.scene.add.graphics();
+    electrocutedShuttle.setPosition(crashX, crashY);
+    electrocutedShuttle.setRotation(rotation);
+    electrocutedShuttle.setDepth(this.depth);
+
+    // Draw a simple shuttle shape for the electrocution
+    const drawShuttleShape = () => {
+      electrocutedShuttle.clear();
+      electrocutedShuttle.fillStyle(0x888888, 1);
+      electrocutedShuttle.fillTriangle(0, -15, -12, 15, 12, 15);
+      electrocutedShuttle.fillStyle(0x666666, 1);
+      electrocutedShuttle.fillRect(-8, 10, 16, 8);
+    };
+
+    // Electrical shock effect - rapid flashes with arcs
+    const shockGraphics = this.scene.add.graphics();
+    shockGraphics.setPosition(crashX, crashY);
+    shockGraphics.setDepth(50);
+
+    let flashCount = 0;
+    const flashInterval = this.scene.time.addEvent({
+      delay: 50,
+      repeat: 11,
+      callback: () => {
+        flashCount++;
+        shockGraphics.clear();
+
+        // Alternate visibility for flicker effect
+        if (flashCount % 2 === 0) {
+          // Show shuttle shape with yellow tint
+          drawShuttleShape();
+          electrocutedShuttle.setAlpha(1);
+
+          // Yellow/white electrical glow
+          shockGraphics.fillStyle(0xFFFF00, 0.5);
+          shockGraphics.fillCircle(0, 0, 28 + Math.random() * 12);
+          shockGraphics.fillStyle(0xFFFFFF, 0.7);
+          shockGraphics.fillCircle(0, 0, 18);
+
+          // Small lightning arcs around shuttle
+          shockGraphics.lineStyle(2, 0xFFFFAA, 1);
+          for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
+            const innerR = 18;
+            const outerR = 35 + Math.random() * 20;
+            shockGraphics.lineBetween(
+              Math.cos(angle) * innerR,
+              Math.sin(angle) * innerR,
+              Math.cos(angle + 0.3) * outerR,
+              Math.sin(angle + 0.3) * outerR
+            );
+          }
+        } else {
+          // Hide shuttle shape for flicker
+          electrocutedShuttle.setAlpha(0.3);
+        }
+      }
+    });
+
+    // After shock animation, show skeleton and fade
+    this.scene.time.delayedCall(650, () => {
+      flashInterval.destroy();
+      shockGraphics.destroy();
+      electrocutedShuttle.destroy();
+
+      // Draw skeleton silhouette (cartoon X-ray effect)
+      const skeleton = this.scene.add.graphics();
+      skeleton.setPosition(crashX, crashY);
+      skeleton.setRotation(rotation);
+      skeleton.setDepth(51);
+
+      // Simple skeleton representation (pilot inside shuttle)
+      skeleton.lineStyle(3, 0xFFFFFF, 1);
+      // Skull circle
+      skeleton.strokeCircle(0, -8, 7);
+      // Eye sockets
+      skeleton.fillStyle(0x000000, 1);
+      skeleton.fillCircle(-3, -9, 2);
+      skeleton.fillCircle(3, -9, 2);
+      // Spine
+      skeleton.lineStyle(2, 0xFFFFFF, 1);
+      skeleton.lineBetween(0, -1, 0, 14);
+      // Ribs
+      skeleton.lineBetween(-7, 3, 7, 3);
+      skeleton.lineBetween(-6, 7, 6, 7);
+      skeleton.lineBetween(-4, 11, 4, 11);
+
+      // Fade out skeleton and spawn charred debris
+      this.scene.tweens.add({
+        targets: skeleton,
+        alpha: 0,
+        duration: 400,
+        onComplete: () => {
+          skeleton.destroy();
+          this.spawnCharredDebris(crashX, crashY);
+        }
+      });
+    });
+  }
+
+  private spawnCharredDebris(x: number, y: number): void {
+    // Dark/charred colored debris
+    const colors = [0x222222, 0x333333, 0x444444, 0x555555];
+
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2;
+      const targetX = Math.cos(angle) * (55 + Math.random() * 35);
+      const targetY = Math.sin(angle) * (55 + Math.random() * 35) + 35;
+
+      const debris = this.scene.add.graphics();
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      debris.fillStyle(color, 1);
+      debris.fillRect(-3, -3, 6, 6);
+      debris.setPosition(x, y);
+
+      this.scene.tweens.add({
+        targets: debris,
+        x: x + targetX,
+        y: y + targetY,
+        angle: Math.random() * 360,
+        alpha: 0,
+        duration: 550,
+        ease: 'Power2',
+        onComplete: () => debris.destroy()
+      });
+    }
+  }
+
   setThrustMultiplier(multiplier: number): void {
     this.thrustMultiplier = multiplier;
   }

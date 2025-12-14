@@ -168,13 +168,20 @@ export class Biplane extends Phaser.GameObjects.Container {
       this.setScale(-1, 1);
     }
 
-    console.log(`[Biplane] Spawned ${this.country} plane at X=${Math.round(this.x)}, heading ${this.direction === 1 ? 'RIGHT' : 'LEFT'}, message: "${this.message}"`);
-
     scene.add.existing(this);
   }
 
   private drawBiplane(): void {
-    this.graphics.clear();
+    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
+    if (this.graphics) {
+      this.graphics.destroy();
+    }
+    this.graphics = this.scene.add.graphics();
+    // Position graphics at biplane's world position
+    this.graphics.setPosition(this.x, this.y);
+    this.graphics.setRotation(this.rotation);
+    this.graphics.setScale(this.scaleX, this.scaleY);
+    this.graphics.setDepth(200);
 
     const { primary, secondary, accent } = this.colors;
 
