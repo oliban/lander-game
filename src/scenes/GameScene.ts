@@ -1847,7 +1847,8 @@ export class GameScene extends Phaser.Scene {
         // Check shuttle collision with tombstone (for Puskás Award)
         if (this.isShuttleCollision(bodyA, bodyB, 'tombstone')) {
           const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
-          this.handleTombstoneBounce(tombstoneBody.id);
+          const shuttleBody = bodyA.label === 'tombstone' ? bodyB : bodyA;
+          this.handleTombstoneBounce(tombstoneBody, shuttleBody);
         }
 
         // Check shuttle collision with brick wall
@@ -1871,24 +1872,40 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private handleTombstoneBounce(tombstoneId: number): void {
+  private handleTombstoneBounce(tombstoneBody: MatterJS.BodyType, _shuttleBody: MatterJS.BodyType): void {
     const now = Date.now();
+    const tombstoneId = tombstoneBody.id;
 
-    // Debounce - ignore if same tombstone collision within 200ms (physics fires multiple events)
-    if (tombstoneId === this.juggledTombstoneId && now - this.lastTombstoneBounceTime < 200) {
-      return;
-    }
+    // Only count if tombstone is already in motion (being juggled, not resting on ground)
+    // First hit doesn't count - tombstone must already be airborne from a previous kick
+    const velocity = tombstoneBody.velocity;
+    const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
 
-    // If different tombstone, reset count
+    // If this is the first contact with this tombstone, just start tracking it
+    // but don't count as a bounce (need to kick it into the air first)
     if (this.juggledTombstoneId !== tombstoneId) {
       this.tombstoneBounceCount = 0;
       this.juggledTombstoneId = tombstoneId;
+      this.lastTombstoneBounceTime = now;
+      console.log(`[PUSKAS] Started juggling tombstone ${tombstoneId} - kick it again while airborne!`);
+      return;
+    }
+
+    // Debounce - ignore if same tombstone collision within 300ms (physics fires multiple events)
+    if (now - this.lastTombstoneBounceTime < 300) {
+      return;
+    }
+
+    // Only count as bounce if tombstone has some velocity (is airborne/moving)
+    if (speed < 0.5) {
+      console.log(`[PUSKAS] Tombstone ${tombstoneId} not moving fast enough (speed: ${speed.toFixed(2)}) - not a valid bounce`);
+      return;
     }
 
     this.lastTombstoneBounceTime = now;
     this.tombstoneBounceCount++;
 
-    console.log(`Tombstone bounce #${this.tombstoneBounceCount} (tombstone ${tombstoneId})`);
+    console.log(`[PUSKAS] Tombstone bounce #${this.tombstoneBounceCount} (tombstone ${tombstoneId}, speed: ${speed.toFixed(2)})`);
 
     // Award achievement for 3 bounces in a row without hitting ground
     if (this.tombstoneBounceCount >= 3) {
