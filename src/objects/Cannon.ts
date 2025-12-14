@@ -6,6 +6,7 @@ import { CANNON_FIRE_RATE, PROJECTILE_SPEED } from '../constants';
 export const COUNTRY_PROJECTILES: { [key: string]: string[] } = {
   'United Kingdom': ['teacup', 'doubledecker', 'blackcab', 'guardhat'],
   'France': ['baguette', 'wine', 'croissant'],
+  'Switzerland': ['cheese', 'chocolate', 'watch', 'cuckoo', 'fondue'],
   'Germany': ['pretzel', 'beer'],
   'Poland': ['pierogi', 'pottery'],
   'Russia': ['proj_matryoshka', 'balalaika', 'borscht', 'samovar'],
@@ -198,6 +199,21 @@ export class Cannon extends Phaser.GameObjects.Container {
         drawVerticalStripe(0x002395, 0, 3); // Blue
         drawVerticalStripe(0xFFFFFF, 1, 3); // White
         drawVerticalStripe(0xED2939, 2, 3); // Red
+        break;
+
+      case 'Switzerland':
+        // Swiss flag - red background with white cross
+        drawWindStripe(0xDA291C, 0, flagHeight); // Red background
+        const swWaveY = windEffect * 0.15 * windDir;
+        // Calculate center accounting for wind direction
+        const swMinX = Math.min(flagStartX, flagEndX);
+        const swMaxX = Math.max(flagStartX, flagEndX);
+        const swMidX = (swMinX + swMaxX) / 2;
+        const swMidY = fy + flagHeight / 2 + swWaveY * 0.5;
+        // White cross (thick)
+        this.flag.lineStyle(5, 0xFFFFFF);
+        this.flag.lineBetween(swMidX, fy + 2 + swWaveY * 0.2, swMidX, fy + flagHeight - 2 + swWaveY * 0.8);
+        this.flag.lineBetween(swMinX + 4, swMidY, swMaxX - 4, swMidY + swWaveY * 0.3);
         break;
 
       case 'Germany':
@@ -435,13 +451,15 @@ export class Projectile extends Phaser.GameObjects.Container {
 
     // Try to use sprite if available, otherwise fall back to graphics
     if (scene.textures.exists(spriteKey)) {
-      this.sprite = scene.add.sprite(0, 0, spriteKey);
+      // Create sprite without adding to scene (make() instead of add.sprite())
+      // Position at (0,0) relative to container
+      this.sprite = new Phaser.GameObjects.Sprite(scene, 0, 0, spriteKey);
       this.sprite.setScale(0.075); // Scale down the sprite (50% larger than 0.05)
       this.sprite.setRotation(angle);
-      this.add(this.sprite);
+      this.add(this.sprite); // Add to container which positions it correctly
     } else {
       // Fall back to graphics-based projectile (cannonball)
-      this.graphics = scene.add.graphics();
+      this.graphics = new Phaser.GameObjects.Graphics(scene);
       this.graphics.fillStyle(0x333333, 1);
       this.graphics.fillCircle(0, 0, 7);
       this.graphics.lineStyle(2, 0x111111);
@@ -477,12 +495,13 @@ export class Projectile extends Phaser.GameObjects.Container {
   isOutOfBounds(): boolean {
     const camera = this.projectileScene.cameras.main;
 
-    // Only remove if gone above the screen or very far horizontally
+    // Only remove if very far from visible area
+    // Use camera scroll position for Y bounds too (important for Switzerland mountains)
     return (
-      this.y < -100 ||
+      this.y < camera.scrollY - 500 ||
       this.x < camera.scrollX - 500 ||
       this.x > camera.scrollX + camera.width + 500 ||
-      this.y > camera.height + 200
+      this.y > camera.scrollY + camera.height + 500
     );
   }
 
@@ -496,7 +515,9 @@ export class Projectile extends Phaser.GameObjects.Container {
 
   destroy(): void {
     const matterScene = this.projectileScene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
-    matterScene.matter.world.remove(this.matterBody);
+    if (matterScene?.matter?.world && this.matterBody) {
+      matterScene.matter.world.remove(this.matterBody);
+    }
     if (this.graphics) this.graphics.destroy();
     if (this.sprite) this.sprite.destroy();
     super.destroy();

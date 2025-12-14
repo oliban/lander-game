@@ -3,8 +3,7 @@ import Phaser from 'phaser';
 export class OilTower {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
-  private oilSpurts: Phaser.GameObjects.Graphics[] = [];
-  private spurtInterval: Phaser.Time.TimerEvent | null = null;
+  private oilSpurtEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
 
   public x: number;
   public y: number;
@@ -57,55 +56,20 @@ export class OilTower {
     const spurtX = this.x;
     const spurtY = this.y - 55;
 
-    const createSpurt = () => {
-      if (this.isDestroyed) return;
-
-      const spurt = this.scene.add.graphics();
-      spurt.setDepth(3);
-
-      // Draw elongated oil droplet for more fluid look
-      spurt.fillStyle(0x1a1a1a, 0.9);
-      spurt.fillEllipse(0, 0, 2, 5);
-
-      spurt.setPosition(spurtX + (Math.random() - 0.5) * 4, spurtY);
-      this.oilSpurts.push(spurt);
-
-      // Spurt upward like a geyser then fall back down
-      const height = 30 + Math.random() * 25;
-      const spread = (Math.random() - 0.5) * 15;
-      const duration = 500 + Math.random() * 200;
-
-      this.scene.tweens.add({
-        targets: spurt,
-        x: spurtX + spread,
-        y: spurtY + 30,
-        scaleY: 0.3,
-        alpha: 0,
-        duration: duration,
-        ease: 'Quad.easeIn',
-        onUpdate: (tween) => {
-          const progress = tween.progress;
-          if (progress < 0.4) {
-            spurt.y = spurtY - height * (progress / 0.4);
-            spurt.scaleY = 1 + progress;
-          } else {
-            const fallProgress = (progress - 0.4) / 0.6;
-            spurt.y = spurtY - height + (height + 30) * fallProgress;
-          }
-        },
-        onComplete: () => {
-          spurt.destroy();
-          const idx = this.oilSpurts.indexOf(spurt);
-          if (idx >= 0) this.oilSpurts.splice(idx, 1);
-        },
-      });
-    };
-
-    this.spurtInterval = this.scene.time.addEvent({
-      delay: 150,
-      callback: createSpurt,
-      loop: true,
+    // Use particle emitter instead of individual graphics for better performance
+    this.oilSpurtEmitter = this.scene.add.particles(spurtX, spurtY, 'particle', {
+      speed: { min: 80, max: 120 },           // Initial upward speed
+      angle: { min: 250, max: 290 },          // Mostly upward (270 = straight up)
+      gravityY: 300,                          // Pull particles back down
+      scale: { start: 0.4, end: 0.2 },        // Small oil droplets
+      alpha: { start: 0.9, end: 0.3 },        // Fade out
+      lifespan: { min: 500, max: 700 },       // Match original duration
+      frequency: 150,                         // Same rate as original (every 150ms)
+      quantity: 1,                            // One particle per emission
+      tint: [0x1a1a1a, 0x111111, 0x222222],   // Dark oil colors
+      emitting: true,
     });
+    this.oilSpurtEmitter.setDepth(3);
   }
 
   getCollisionBounds(): { x: number; y: number; width: number; height: number } {
@@ -122,17 +86,12 @@ export class OilTower {
 
     this.isDestroyed = true;
 
-    // Stop oil spurts
-    if (this.spurtInterval) {
-      this.spurtInterval.destroy();
-      this.spurtInterval = null;
+    // Stop oil spurt emitter
+    if (this.oilSpurtEmitter) {
+      this.oilSpurtEmitter.stop();
+      this.oilSpurtEmitter.destroy();
+      this.oilSpurtEmitter = null;
     }
-
-    // Clean up existing spurts
-    for (const spurt of this.oilSpurts) {
-      spurt.destroy();
-    }
-    this.oilSpurts = [];
 
     // Create explosion effect
     const x = this.x;
@@ -311,11 +270,9 @@ export class OilTower {
   }
 
   destroy(): void {
-    if (this.spurtInterval) {
-      this.spurtInterval.destroy();
-    }
-    for (const spurt of this.oilSpurts) {
-      spurt.destroy();
+    if (this.oilSpurtEmitter) {
+      this.oilSpurtEmitter.stop();
+      this.oilSpurtEmitter.destroy();
     }
     this.graphics.destroy();
   }

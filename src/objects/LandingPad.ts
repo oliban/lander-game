@@ -4,6 +4,7 @@ import { COLORS } from '../constants';
 export class LandingPad {
   private padScene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
+  private flagGraphics: Phaser.GameObjects.Graphics;
   private matterBody: MatterJS.BodyType;
   private peaceMedalGraphics: Phaser.GameObjects.Graphics | null = null;
 
@@ -11,6 +12,7 @@ export class LandingPad {
   public y: number;
   public width: number;
   public name: string;
+  public country: string;
   public isFinalDestination: boolean;
   public isWashington: boolean;
   public isFuelDepot: boolean;
@@ -22,6 +24,7 @@ export class LandingPad {
     y: number,
     width: number,
     name: string,
+    country: string = '',
     isFinalDestination: boolean = false,
     isWashington: boolean = false,
     isOilPlatform: boolean = false
@@ -31,6 +34,7 @@ export class LandingPad {
     this.y = y;
     this.width = width;
     this.name = name;
+    this.country = country;
     this.isFinalDestination = isFinalDestination;
     this.isWashington = isWashington;
     this.isOilPlatform = isOilPlatform;
@@ -38,6 +42,7 @@ export class LandingPad {
     this.isFuelDepot = !isOilPlatform && (name.includes('Fuel') || name.includes('Gas') || name.includes('Depot') || name.includes('Station'));
 
     this.graphics = scene.add.graphics();
+    this.flagGraphics = scene.add.graphics();
 
     // Create physics body - very thin sensor at the pad surface
     const matterScene = scene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
@@ -54,6 +59,7 @@ export class LandingPad {
     (this.matterBody as unknown as { landingPadRef: LandingPad }).landingPadRef = this;
 
     this.draw();
+    this.drawCountryFlag();
   }
 
   private draw(): void {
@@ -126,6 +132,141 @@ export class LandingPad {
       fontStyle: 'bold',
     });
     text.setOrigin(0.5, 0);
+  }
+
+  private drawCountryFlag(): void {
+    if (!this.country) return;
+
+    // All landing pads get flags - flag is on the LEFT side so it doesn't overlap with oil towers on RIGHT
+
+    const halfWidth = this.width / 2;
+
+    // Position flag to the LEFT of the landing pad to avoid conflicts
+    // This also looks better and avoids oil tower overlap
+    const flagX = this.x - halfWidth - 30; // To the left of the left pole
+    const flagY = this.y - 50; // Flag top position
+    const poleHeight = 60;
+    const flagWidth = 24;
+    const flagHeight = 16;
+
+    // Flagpole
+    this.flagGraphics.lineStyle(3, 0x666666, 1);
+    this.flagGraphics.lineBetween(flagX, flagY + poleHeight, flagX, flagY);
+
+    // Pole top ball
+    this.flagGraphics.fillStyle(0x888888, 1);
+    this.flagGraphics.fillCircle(flagX, flagY, 3);
+
+    // Flag position (attached at top of pole, extends to the left)
+    const fy = flagY + 5;
+
+    // Helper to draw horizontal stripe (flag extends LEFT from pole)
+    const drawStripe = (color: number, yOffset: number, stripeHeight: number) => {
+      this.flagGraphics.fillStyle(color, 1);
+      this.flagGraphics.fillRect(flagX - flagWidth, fy + yOffset, flagWidth, stripeHeight);
+    };
+
+    // Helper to draw vertical stripe (flag extends LEFT from pole)
+    const drawVerticalStripe = (color: number, xOffset: number, stripeWidth: number) => {
+      this.flagGraphics.fillStyle(color, 1);
+      this.flagGraphics.fillRect(flagX - flagWidth + xOffset, fy, stripeWidth, flagHeight);
+    };
+
+    // Flag left edge (flag extends left from pole)
+    const fx = flagX - flagWidth;
+
+    switch (this.country) {
+      case 'Washington DC':
+      case 'USA':
+        // US Flag simplified - blue field with red/white stripes
+        drawStripe(0xB22234, 0, flagHeight); // Red background
+        // White stripes
+        for (let i = 0; i < 7; i += 2) {
+          drawStripe(0xFFFFFF, i * (flagHeight / 13) * 2, flagHeight / 13);
+        }
+        // Blue canton (top-left of flag, which is now the far left)
+        this.flagGraphics.fillStyle(0x3C3B6E, 1);
+        this.flagGraphics.fillRect(fx, fy, flagWidth * 0.4, flagHeight * 0.5);
+        break;
+
+      case 'Atlantic Ocean':
+        // International maritime flag - blue with white
+        drawStripe(0x003399, 0, flagHeight);
+        break;
+
+      case 'United Kingdom':
+        // Union Jack
+        drawStripe(0x012169, 0, flagHeight); // Blue background
+        // White diagonals
+        this.flagGraphics.lineStyle(3, 0xFFFFFF, 1);
+        this.flagGraphics.lineBetween(fx, fy, fx + flagWidth, fy + flagHeight);
+        this.flagGraphics.lineBetween(fx, fy + flagHeight, fx + flagWidth, fy);
+        // Red diagonals
+        this.flagGraphics.lineStyle(1.5, 0xC8102E, 1);
+        this.flagGraphics.lineBetween(fx, fy, fx + flagWidth, fy + flagHeight);
+        this.flagGraphics.lineBetween(fx, fy + flagHeight, fx + flagWidth, fy);
+        // White cross
+        this.flagGraphics.lineStyle(4, 0xFFFFFF, 1);
+        this.flagGraphics.lineBetween(fx + flagWidth / 2, fy, fx + flagWidth / 2, fy + flagHeight);
+        this.flagGraphics.lineBetween(fx, fy + flagHeight / 2, fx + flagWidth, fy + flagHeight / 2);
+        // Red cross
+        this.flagGraphics.lineStyle(2, 0xC8102E, 1);
+        this.flagGraphics.lineBetween(fx + flagWidth / 2, fy, fx + flagWidth / 2, fy + flagHeight);
+        this.flagGraphics.lineBetween(fx, fy + flagHeight / 2, fx + flagWidth, fy + flagHeight / 2);
+        break;
+
+      case 'France':
+        // French tricolor (vertical)
+        const fw3 = flagWidth / 3;
+        drawVerticalStripe(0x002395, 0, fw3); // Blue
+        drawVerticalStripe(0xFFFFFF, fw3, fw3); // White
+        drawVerticalStripe(0xED2939, fw3 * 2, fw3); // Red
+        break;
+
+      case 'Switzerland':
+        // Swiss flag - red with white cross
+        drawStripe(0xDA291C, 0, flagHeight); // Red background
+        // White cross using lines (centered in flag)
+        const swCenterX = fx + flagWidth / 2;
+        const swCenterY = fy + flagHeight / 2;
+        this.flagGraphics.lineStyle(4, 0xFFFFFF, 1);
+        // Vertical bar
+        this.flagGraphics.lineBetween(swCenterX, fy + 2, swCenterX, fy + flagHeight - 2);
+        // Horizontal bar
+        this.flagGraphics.lineBetween(fx + 4, swCenterY, fx + flagWidth - 4, swCenterY);
+        break;
+
+      case 'Germany':
+        // German flag (horizontal)
+        const fh3 = flagHeight / 3;
+        drawStripe(0x000000, 0, fh3); // Black
+        drawStripe(0xDD0000, fh3, fh3); // Red
+        drawStripe(0xFFCC00, fh3 * 2, fh3); // Gold
+        break;
+
+      case 'Poland':
+        // Polish flag (horizontal)
+        drawStripe(0xFFFFFF, 0, flagHeight / 2); // White
+        drawStripe(0xDC143C, flagHeight / 2, flagHeight / 2); // Red
+        break;
+
+      case 'Russia':
+        // Russian flag (horizontal)
+        const rfh = flagHeight / 3;
+        drawStripe(0xFFFFFF, 0, rfh); // White
+        drawStripe(0x0039A6, rfh, rfh); // Blue
+        drawStripe(0xD52B1E, rfh * 2, rfh); // Red
+        break;
+
+      default:
+        // Generic gray flag
+        drawStripe(0x888888, 0, flagHeight);
+        break;
+    }
+
+    // Flag border
+    this.flagGraphics.lineStyle(1, 0x333333, 0.5);
+    this.flagGraphics.strokeRect(fx, fy, flagWidth, flagHeight);
   }
 
   private drawPalace(): void {
@@ -307,24 +448,37 @@ export class LandingPad {
   private drawOilPlatformBase(): void {
     const platX = this.x;
     const baseY = this.y;
+    const halfWidth = this.width / 2;
+
+    // Extended platform to the left for flag (flag is at x - halfWidth - 30)
+    const leftExtension = halfWidth + 40; // Extra space for flag pole
+
+    // Extended right side for oil tower
+    const rightExtension = halfWidth + 45;
 
     // Platform legs going down into water
     this.graphics.lineStyle(4, 0x666666, 1);
+    this.graphics.lineBetween(platX - leftExtension + 10, baseY, platX - leftExtension + 5, baseY + 60);
     this.graphics.lineBetween(platX - 40, baseY, platX - 40, baseY + 60);
     this.graphics.lineBetween(platX + 40, baseY, platX + 40, baseY + 60);
     this.graphics.lineBetween(platX - 20, baseY, platX - 25, baseY + 60);
     this.graphics.lineBetween(platX + 20, baseY, platX + 25, baseY + 60);
+    // Right side leg for oil tower support
+    this.graphics.lineBetween(platX + rightExtension - 10, baseY, platX + rightExtension - 5, baseY + 60);
 
     // Cross braces on legs
     this.graphics.lineStyle(2, 0x555555, 1);
+    this.graphics.lineBetween(platX - leftExtension + 10, baseY + 20, platX - 40, baseY + 30);
     this.graphics.lineBetween(platX - 40, baseY + 20, platX - 25, baseY + 30);
     this.graphics.lineBetween(platX + 40, baseY + 20, platX + 25, baseY + 30);
+    // Right side cross brace
+    this.graphics.lineBetween(platX + 40, baseY + 20, platX + rightExtension - 10, baseY + 30);
 
-    // Main platform deck
+    // Main platform deck (extended left for flag, extended right for oil tower)
     this.graphics.fillStyle(0x777777, 1);
-    this.graphics.fillRect(platX - 50, baseY - 8, 100, 12);
+    this.graphics.fillRect(platX - leftExtension, baseY - 8, leftExtension + rightExtension, 12);
     this.graphics.lineStyle(2, 0x555555, 1);
-    this.graphics.strokeRect(platX - 50, baseY - 8, 100, 12);
+    this.graphics.strokeRect(platX - leftExtension, baseY - 8, leftExtension + rightExtension, 12);
 
     // Control room / small building
     this.graphics.fillStyle(0x888888, 1);
@@ -344,6 +498,7 @@ export class LandingPad {
 
   destroy(): void {
     this.graphics.destroy();
+    this.flagGraphics.destroy();
     if (this.peaceMedalGraphics) {
       this.peaceMedalGraphics.destroy();
     }

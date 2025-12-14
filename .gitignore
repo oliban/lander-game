@@ -6,3 +6,4 @@ dist/
 
 # Asset creation source files
 asset_creation/
+.playwright-mcp/

@@ -240,7 +240,8 @@ export class Shark extends Phaser.GameObjects.Container {
   update(
     waveOffset: number,
     pollutionLevel: number,
-    foodTargets: { x: number; y: number }[]
+    foodTargets: { x: number; y: number }[],
+    skipGraphics: boolean = false
   ): void {
     if (this.isDestroyed) return;
 
@@ -301,7 +302,10 @@ export class Shark extends Phaser.GameObjects.Container {
     }
 
     // Redraw shark (position and rotation applied in drawShark)
-    this.drawShark();
+    // Skip expensive redraw when shark is off-screen
+    if (!skipGraphics) {
+      this.drawShark();
+    }
   }
 
   private updatePollutionState(pollutionLevel: number): void {

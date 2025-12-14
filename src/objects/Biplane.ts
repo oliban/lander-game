@@ -303,42 +303,51 @@ export class Biplane extends Phaser.GameObjects.Container {
   }
 
   private drawPropeller(): void {
-    // Clear and redraw propeller each frame (animated)
+    // Draw propeller once centered at (0,0), position graphics at hub location
+    // Then use setAngle() to rotate instead of clearing/redrawing
+    if (!this.propellerGraphics) return;
+
     this.propellerGraphics.clear();
     this.propellerGraphics.setDepth(201); // Above body
+    this.propellerGraphics.setPosition(36, 1); // Position at hub
 
-    const hubX = 36;
-
-    // Propeller hub
+    // Propeller hub (at center of graphics)
     this.propellerGraphics.fillStyle(0x444444, 1);
-    this.propellerGraphics.fillCircle(hubX, 1, 3);
+    this.propellerGraphics.fillCircle(0, 0, 3);
 
-    // Draw 2-blade propeller (simple wooden blades)
+    // Draw 2-blade propeller (simple wooden blades) - draw at 0 angle, rotate with setAngle
     const bladeLength = 16;
 
     for (let i = 0; i < 2; i++) {
-      const angle = this.propellerAngle + (i * Math.PI);
-      const endX = hubX + Math.cos(angle) * bladeLength;
-      const endY = 1 + Math.sin(angle) * bladeLength;
+      const angle = i * Math.PI; // 0 and PI (opposite blades)
+      const endX = Math.cos(angle) * bladeLength;
+      const endY = Math.sin(angle) * bladeLength;
 
       // Wooden blade
       this.propellerGraphics.lineStyle(4, 0xDEB887, 1);
       this.propellerGraphics.beginPath();
-      this.propellerGraphics.moveTo(hubX, 1);
+      this.propellerGraphics.moveTo(0, 0);
       this.propellerGraphics.lineTo(endX, endY);
       this.propellerGraphics.strokePath();
 
       // Dark edge
       this.propellerGraphics.lineStyle(1, 0x8B4513, 0.6);
       this.propellerGraphics.beginPath();
-      this.propellerGraphics.moveTo(hubX, 1);
+      this.propellerGraphics.moveTo(0, 0);
       this.propellerGraphics.lineTo(endX, endY);
       this.propellerGraphics.strokePath();
     }
 
     // Blur disc when spinning
     this.propellerGraphics.lineStyle(1, 0xDEB887, 0.12);
-    this.propellerGraphics.strokeCircle(hubX, 1, bladeLength - 1);
+    this.propellerGraphics.strokeCircle(0, 0, bladeLength - 1);
+  }
+
+  private updatePropellerRotation(): void {
+    // Just rotate the existing graphics - no redraw needed
+    if (this.propellerGraphics) {
+      this.propellerGraphics.setAngle(Phaser.Math.RadToDeg(this.propellerAngle));
+    }
   }
 
   private createBanner(): void {
@@ -454,8 +463,8 @@ export class Biplane extends Phaser.GameObjects.Container {
     // Slight pitch variation
     this.rotation = Math.sin(time * 0.002) * 0.02;
 
-    // Redraw propeller (animated)
-    this.drawPropeller();
+    // Rotate propeller (uses setAngle instead of redrawing)
+    this.updatePropellerRotation();
 
     // Check if WAY off screen (relative to camera) - use very large margin
     const camera = this.scene.cameras.main;
