@@ -22,6 +22,7 @@ export class Cannon extends Phaser.GameObjects.Container {
   private isDestroyed: boolean = false;
   private projectileSprites: string[];
   private country: string;
+  private windStrength: number = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, country: string = '') {
     super(scene, x, y);
@@ -106,103 +107,139 @@ export class Cannon extends Phaser.GameObjects.Container {
   }
 
   private drawCountryFlag(): void {
-    const flagX = 35; // To the right of the turret
+    // Clear previous flag drawing
+    this.flag.clear();
+
+    const poleX = 35; // Flagpole position
     const poleHeight = 50;
-    const flagWidth = 24;
+    const baseWidth = 24;
     const flagHeight = 16;
+
+    // Wind direction determines which way flag extends
+    // Positive wind = East = flag goes right, Negative wind = West = flag goes left
+    const windDir = this.windStrength >= 0 ? 1 : -1;
+    const windMag = Math.abs(this.windStrength);
+    const windEffect = windMag * 12; // How much the flag waves
+
+    // Flag extends in wind direction from the pole
+    const flagStartX = poleX; // Flag attaches at pole
+    const flagEndX = poleX + (baseWidth + windEffect * 0.5) * windDir;
 
     // Flagpole
     this.flag.lineStyle(3, 0x666666);
-    this.flag.lineBetween(flagX, -poleHeight, flagX, 5);
+    this.flag.lineBetween(poleX, -poleHeight, poleX, 5);
 
     // Pole top ball
     this.flag.fillStyle(0x888888, 1);
-    this.flag.fillCircle(flagX, -poleHeight, 3);
+    this.flag.fillCircle(poleX, -poleHeight, 3);
 
-    // Draw flag based on country
-    const fy = -poleHeight + 5; // Flag Y position (top of flag)
+    // Flag Y position (top of flag)
+    const fy = -poleHeight + 5;
+
+    // Helper to draw a wind-affected horizontal stripe
+    const drawWindStripe = (color: number, yOffset: number, stripeHeight: number) => {
+      this.flag.fillStyle(color, 1);
+      // Wave effect increases toward the free end
+      const topWave = windEffect * 0.15 * (1 - yOffset / flagHeight * 0.3);
+      const bottomWave = windEffect * 0.15 * (1 - (yOffset + stripeHeight) / flagHeight * 0.3);
+      this.flag.beginPath();
+      this.flag.moveTo(flagStartX, fy + yOffset);
+      this.flag.lineTo(flagEndX, fy + yOffset + topWave * windDir);
+      this.flag.lineTo(flagEndX, fy + yOffset + stripeHeight + bottomWave * windDir);
+      this.flag.lineTo(flagStartX, fy + yOffset + stripeHeight);
+      this.flag.closePath();
+      this.flag.fillPath();
+    };
+
+    // Helper to draw vertical stripe with wind (for France)
+    const drawVerticalStripe = (color: number, stripeIndex: number, numStripes: number) => {
+      this.flag.fillStyle(color, 1);
+      const stripeWidth = Math.abs(flagEndX - flagStartX) / numStripes;
+      const x1 = flagStartX + stripeIndex * stripeWidth * windDir;
+      const x2 = flagStartX + (stripeIndex + 1) * stripeWidth * windDir;
+      const waveAtX1 = windEffect * 0.15 * (stripeIndex / numStripes);
+      const waveAtX2 = windEffect * 0.15 * ((stripeIndex + 1) / numStripes);
+      this.flag.beginPath();
+      this.flag.moveTo(x1, fy + waveAtX1 * windDir);
+      this.flag.lineTo(x2, fy + waveAtX2 * windDir);
+      this.flag.lineTo(x2, fy + flagHeight + waveAtX2 * windDir);
+      this.flag.lineTo(x1, fy + flagHeight + waveAtX1 * windDir);
+      this.flag.closePath();
+      this.flag.fillPath();
+    };
 
     switch (this.country) {
       case 'United Kingdom':
-        // Union Jack (simplified)
-        this.flag.fillStyle(0x012169, 1); // Blue background
-        this.flag.fillRect(flagX, fy, flagWidth, flagHeight);
+        // Union Jack - blue background with diagonal and straight crosses
+        drawWindStripe(0x012169, 0, flagHeight); // Blue background
+        const ukWaveY = windEffect * 0.15 * windDir;
         // White diagonals
         this.flag.lineStyle(3, 0xFFFFFF);
-        this.flag.lineBetween(flagX, fy, flagX + flagWidth, fy + flagHeight);
-        this.flag.lineBetween(flagX + flagWidth, fy, flagX, fy + flagHeight);
-        // Red diagonals
+        this.flag.lineBetween(flagStartX, fy, flagEndX, fy + flagHeight + ukWaveY);
+        this.flag.lineBetween(flagStartX, fy + flagHeight, flagEndX, fy + ukWaveY);
+        // Red diagonals (thinner, on top)
         this.flag.lineStyle(1.5, 0xC8102E);
-        this.flag.lineBetween(flagX, fy, flagX + flagWidth, fy + flagHeight);
-        this.flag.lineBetween(flagX + flagWidth, fy, flagX, fy + flagHeight);
+        this.flag.lineBetween(flagStartX, fy, flagEndX, fy + flagHeight + ukWaveY);
+        this.flag.lineBetween(flagStartX, fy + flagHeight, flagEndX, fy + ukWaveY);
         // White cross
+        const ukMidX = (flagStartX + flagEndX) / 2;
+        const ukMidY = fy + flagHeight / 2 + ukWaveY * 0.5;
         this.flag.lineStyle(4, 0xFFFFFF);
-        this.flag.lineBetween(flagX + flagWidth / 2, fy, flagX + flagWidth / 2, fy + flagHeight);
-        this.flag.lineBetween(flagX, fy + flagHeight / 2, flagX + flagWidth, fy + flagHeight / 2);
-        // Red cross
+        this.flag.lineBetween(ukMidX, fy + ukWaveY * 0.3, ukMidX, fy + flagHeight + ukWaveY * 0.7);
+        this.flag.lineBetween(flagStartX, ukMidY - ukWaveY * 0.2, flagEndX, ukMidY + ukWaveY * 0.3);
+        // Red cross (thinner, on top)
         this.flag.lineStyle(2, 0xC8102E);
-        this.flag.lineBetween(flagX + flagWidth / 2, fy, flagX + flagWidth / 2, fy + flagHeight);
-        this.flag.lineBetween(flagX, fy + flagHeight / 2, flagX + flagWidth, fy + flagHeight / 2);
+        this.flag.lineBetween(ukMidX, fy + ukWaveY * 0.3, ukMidX, fy + flagHeight + ukWaveY * 0.7);
+        this.flag.lineBetween(flagStartX, ukMidY - ukWaveY * 0.2, flagEndX, ukMidY + ukWaveY * 0.3);
         break;
 
       case 'France':
-        // French tricolor (vertical stripes)
-        const fw3 = flagWidth / 3;
-        this.flag.fillStyle(0x002395, 1); // Blue
-        this.flag.fillRect(flagX, fy, fw3, flagHeight);
-        this.flag.fillStyle(0xFFFFFF, 1); // White
-        this.flag.fillRect(flagX + fw3, fy, fw3, flagHeight);
-        this.flag.fillStyle(0xED2939, 1); // Red
-        this.flag.fillRect(flagX + fw3 * 2, fy, fw3, flagHeight);
+        // French tricolor (vertical stripes) - Blue, White, Red from pole outward
+        drawVerticalStripe(0x002395, 0, 3); // Blue
+        drawVerticalStripe(0xFFFFFF, 1, 3); // White
+        drawVerticalStripe(0xED2939, 2, 3); // Red
         break;
 
       case 'Germany':
         // German flag (horizontal stripes)
         const fh3 = flagHeight / 3;
-        this.flag.fillStyle(0x000000, 1); // Black
-        this.flag.fillRect(flagX, fy, flagWidth, fh3);
-        this.flag.fillStyle(0xDD0000, 1); // Red
-        this.flag.fillRect(flagX, fy + fh3, flagWidth, fh3);
-        this.flag.fillStyle(0xFFCC00, 1); // Gold
-        this.flag.fillRect(flagX, fy + fh3 * 2, flagWidth, fh3);
+        drawWindStripe(0x000000, 0, fh3); // Black
+        drawWindStripe(0xDD0000, fh3, fh3); // Red
+        drawWindStripe(0xFFCC00, fh3 * 2, fh3); // Gold
         break;
 
       case 'Poland':
         // Polish flag (horizontal stripes)
-        this.flag.fillStyle(0xFFFFFF, 1); // White
-        this.flag.fillRect(flagX, fy, flagWidth, flagHeight / 2);
-        this.flag.fillStyle(0xDC143C, 1); // Red
-        this.flag.fillRect(flagX, fy + flagHeight / 2, flagWidth, flagHeight / 2);
+        drawWindStripe(0xFFFFFF, 0, flagHeight / 2); // White
+        drawWindStripe(0xDC143C, flagHeight / 2, flagHeight / 2); // Red
         break;
 
       case 'Russia':
         // Russian flag (horizontal stripes)
         const rfh = flagHeight / 3;
-        this.flag.fillStyle(0xFFFFFF, 1); // White
-        this.flag.fillRect(flagX, fy, flagWidth, rfh);
-        this.flag.fillStyle(0x0039A6, 1); // Blue
-        this.flag.fillRect(flagX, fy + rfh, flagWidth, rfh);
-        this.flag.fillStyle(0xD52B1E, 1); // Red
-        this.flag.fillRect(flagX, fy + rfh * 2, flagWidth, rfh);
+        drawWindStripe(0xFFFFFF, 0, rfh); // White
+        drawWindStripe(0x0039A6, rfh, rfh); // Blue
+        drawWindStripe(0xD52B1E, rfh * 2, rfh); // Red
         break;
 
       default:
         // Generic flag (gray)
-        this.flag.fillStyle(0x888888, 1);
-        this.flag.fillRect(flagX, fy, flagWidth, flagHeight);
+        drawWindStripe(0x888888, 0, flagHeight);
         break;
     }
-
-    // Flag border
-    this.flag.lineStyle(1, 0x333333, 0.5);
-    this.flag.strokeRect(flagX, fy, flagWidth, flagHeight);
   }
 
   setTarget(target: { x: number; y: number }): void {
     this.target = target;
   }
 
-  update(time: number): void {
+  update(time: number, windStrength: number = 0): void {
+    // Update wind and redraw flag if wind changed significantly
+    if (Math.abs(windStrength - this.windStrength) > 0.05) {
+      this.windStrength = windStrength;
+      this.drawCountryFlag();
+    }
+
     // Always update existing projectiles, even if cannon is destroyed
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
