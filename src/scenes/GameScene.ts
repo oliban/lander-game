@@ -160,7 +160,7 @@ export class GameScene extends Phaser.Scene {
   private lastTombstoneBounceTime: number = 0; // Debounce multiple collision events
 
   // Weather system
-  private weatherState: 'clear' | 'cloudy' | 'stormy' = 'clear';
+  private weatherState: 'clear' | 'cloudy' | 'stormy' | 'unstable' = 'clear';
   private cloudData: { x: number; y: number; scale: number; type: 'cumulus' | 'stratus' | 'alto' | 'storm'; isStormCloud: boolean; lastLightningTime: number }[] = [];
   private cloudGraphics: Phaser.GameObjects.Graphics | null = null;
   private lightningGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -170,6 +170,9 @@ export class GameScene extends Phaser.Scene {
   private rainSplashes: { x: number; y: number; particles: { dx: number; dy: number; vy: number }[]; age: number }[] = [];
   private lastLightningCheck: number = 0;
   private pendingLightningStrike: { cloud: { x: number; y: number; scale: number; type: 'cumulus' | 'stratus' | 'alto' | 'storm'; isStormCloud: boolean; lastLightningTime: number }; shuttle: Shuttle; warningStart: number; strikeDelay: number } | null = null;
+  // Unstable weather system
+  private lastWeatherChange: number = 0;
+  private nextWeatherChangeDelay: number = 0;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -447,12 +450,10 @@ export class GameScene extends Phaser.Scene {
 
       if (!hasLaunched && (p1Thrust || p2Thrust)) {
         hasLaunched = true;
-        console.log('Launching shuttle(s) - enabling physics');
         // Enable physics on all shuttles
         this.shuttles.forEach(shuttle => shuttle.setStatic(false));
         // Short delay before enabling collision damage (let players get away from start)
         this.time.delayedCall(800, () => {
-          console.log('Invulnerability ended');
           this.invulnerable = false;
           this.gameInitialized = true; // Enable splash sounds after initial load
         });
@@ -489,23 +490,37 @@ export class GameScene extends Phaser.Scene {
       this.starfield.fillRect(0, y, GAME_WIDTH, 1);
     }
 
-    // Initialize weather state (60% clear, 25% cloudy, 15% stormy)
+    // Initialize weather state (50% unstable, 25% clear, 15% cloudy, 10% stormy)
     const weatherRoll = Math.random();
-    if (weatherRoll < 0.15) {
+    if (weatherRoll < 0.50) {
+      this.weatherState = 'unstable';
+    } else if (weatherRoll < 0.60) {
       this.weatherState = 'stormy';
-    } else if (weatherRoll < 0.40) {
+    } else if (weatherRoll < 0.75) {
       this.weatherState = 'cloudy';
     } else {
       this.weatherState = 'clear';
     }
-    console.log(`[Weather] ${this.weatherState.toUpperCase()}${this.weatherState === 'stormy' ? ' - watch out for lightning!' : ''}`);
 
-    // Determine cloud count based on weather
-    const cloudCounts = { clear: 15, cloudy: 25, stormy: 35 };
+    // Initialize unstable weather timing
+    if (this.weatherState === 'unstable') {
+      this.lastWeatherChange = 0;
+      this.nextWeatherChangeDelay = 15000 + Math.random() * 5000; // 15-20 seconds
+      // Start unstable weather at a random intensity
+      const intensityOptions: ('none' | 'light' | 'medium' | 'heavy')[] = ['none', 'light', 'medium', 'heavy'];
+      const startIntensity = Math.floor(Math.random() * intensityOptions.length);
+      this.rainIntensity = intensityOptions[startIntensity];
+      console.log(`[Weather] UNSTABLE - weather will change periodically! Starting at: ${this.rainIntensity}`);
+    } else {
+      console.log(`[Weather] ${this.weatherState.toUpperCase()}${this.weatherState === 'stormy' ? ' - watch out for lightning!' : ''}`);
+    }
+
+    // Determine cloud count based on weather (unstable uses cloudy count)
+    const cloudCounts = { clear: 15, cloudy: 25, stormy: 35, unstable: 30 };
     const cloudCount = cloudCounts[this.weatherState];
 
-    // Determine storm cloud chance based on weather
-    const stormCloudChance = { clear: 0, cloudy: 0.15, stormy: 0.4 };
+    // Determine storm cloud chance based on weather (unstable has moderate storm clouds)
+    const stormCloudChance = { clear: 0, cloudy: 0.15, stormy: 0.4, unstable: 0.25 };
     const stormChance = stormCloudChance[this.weatherState];
 
     // Generate varied cloud data
@@ -729,6 +744,9 @@ export class GameScene extends Phaser.Scene {
     } else if (this.weatherState === 'cloudy') {
       // Cloudy: random chance of light rain
       this.rainIntensity = Math.random() < 0.3 ? 'light' : 'none';
+    } else if (this.weatherState === 'unstable') {
+      // Unstable: already set during weather initialization, don't change
+      // rainIntensity is set in createStarfield for unstable weather
     } else {
       this.rainIntensity = 'none';
     }
@@ -757,6 +775,82 @@ export class GameScene extends Phaser.Scene {
     }
 
     console.log(`[Weather] Rain intensity: ${this.rainIntensity}`);
+  }
+
+  private updateUnstableWeather(time: number): void {
+    if (this.weatherState !== 'unstable') return;
+
+    // Check if it's time to change weather
+    if (time - this.lastWeatherChange >= this.nextWeatherChangeDelay) {
+      this.lastWeatherChange = time;
+      this.nextWeatherChangeDelay = 15000 + Math.random() * 5000; // Next change in 15-20 seconds
+
+      // Determine direction of change (can go up or down one step, or stay same)
+      const intensityLevels: ('none' | 'light' | 'medium' | 'heavy')[] = ['none', 'light', 'medium', 'heavy'];
+      const currentIndex = intensityLevels.indexOf(this.rainIntensity);
+
+      // 40% chance to go up, 40% chance to go down, 20% chance to stay same
+      const changeRoll = Math.random();
+      let newIndex = currentIndex;
+
+      if (changeRoll < 0.4) {
+        // Go up (more rain)
+        newIndex = Math.min(currentIndex + 1, intensityLevels.length - 1);
+      } else if (changeRoll < 0.8) {
+        // Go down (less rain)
+        newIndex = Math.max(currentIndex - 1, 0);
+      }
+      // else stay same
+
+      const newIntensity = intensityLevels[newIndex];
+
+      if (newIntensity !== this.rainIntensity) {
+        const oldIntensity = this.rainIntensity;
+        this.rainIntensity = newIntensity;
+        console.log(`[Weather] Unstable weather shift: ${oldIntensity} -> ${newIntensity}`);
+
+        // Adjust rain drops count based on new intensity
+        this.adjustRainDropCount();
+      }
+    }
+  }
+
+  private adjustRainDropCount(): void {
+    // Rain parameters based on intensity
+    const params = {
+      none: { count: 0, speedMin: 0, speedRange: 0, lengthMin: 0, lengthRange: 0 },
+      light: { count: 150, speedMin: 7, speedRange: 5, lengthMin: 10, lengthRange: 12 },
+      medium: { count: 300, speedMin: 10, speedRange: 8, lengthMin: 15, lengthRange: 20 },
+      heavy: { count: 500, speedMin: 14, speedRange: 10, lengthMin: 20, lengthRange: 30 }
+    }[this.rainIntensity];
+
+    const targetCount = params.count;
+    const currentCount = this.rainDrops.length;
+
+    if (targetCount === 0) {
+      // Clear all rain
+      this.rainDrops = [];
+      this.rainSplashes = [];
+    } else if (targetCount > currentCount) {
+      // Add more drops
+      for (let i = currentCount; i < targetCount; i++) {
+        this.rainDrops.push({
+          x: Math.random() * (GAME_WIDTH + 200) - 100,
+          y: Math.random() * GAME_HEIGHT,
+          speed: params.speedMin + Math.random() * params.speedRange,
+          length: params.lengthMin + Math.random() * params.lengthRange
+        });
+      }
+    } else if (targetCount < currentCount) {
+      // Remove excess drops
+      this.rainDrops.splice(targetCount);
+    }
+
+    // Update existing drops' speed and length for new intensity
+    for (const drop of this.rainDrops) {
+      drop.speed = params.speedMin + Math.random() * params.speedRange;
+      drop.length = params.lengthMin + Math.random() * params.lengthRange;
+    }
   }
 
   private updateRain(): void {
@@ -1682,7 +1776,6 @@ export class GameScene extends Phaser.Scene {
 
     if (velocity.total < TERRAIN_CRASH_VELOCITY) {
       // Just a bounce, not a crash - the physics engine will handle the bounce
-      console.log(`Terrain bounce P${playerNum} at velocity:`, velocity.total.toFixed(2));
       return;
     }
 
@@ -2046,12 +2139,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     const velocity = shuttle.getVelocity();
-    console.log(`Valid pad collision P${playerNum} detected. shuttleBottom:`, shuttleBottom.toFixed(1), 'pad.y:', pad.y.toFixed(1), 'distance:', distanceFromPad.toFixed(1), 'velocity:', velocity.total.toFixed(2));
 
     const landingResult = shuttle.checkLandingSafety();
 
     if (!landingResult.safe) {
-      console.log(`CRASH P${playerNum}: Bad landing on pad`, pad.name, 'at', { x: shuttle.x, y: shuttle.y }, 'pad.y:', pad.y, 'reason:', landingResult.reason);
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
@@ -5423,6 +5514,8 @@ export class GameScene extends Phaser.Scene {
     // Check for lightning strikes in stormy weather
     this.checkLightningStrikes(time);
 
+    // Update unstable weather (transitions rain intensity)
+    this.updateUnstableWeather(time);
 
     // Update rain effect
     this.updateRain();
@@ -5503,10 +5596,8 @@ export class GameScene extends Phaser.Scene {
             shuttle.x, shuttle.y,
             this.greenlandIce.x, this.greenlandIce.y - 40
           );
-          console.log(`[ICE CHECK] Shuttle(${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}), Ice(${this.greenlandIce.x.toFixed(0)}, ${this.greenlandIce.y.toFixed(0)}), dist=${dist.toFixed(0)}`);
 
           if (dist < 20 && !this.hasPeaceMedal) {
-            console.log(`[ICE] PICKUP! dist=${dist.toFixed(0)}`);
             this.pickupGreenlandIce(shuttle);
           }
         }
@@ -5551,8 +5642,9 @@ export class GameScene extends Phaser.Scene {
     if (this.biplane && !this.biplane.isDestroyed) {
       this.biplane.update(time, 16); // ~60fps delta
 
-      // Check collision with shuttles - bounce off, don't destroy
-      const bounds = this.biplane.getCollisionBounds();
+      // Check collision with shuttles - bounce off, don't destroy (skip if hidden/waiting)
+      if (!this.biplane.isHidden) {
+        const bounds = this.biplane.getCollisionBounds();
       for (const shuttle of this.shuttles) {
         if (!shuttle.active) continue;
 
@@ -5592,6 +5684,7 @@ export class GameScene extends Phaser.Scene {
           }
           break;
         }
+      }
       }
     }
 

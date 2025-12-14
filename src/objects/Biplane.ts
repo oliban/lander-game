@@ -452,6 +452,11 @@ export class Biplane extends Phaser.GameObjects.Container {
   private startWaiting(): void {
     this.isWaiting = true;
     this.setVisible(false);
+    // Destroy graphics when waiting to prevent stale collision hitbox
+    if (this.graphics) {
+      this.graphics.destroy();
+      this.graphics = null as any;
+    }
 
     // Wait 5 seconds then re-enter
     this.waitTimer = this.scene.time.delayedCall(5000, () => {
@@ -478,6 +483,10 @@ export class Biplane extends Phaser.GameObjects.Container {
       width: this.collisionWidth,
       height: this.collisionHeight,
     };
+  }
+
+  get isHidden(): boolean {
+    return this.isWaiting;
   }
 
   explode(): { name: string; points: number; bannerPosition: { x: number; y: number }; propagandaType: string; message: string; accentColor: number } {
