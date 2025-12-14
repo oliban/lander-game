@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../constants';
 import { getAchievementSystem } from '../systems/AchievementSystem';
+import { getCollectionSystem } from '../systems/CollectionSystem';
 import { TIER_COLORS } from '../data/achievements';
+import { COLLECTIBLE_TYPES } from '../constants';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -100,14 +102,14 @@ export class MenuScene extends Phaser.Scene {
     });
     quoteAttrib.setOrigin(0.5, 0);
 
-    // Bottom section: 3 panels in a row, then start button below
+    // Bottom section: 4 panels in a row, then start button below
     const panelY = 520;
     const panelH = 105;
-    const panelW = 170;
-    const panelSpacing = 185;
+    const panelW = 145;
+    const panelSpacing = 155;
 
     // HIGH SCORES panel on the left
-    const scoresPanelX = GAME_WIDTH / 2 - panelSpacing;
+    const scoresPanelX = GAME_WIDTH / 2 - panelSpacing * 1.5;
 
     const scoresPanel = this.add.graphics();
     scoresPanel.fillStyle(0x000000, 0.6);
@@ -149,11 +151,14 @@ export class MenuScene extends Phaser.Scene {
       }
     }
 
-    // ACHIEVEMENTS panel in center
-    this.createAchievementsPanel(GAME_WIDTH / 2, panelY, panelW, panelH);
+    // ACHIEVEMENTS panel (second from left)
+    this.createAchievementsPanel(GAME_WIDTH / 2 - panelSpacing * 0.5, panelY, panelW, panelH);
+
+    // COLLECTION panel (second from right)
+    this.createCollectionPanel(GAME_WIDTH / 2 + panelSpacing * 0.5, panelY, panelW, panelH);
 
     // CONTROLS panel on the right
-    const controlsPanelX = GAME_WIDTH / 2 + panelSpacing;
+    const controlsPanelX = GAME_WIDTH / 2 + panelSpacing * 1.5;
 
     const controlsPanel = this.add.graphics();
     controlsPanel.fillStyle(0x000000, 0.6);
@@ -299,6 +304,86 @@ export class MenuScene extends Phaser.Scene {
 
     viewBtn.on('pointerdown', () => {
       this.scene.start('AchievementsScene');
+    });
+  }
+
+  private createCollectionPanel(panelX: number, panelY: number, panelW: number, panelH: number): void {
+    const collectionSystem = getCollectionSystem();
+    const discovered = collectionSystem.getDiscoveredCount();
+    const total = collectionSystem.getTotalCount();
+
+    // Panel background
+    const panel = this.add.graphics();
+    panel.fillStyle(0x000000, 0.6);
+    panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+    panel.lineStyle(2, 0xff6b35, 0.5); // Orange border for collection
+    panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+
+    // Title with count
+    const titleText = this.add.text(panelX, panelY + 12, `ITEMS ${discovered}/${total}`, {
+      fontSize: '11px',
+      color: '#FF6B35',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    titleText.setOrigin(0.5, 0);
+
+    // Show recent discoveries (up to 4 item names)
+    const recentDiscoveries = collectionSystem.getRecentDiscoveries(4);
+
+    if (recentDiscoveries.length > 0) {
+      for (let i = 0; i < recentDiscoveries.length; i++) {
+        const itemType = recentDiscoveries[i];
+        const itemData = COLLECTIBLE_TYPES[itemType as keyof typeof COLLECTIBLE_TYPES];
+        if (!itemData) continue;
+
+        const yPos = panelY + 30 + i * 14;
+        const itemColor = '#' + itemData.color.toString(16).padStart(6, '0');
+
+        // Truncate long names
+        let displayName = itemData.name;
+        if (displayName.length > 14) {
+          displayName = displayName.substring(0, 12) + '..';
+        }
+
+        const itemText = this.add.text(panelX, yPos, `• ${displayName}`, {
+          fontSize: '10px',
+          color: itemColor,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+        });
+        itemText.setOrigin(0.5, 0);
+      }
+    } else {
+      // No items yet - show hint
+      const hintText = this.add.text(panelX, panelY + 38, 'Pick up items\nto discover them!', {
+        fontSize: '10px',
+        color: '#888888',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        align: 'center',
+      });
+      hintText.setOrigin(0.5, 0);
+    }
+
+    // View All button at bottom of panel
+    const viewBtn = this.add.text(panelX, panelY + panelH - 12, '[ VIEW ALL ]', {
+      fontSize: '10px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    viewBtn.setOrigin(0.5, 0.5);
+    viewBtn.setInteractive({ useHandCursor: true });
+
+    viewBtn.on('pointerover', () => {
+      viewBtn.setColor('#66BB6A');
+    });
+
+    viewBtn.on('pointerout', () => {
+      viewBtn.setColor('#4CAF50');
+    });
+
+    viewBtn.on('pointerdown', () => {
+      this.scene.start('CollectionScene');
     });
   }
 

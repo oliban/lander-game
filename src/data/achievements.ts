@@ -193,12 +193,18 @@ export const ACHIEVEMENTS: Achievement[] = [
     tier: 'gold',
   },
 
-  // Meta (2)
+  // Meta (3)
   {
     id: 'high_roller',
     name: 'High Roller',
     description: 'Collect casino chips worth 500+ total',
     tier: 'silver',
+  },
+  {
+    id: 'collector',
+    name: 'Collector',
+    description: 'Discover all collectible items',
+    tier: 'gold',
   },
   {
     id: 'trophy_hunter',

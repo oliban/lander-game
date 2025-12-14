@@ -16,7 +16,7 @@ export const FUEL_CONSUMPTION_RATE = 0.15; // per frame when thrusting
 // Terrain
 export const TERRAIN_SEGMENT_WIDTH = 20;
 export const TERRAIN_ROUGHNESS = 0.5;
-export const WORLD_WIDTH = 23600; // Total journey length (eastward) - Russia 20% wider, Atlantic 50% wider
+export const WORLD_WIDTH = 25600; // Total journey length (eastward) - includes Switzerland (+2000px)
 export const WORLD_START_X = -2800; // Washington is 2+ screen widths to the left
 
 // Countries (x positions where they start) - cartoon colors
@@ -26,9 +26,10 @@ export const COUNTRIES = [
   { name: 'Atlantic Ocean', startX: 2000, color: 0x4169E1, cannonDensity: 0 },  // Royal blue (50% wider)
   { name: 'United Kingdom', startX: 5000, color: 0x9370DB, cannonDensity: 0.3 },  // Medium purple
   { name: 'France', startX: 7000, color: 0x20B2AA, cannonDensity: 0.4 },  // Light sea green
-  { name: 'Germany', startX: 10000, color: 0xDAA520, cannonDensity: 0.5 },  // Goldenrod
-  { name: 'Poland', startX: 13000, color: 0xCD853F, cannonDensity: 0.6 },  // Peru
-  { name: 'Russia', startX: 17000, color: 0xDC143C, cannonDensity: 0.2 },  // Crimson
+  { name: 'Switzerland', startX: 10000, color: 0x8B8B8B, cannonDensity: 0.45 },  // Gray (rocky mountains)
+  { name: 'Germany', startX: 12000, color: 0xDAA520, cannonDensity: 0.5 },  // Goldenrod
+  { name: 'Poland', startX: 15000, color: 0xCD853F, cannonDensity: 0.6 },  // Peru
+  { name: 'Russia', startX: 19000, color: 0xDC143C, cannonDensity: 0.2 },  // Crimson
 ];
 
 // Landing pads between countries
@@ -37,10 +38,11 @@ export const LANDING_PADS = [
   { x: 1800, width: 120, name: 'NYC Fuel Stop' },
   { x: 4300, width: 100, name: 'Mid-Atlantic Platform', isOilPlatform: true },  // Shifted for wider Atlantic
   { x: 6800, width: 80, name: 'Dover Cliffs' },
-  { x: 9500, width: 80, name: 'Berlin Gas Station' },
-  { x: 12500, width: 70, name: 'Warsaw Depot' },
-  { x: 16500, width: 60, name: 'Border Station' },
-  { x: 23000, width: 250, name: "Putino's Palace" }, // Adjusted for wider Atlantic and Russia
+  { x: 11000, width: 80, name: 'Matterhorn' },  // Switzerland - near top of central mountain
+  { x: 13500, width: 80, name: 'Berlin Gas Station' },  // Shifted +2000 for Switzerland
+  { x: 14500, width: 70, name: 'Warsaw Depot' },  // Shifted +2000 for Switzerland
+  { x: 18500, width: 60, name: 'Border Station' },  // Shifted +2000 for Switzerland
+  { x: 25000, width: 250, name: "Putino's Palace" },  // Shifted +2000 for Switzerland
 ];
 
 // Collectibles - organized by category and value
@@ -86,7 +88,7 @@ export const COLLECTIBLE_TYPES = {
   RUSSIA_PROPAGANDA: { name: 'Russian Facts', fuelValue: 50, rarity: 0, color: 0x0039A6 },
 
   // Fisher boat contraband (15% chance per game)
-  FISH_PACKAGE: { name: '"Fish"', fuelValue: 100, rarity: 0, color: 0x4682B4, contraband: true }, // Steel blue
+  FISH_PACKAGE: { name: '"Fish" Package', fuelValue: 100, rarity: 0, color: 0x4682B4, contraband: true }, // Steel blue
 
   // Easter egg
   TAN_SUIT: { name: 'Tan Suit', fuelValue: 40, rarity: 0.02, color: 0xD2B48C }, // Tan

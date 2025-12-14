@@ -7,6 +7,7 @@ import { UIScene } from './scenes/UIScene';
 import { TradingScene } from './scenes/TradingScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { AchievementsScene } from './scenes/AchievementsScene';
+import { CollectionScene } from './scenes/CollectionScene';
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.WEBGL,
@@ -25,7 +26,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, GameScene, UIScene, TradingScene, GameOverScene, AchievementsScene],
+  scene: [BootScene, MenuScene, GameScene, UIScene, TradingScene, GameOverScene, AchievementsScene, CollectionScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
