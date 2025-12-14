@@ -173,6 +173,13 @@ export class GameScene extends Phaser.Scene {
   // Unstable weather system
   private lastWeatherChange: number = 0;
   private nextWeatherChangeDelay: number = 0;
+  // Wind system
+  private windStrength: number = 0;      // -1 to 1 (negative=left, positive=right)
+  private windTargetStrength: number = 0;
+  private lastWindChange: number = 0;
+  private nextWindChangeDelay: number = 0;
+  private windDebris: { x: number; y: number; type: 'leaf' | 'dust'; rotation: number; rotationSpeed: number }[] = [];
+  private windDebrisGraphics: Phaser.GameObjects.Graphics | null = null;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -514,6 +521,28 @@ export class GameScene extends Phaser.Scene {
       console.log(`[Weather] UNSTABLE - weather will change periodically! Starting at: ${displayIntensity}`);
     } else {
       console.log(`[Weather] ${this.weatherState.toUpperCase()}${this.weatherState === 'stormy' ? ' - watch out for lightning!' : ''}`);
+    }
+
+    // Initialize wind system
+    this.windStrength = (Math.random() - 0.5) * 1.6; // -0.8 to 0.8
+    this.windTargetStrength = this.windStrength;
+    this.lastWindChange = 0;
+    this.nextWindChangeDelay = 20000 + Math.random() * 10000; // 20-30 seconds
+    const initWindStrength = Math.abs(this.windStrength);
+    const initStrengthLabel = initWindStrength < 0.1 ? 'Calm' : initWindStrength < 0.4 ? 'Light' : initWindStrength < 0.7 ? 'Moderate' : 'Strong';
+    const initWindDir = this.windStrength > 0.1 ? 'East' : this.windStrength < -0.1 ? 'West' : '';
+    console.log(`[Weather] Wind: ${initStrengthLabel} ${initWindDir}`.trim());
+
+    // Initialize wind debris
+    this.windDebris = [];
+    for (let i = 0; i < 30; i++) {
+      this.windDebris.push({
+        x: Math.random() * GAME_WIDTH * 5,
+        y: Math.random() * GAME_HEIGHT,
+        type: Math.random() < 0.7 ? 'leaf' : 'dust',
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.2
+      });
     }
 
     // Determine cloud count based on weather (unstable uses cloudy count)
@@ -861,6 +890,91 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateWind(time: number): void {
+    // Check if it's time to change wind
+    if (time - this.lastWindChange >= this.nextWindChangeDelay) {
+      this.lastWindChange = time;
+      this.nextWindChangeDelay = 20000 + Math.random() * 10000; // 20-30 seconds
+
+      // New random target (-1 to 1) with varying strength
+      this.windTargetStrength = (Math.random() - 0.5) * 2;
+
+      const strength = Math.abs(this.windTargetStrength);
+      const strengthLabel = strength < 0.1 ? 'Calm' : strength < 0.4 ? 'Light' : strength < 0.7 ? 'Moderate' : 'Strong';
+      const windDir = this.windTargetStrength > 0.1 ? 'East' : this.windTargetStrength < -0.1 ? 'West' : '';
+      console.log(`[Weather] Wind shifting to: ${strengthLabel} ${windDir}`.trim());
+    }
+
+    // Smooth interpolation toward target (gradual wind change)
+    this.windStrength += (this.windTargetStrength - this.windStrength) * 0.01;
+  }
+
+  private updateWindDebris(): void {
+    if (Math.abs(this.windStrength) < 0.1) {
+      // Calm wind - hide debris
+      if (this.windDebrisGraphics) {
+        this.windDebrisGraphics.destroy();
+        this.windDebrisGraphics = null;
+      }
+      return;
+    }
+
+    // Destroy/recreate pattern
+    if (this.windDebrisGraphics) {
+      this.windDebrisGraphics.destroy();
+    }
+    this.windDebrisGraphics = this.add.graphics();
+    this.windDebrisGraphics.setScrollFactor(0);
+    this.windDebrisGraphics.setDepth(-70); // In front of rain
+
+    const cameraX = this.cameras.main.scrollX;
+    const speed = Math.abs(this.windStrength) * 8;
+
+    for (const debris of this.windDebris) {
+      // Move debris with wind
+      debris.x += this.windStrength * speed;
+      debris.y += Math.sin(debris.rotation) * 0.5; // Gentle vertical wobble
+      debris.rotation += debris.rotationSpeed;
+
+      // Wrap around screen (in world space)
+      const screenX = debris.x - cameraX * 0.5; // Slight parallax
+      if (this.windStrength > 0 && screenX > GAME_WIDTH + 50) {
+        debris.x -= GAME_WIDTH + 100;
+      } else if (this.windStrength < 0 && screenX < -50) {
+        debris.x += GAME_WIDTH + 100;
+      }
+
+      // Wrap vertical
+      if (debris.y > GAME_HEIGHT) debris.y = -10;
+      if (debris.y < -10) debris.y = GAME_HEIGHT;
+
+      // Only draw if on screen
+      if (screenX > -50 && screenX < GAME_WIDTH + 50) {
+        const alpha = Math.min(Math.abs(this.windStrength), 0.6);
+
+        if (debris.type === 'leaf') {
+          // Small leaf shape (simple rotated ellipse drawn as polygon)
+          this.windDebrisGraphics.fillStyle(0x88AA44, alpha);
+          const cos = Math.cos(debris.rotation);
+          const sin = Math.sin(debris.rotation);
+          const w = 6, h = 3;
+          // Draw a simple diamond/leaf shape
+          this.windDebrisGraphics.beginPath();
+          this.windDebrisGraphics.moveTo(screenX + w * cos, debris.y + w * sin);
+          this.windDebrisGraphics.lineTo(screenX - h * sin, debris.y + h * cos);
+          this.windDebrisGraphics.lineTo(screenX - w * cos, debris.y - w * sin);
+          this.windDebrisGraphics.lineTo(screenX + h * sin, debris.y - h * cos);
+          this.windDebrisGraphics.closePath();
+          this.windDebrisGraphics.fillPath();
+        } else {
+          // Dust particle (small circle)
+          this.windDebrisGraphics.fillStyle(0xAA9977, alpha * 0.7);
+          this.windDebrisGraphics.fillCircle(screenX, debris.y, 2);
+        }
+      }
+    }
+  }
+
   private updateRain(): void {
     if (this.rainIntensity === 'none' || this.rainDrops.length === 0) return;
 
@@ -895,12 +1009,14 @@ export class GameScene extends Phaser.Scene {
     this.rainGraphics.beginPath();
 
     for (const drop of this.rainDrops) {
-      // Draw rain drop as angled line (slight wind effect)
+      // Draw rain drop as angled line (wind affects angle)
+      const windOffset = this.windStrength * 15; // Wind affects rain angle
       this.rainGraphics.moveTo(drop.x, drop.y);
-      this.rainGraphics.lineTo(drop.x - 2, drop.y + drop.length);
+      this.rainGraphics.lineTo(drop.x + windOffset, drop.y + drop.length);
 
-      // Move drop down
+      // Move drop down and drift with wind
       drop.y += drop.speed;
+      drop.x += this.windStrength * 2; // Drift with wind
 
       // Check if drop hits water surface - spawn upward splash
       if (drop.y > waterY && drop.y < waterY + drop.speed + 10) {
@@ -5447,6 +5563,32 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Check projectile collisions with buildings/landmarks
+    for (const { projectile } of allProjectiles) {
+      if (toDestroy.has(projectile)) continue;
+
+      for (const decoration of this.decorations) {
+        if (decoration.isDestroyed || !decoration.visible) continue;
+
+        // Quick horizontal distance check
+        if (Math.abs(projectile.x - decoration.x) > 150) continue;
+
+        const bounds = decoration.getCollisionBounds();
+
+        if (
+          projectile.x >= bounds.x &&
+          projectile.x <= bounds.x + bounds.width &&
+          projectile.y >= bounds.y &&
+          projectile.y <= bounds.y + bounds.height
+        ) {
+          // Hit a building! Projectile explodes, building is unharmed
+          toDestroy.add(projectile);
+          this.createProjectileExplosion(projectile.x, projectile.y);
+          break;
+        }
+      }
+    }
+
     // Remove destroyed projectiles from their cannons
     for (const cannon of this.cannons) {
       const projectiles = cannon.getProjectiles();
@@ -5524,6 +5666,26 @@ export class GameScene extends Phaser.Scene {
 
     // Update unstable weather (transitions rain intensity)
     this.updateUnstableWeather(time);
+
+    // Update wind system
+    this.updateWind(time);
+    this.updateWindDebris();
+
+    // Apply wind force to shuttles (only when airborne)
+    const WIND_FORCE = 0.0015; // About 25% of THRUST_POWER (0.006)
+    for (const shuttle of this.shuttles) {
+      if (shuttle.active) {
+        const matterBody = shuttle.body as MatterJS.BodyType;
+        if (matterBody) {
+          // Don't apply wind when grounded (very low velocity = landed)
+          const velocity = shuttle.getVelocity();
+          if (velocity.total > 0.5) { // Only apply wind when moving
+            const windForceX = this.windStrength * WIND_FORCE;
+            this.matter.body.applyForce(matterBody, matterBody.position, { x: windForceX, y: 0 });
+          }
+        }
+      }
+    }
 
     // Update rain effect
     this.updateRain();
@@ -5793,7 +5955,7 @@ export class GameScene extends Phaser.Scene {
       // ALWAYS update cannons that have projectiles in flight, even if off-screen
       // This ensures projectiles keep moving after player scrolls away from cannon
       if (isOnScreen || hasProjectiles) {
-        cannon.update(time);
+        cannon.update(time, this.windStrength);
 
         // Check projectile collisions with all shuttles
         for (const projectile of cannon.getProjectiles()) {
