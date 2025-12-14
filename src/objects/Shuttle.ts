@@ -247,6 +247,22 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     return this.legsExtended;
   }
 
+  // Public method to retract landing gear (used for dogfight mode start)
+  public retractLandingGear(): void {
+    if (this.legsExtended) {
+      this.legsExtended = false;
+      this.setTexture('shuttle');
+    }
+  }
+
+  // Public method to extend landing gear (used for auto-gear near pads)
+  public extendLandingGear(): void {
+    if (!this.legsExtended) {
+      this.legsExtended = true;
+      this.setTexture('shuttle-legs');
+    }
+  }
+
   private updateThrusterParticles(): void {
     if (!this.thrusterParticles) return;
 

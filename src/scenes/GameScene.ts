@@ -27,6 +27,8 @@ import {
   BOMB_DROPPABLE_TYPES,
   FOOD_PICKUP_AMOUNT,
   COLLECTIBLE_TYPES,
+  GameMode,
+  DOGFIGHT_CONFIG,
 } from '../constants';
 
 type GameState = 'playing' | 'landed' | 'crashed' | 'victory';
@@ -37,6 +39,7 @@ export class GameScene extends Phaser.Scene {
   private shuttle2: Shuttle | null = null; // Secondary shuttle (P2)
   private shuttles: Shuttle[] = []; // All active shuttles
   private playerCount: number = 1;
+  private gameMode: GameMode = 'normal';
   private terrain!: Terrain;
   private landingPads: LandingPad[] = [];
   private cannons: Cannon[] = [];
@@ -94,6 +97,9 @@ export class GameScene extends Phaser.Scene {
   // Player vs player kill tracking (2-player mode)
   private p1Kills: number = 0;
   private p2Kills: number = 0;
+  private killAlreadyTracked: boolean = false; // Prevents double-counting bomb kills
+  private lastDeadPlayerIndex: number = -1; // Track which player died most recently
+  private dogfightPadIndex: number = -1; // Random starting pad for dogfight mode
 
   // Death messages for 2-player mode
   private p1DeathMessage: string = '';
@@ -208,10 +214,29 @@ export class GameScene extends Phaser.Scene {
     if (idx !== -1) this.debrisSprites.splice(idx, 1);
   }
 
-  create(data?: { playerCount?: number }): void {
+  create(data?: { playerCount?: number; gameMode?: GameMode; p1Kills?: number; p2Kills?: number; dogfightPadIndex?: number }): void {
     this.gameState = 'playing';
     this.gameStartTime = Date.now(); // Use Date.now() for reliable timing across scene restarts
     this.playerCount = data?.playerCount ?? 1;
+    this.gameMode = data?.gameMode ?? 'normal';
+
+    // Restore kill counts if continuing dogfight mode
+    if (this.gameMode === 'dogfight') {
+      this.p1Kills = data?.p1Kills ?? 0;
+      this.p2Kills = data?.p2Kills ?? 0;
+      // Force 2-player mode for dogfight
+      this.playerCount = 2;
+      // Use provided pad index or pick a random one (excluding Washington at index 0)
+      this.dogfightPadIndex = data?.dogfightPadIndex ?? (1 + Math.floor(Math.random() * (LANDING_PADS.length - 1)));
+    } else {
+      // Reset kills for normal mode
+      this.p1Kills = 0;
+      this.p2Kills = 0;
+      this.dogfightPadIndex = -1;
+    }
+    // Reset kill tracking flags
+    this.killAlreadyTracked = false;
+    this.lastDeadPlayerIndex = -1;
 
     // Reset all game object arrays (Phaser may reuse scene instances)
     this.landingPads = [];
@@ -298,8 +323,10 @@ export class GameScene extends Phaser.Scene {
     // Create sharks in Atlantic Ocean
     this.spawnSharks();
 
-    // Create Greenland ice block in Atlantic Ocean
-    this.spawnGreenlandIce();
+    // Create Greenland ice block in Atlantic Ocean (not in dogfight mode)
+    if (this.gameMode !== 'dogfight') {
+      this.spawnGreenlandIce();
+    }
 
     // Create golf cart in USA section (patrols x: 800-1200) - 1/3 chance to spawn
     if (Math.random() < 0.33) {
@@ -370,9 +397,11 @@ export class GameScene extends Phaser.Scene {
       this.decorations
     );
 
-    // Create shuttle(s) - start landed on NYC pad (index 1, since Washington is now index 0)
-    const startPad = this.landingPads[1]; // NYC Fuel Stop
-    this.startPadId = 1; // Remember we started on pad 1
+    // Create shuttle(s) - start landed on a pad
+    // In dogfight mode, use the random pad; otherwise use NYC (index 1)
+    const startPadIndex = this.gameMode === 'dogfight' ? this.dogfightPadIndex : 1;
+    const startPad = this.landingPads[startPadIndex];
+    this.startPadId = startPadIndex; // Remember which pad we started on
     // Position shuttle on the pad - adjust so feet visually touch the platform (with legs down)
     const shuttleStartY = startPad.y - 20;
 
@@ -394,6 +423,12 @@ export class GameScene extends Phaser.Scene {
       this.shuttles.push(this.shuttle2);
     }
 
+    // In dogfight mode, start with landing gear retracted for combat
+    if (this.gameMode === 'dogfight') {
+      this.shuttle.retractLandingGear();
+      this.shuttle2?.retractLandingGear();
+    }
+
     // Invulnerability at start - prevents crashes until player launches
     this.invulnerable = true;
 
@@ -413,11 +448,14 @@ export class GameScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
 
     // Set up custom controls for both players
+    // In dogfight mode, landing gear is automatic - disable manual gear keys
     this.p1Controls = {
       thrust: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
       rotateLeft: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
       rotateRight: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
-      gear: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
+      gear: this.gameMode !== 'dogfight'
+        ? this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
+        : null as any,
     };
     this.shuttle.setControls(this.p1Controls);
 
@@ -427,7 +465,9 @@ export class GameScene extends Phaser.Scene {
         thrust: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
         rotateLeft: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
         rotateRight: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-        gear: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E),
+        gear: this.gameMode !== 'dogfight'
+          ? this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
+          : null as any,
       };
       this.shuttle2.setControls(this.p2Controls);
       // P2 bomb key (S)
@@ -442,6 +482,10 @@ export class GameScene extends Phaser.Scene {
     const key2 = this.input.keyboard!.addKey(50); // '2' key
     key2.on('down', () => {
       this.restartWithPlayerCount(2);
+    });
+    const key3 = this.input.keyboard!.addKey(51); // '3' key - Dogfight mode
+    key3.on('down', () => {
+      this.startDogfightMode();
     });
 
     // Set up collision detection
@@ -465,7 +509,14 @@ export class GameScene extends Phaser.Scene {
       getP2LegsExtended: () => this.shuttle2?.areLandingLegsExtended() ?? false,
       isP2Active: () => this.shuttle2?.active ?? false,
       getKillCounts: () => ({ p1Kills: this.p1Kills, p2Kills: this.p2Kills }),
+      gameMode: this.gameMode,
     });
+
+    // Show mode announcement for multiplayer modes (only on first round, not restarts)
+    const isFirstRound = this.p1Kills === 0 && this.p2Kills === 0;
+    if ((this.playerCount === 2 || this.gameMode === 'dogfight') && isFirstRound) {
+      this.showModeAnnouncement();
+    }
 
     // Country indicator
     this.currentCountryText = this.add.text(GAME_WIDTH / 2, 20, '', {
@@ -1161,18 +1212,26 @@ export class GameScene extends Phaser.Scene {
           const cloudScreenY = cloud.y - cameraY * 0.02;
           const cloudVisualCenterY = cloudScreenY + 5 * cloud.scale;
           const dx = Math.abs(shuttleScreenX - cloudScreenX);
+          const dy = shuttleScreenY - cloudVisualCenterY;
+          const collisionRadius = cloud.scale * 35;
+          const maxStrikeRange = collisionRadius + 150; // Must still be reasonably close
+
           // Check if shuttle is grounded (close to terrain)
           const terrainY = this.terrain.getHeightAt(shuttle.x);
           const distanceFromGround = terrainY - shuttle.y;
           const isGrounded = distanceFromGround < 50; // Within 50px of ground = safe
 
-          // Lightning strikes if NOT grounded
-          if (!isGrounded) {
+          // Check if shuttle is still in strike range (escaped if moved far away)
+          const stillInRange = dx < 150 && dy > 0 && dy < maxStrikeRange;
+
+          // Lightning strikes only if NOT grounded AND still in range
+          if (!isGrounded && stillInRange) {
             this.triggerLightningStrike(cloud, shuttle);
           }
-          // If shuttle is grounded, lightning misses (hits ground nearby)
+          // Otherwise lightning misses (hits ground nearby)
           else {
             this.triggerAmbientLightning(cloud);
+            console.log('[Lightning] Shuttle escaped! Strike missed.', { dx, dy, isGrounded, stillInRange });
           }
         }
         this.pendingLightningStrike = null;
@@ -1483,6 +1542,11 @@ export class GameScene extends Phaser.Scene {
       );
       this.landingPads.push(pad);
 
+      // In dogfight mode, hide the peace medal on Washington pad
+      if (isWashington && this.gameMode === 'dogfight') {
+        pad.hidePeaceMedal();
+      }
+
       // Create oil tower for fuel depots and oil platform
       const isFuelDepot = !isOilPlatform && (padData.name.includes('Fuel') || padData.name.includes('Gas') || padData.name.includes('Depot') || padData.name.includes('Station'));
       if (isFuelDepot || isOilPlatform) {
@@ -1541,12 +1605,16 @@ export class GameScene extends Phaser.Scene {
 
     // Add sunken food positions
     for (const food of this.sunkenFood) {
-      targets.push({ x: food.x, y: food.y });
+      // Check food exists and has valid sprite
+      if (food && food.sprite && food.sprite.active && food.x !== undefined && food.y !== undefined) {
+        targets.push({ x: food.x, y: food.y });
+      }
     }
 
     // Add currently falling bombs that are in Atlantic Ocean and underwater
     for (const bomb of this.bombs) {
-      if (bomb && bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
+      // Check bomb exists and hasn't been destroyed (body might be null after explosion)
+      if (bomb && bomb.active && bomb.body && bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
         targets.push({ x: bomb.x, y: bomb.y });
       }
     }
@@ -2498,8 +2566,8 @@ export class GameScene extends Phaser.Scene {
         this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
         this.gameState = 'playing';
       }
-    } else if (pad.isWashington && !this.hasPeaceMedal) {
-      // Pick up the Peace Medal at Washington!
+    } else if (pad.isWashington && !this.hasPeaceMedal && this.gameMode !== 'dogfight') {
+      // Pick up the Peace Medal at Washington! (not in dogfight mode)
       this.hasPeaceMedal = true;
 
       // Hide the medal model on the landing pad
@@ -2906,7 +2974,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkGreenlandIcePickup(): void {
-    // Don't pick up if already have ice OR if carrying Peace Medal
+    // Don't pick up if already have ice OR if carrying Peace Medal OR in dogfight mode
     if (!this.greenlandIce) {
       return;
     }
@@ -2915,6 +2983,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.hasPeaceMedal) {
       return;
+    }
+    if (this.gameMode === 'dogfight') {
+      return; // No iceberg pickup in dogfight mode
     }
     if (this.greenlandIce.isDestroyed) {
       return;
@@ -3163,6 +3234,9 @@ export class GameScene extends Phaser.Scene {
     // Mark shuttle inactive immediately to prevent duplicate collision handling
     shuttle.setActive(false);
 
+    // Track which player died (0-based index) for dogfight kill tracking
+    this.lastDeadPlayerIndex = playerNum - 1;
+
     console.log(`P${playerNum} crashed: ${message}`);
 
     // Store death message for this player
@@ -3202,6 +3276,38 @@ export class GameScene extends Phaser.Scene {
   // Check if game should end after a crash (2-player mode)
   private checkGameOverAfterCrash(): void {
     const remainingActive = this.shuttles.filter(s => s.active);
+
+    // In dogfight mode, any death triggers quick restart (unless winner reached 10 kills)
+    if (this.gameMode === 'dogfight') {
+      // Award kill to the opponent of the player who died
+      // But skip if kill was already tracked (e.g., from bomb hit)
+      if (this.lastDeadPlayerIndex >= 0 && !this.killAlreadyTracked) {
+        // The opponent of the dead player gets the kill
+        // lastDeadPlayerIndex: 0 = P1 died, so P2 gets kill
+        // lastDeadPlayerIndex: 1 = P2 died, so P1 gets kill
+        if (this.lastDeadPlayerIndex === 0) {
+          this.p2Kills++;  // P1 died, P2 gets the kill
+          console.log('Kill awarded to P2 (blue) - P1 died');
+        } else {
+          this.p1Kills++;  // P2 died, P1 gets the kill
+          console.log('Kill awarded to P1 (white) - P2 died');
+        }
+      }
+      // Reset flags for next death
+      this.killAlreadyTracked = false;
+      this.lastDeadPlayerIndex = -1;
+      // If both dead, no kill awarded
+
+      // Check for winner
+      if (this.p1Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN || this.p2Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN) {
+        this.showDogfightWinner();
+        return;
+      }
+      // Quick restart for any death
+      this.quickRestartDogfight();
+      return;
+    }
+
     if (remainingActive.length === 0) {
       // All shuttles dead - game over
       this.gameState = 'crashed';
@@ -3231,7 +3337,11 @@ export class GameScene extends Phaser.Scene {
     if (!shuttle.active) return; // Already dead
     // Note: Bribed cannons stand down and don't fire, but existing projectiles can still hit!
 
-    const playerNum = shuttle.getPlayerIndex();
+    const playerIndex = shuttle.getPlayerIndex(); // 0-based
+    const playerNum = playerIndex + 1; // 1-based for display/messages
+
+    // Track which player died for dogfight kill tracking
+    this.lastDeadPlayerIndex = playerIndex;
     console.log('CRASH: Hit by projectile at', { x: shuttle.x, y: shuttle.y }, 'player:', playerNum, 'type:', projectileSpriteKey);
 
     // Generate and store death message
@@ -3680,8 +3790,19 @@ export class GameScene extends Phaser.Scene {
               this.sound.play(gotchaSound);
             });
 
+            // In dogfight mode, check for winner
+            if (this.gameMode === 'dogfight') {
+              if (this.p1Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN || this.p2Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN) {
+                // We have a winner! Show victory screen
+                targetShuttle.explode();
+                this.showDogfightWinner();
+                return; // Exit update loop
+              }
+            }
+
             // Kill the target shuttle with friendly fire cause
             const causeEmoji = victimPlayer === 1 ? 'p1_bombed' : 'p2_bombed';
+            this.killAlreadyTracked = true; // Prevent double-counting in checkGameOverAfterCrash
             this.handleShuttleCrash(victimPlayer, `Bombed by P${killerPlayer}!`, causeEmoji);
           }
         }
@@ -5738,6 +5859,9 @@ export class GameScene extends Phaser.Scene {
     // Stop here if not playing
     if (this.gameState !== 'playing') return;
 
+    // Check for shuttles flying out of bounds (into the void)
+    this.checkOutOfBounds();
+
     // Check for lightning strikes in stormy weather
     this.checkLightningStrikes(time);
 
@@ -5767,6 +5891,10 @@ export class GameScene extends Phaser.Scene {
     // Update rain effect
     this.updateRain();
 
+    // Auto landing gear in dogfight mode
+    if (this.gameMode === 'dogfight') {
+      this.updateAutoLandingGear();
+    }
 
     // Country visits are now tracked on successful landing, not just passing through
     const currentCountry = this.getCurrentCountry();
@@ -6213,8 +6341,220 @@ export class GameScene extends Phaser.Scene {
   private restartWithPlayerCount(playerCount: number): void {
     // Stop UI scene
     this.scene.stop('UIScene');
-    // Restart game scene with new player count
-    this.scene.restart({ playerCount });
+    // Restart game scene with new player count (exit dogfight if active)
+    this.scene.restart({ playerCount, gameMode: 'normal' });
+  }
+
+  private startDogfightMode(): void {
+    // Stop UI scene
+    this.scene.stop('UIScene');
+    // Start dogfight mode - reset kills for fresh match
+    this.scene.restart({
+      playerCount: 2,
+      gameMode: 'dogfight',
+      p1Kills: 0,
+      p2Kills: 0
+    });
+  }
+
+  private quickRestartDogfight(): void {
+    // Brief delay for death animation, then restart round
+    this.time.delayedCall(DOGFIGHT_CONFIG.RESTART_DELAY_MS, () => {
+      this.scene.stop('UIScene');
+      this.scene.restart({
+        playerCount: 2,
+        gameMode: 'dogfight',
+        p1Kills: this.p1Kills,
+        p2Kills: this.p2Kills,
+        dogfightPadIndex: this.dogfightPadIndex, // Keep same spawn pad for entire match
+      });
+    });
+  }
+
+  private showDogfightWinner(): void {
+    const winner = this.p1Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN ? 1 : 2;
+    const winnerColor = winner === 1 ? '#FF6B6B' : '#4ECDC4';
+
+    // Freeze gameplay
+    this.gameState = 'victory';
+
+    // Dark overlay
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7)
+      .setScrollFactor(0).setDepth(999);
+
+    // Trophy emoji
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 120, '🏆', {
+      fontSize: '96px'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+
+    // Winner announcement
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30,
+      `PLAYER ${winner} WINS!`, {
+      fontSize: '56px',
+      color: winnerColor,
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 4
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+
+    // Final score
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40,
+      `Final Score: ${this.p1Kills} - ${this.p2Kills}`, {
+      fontSize: '32px',
+      color: '#FFFFFF'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+
+    // Instructions
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 100,
+      'Press ENTER to play again\nPress ESC for menu', {
+      fontSize: '20px',
+      color: '#AAAAAA',
+      align: 'center'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+
+    // Celebration particles (confetti)
+    this.createDogfightVictoryParticles();
+
+    // Key handlers for restart
+    const enterKey = this.input.keyboard!.addKey('ENTER');
+    enterKey.once('down', () => {
+      this.scene.stop('UIScene');
+      this.scene.restart({ playerCount: 2, gameMode: 'dogfight', p1Kills: 0, p2Kills: 0 });
+    });
+
+    const escKey = this.input.keyboard!.addKey('ESC');
+    escKey.once('down', () => {
+      this.scene.stop('UIScene');
+      this.scene.start('MenuScene');
+    });
+  }
+
+  private createDogfightVictoryParticles(): void {
+    // Gold/confetti particles falling from top
+    const colors = [0xFFD700, 0xFF6B6B, 0x4ECDC4, 0xFFFFFF];
+    for (let i = 0; i < 50; i++) {
+      const x = Math.random() * GAME_WIDTH;
+      const particle = this.add.rectangle(x, -20, 8, 8, colors[i % colors.length])
+        .setScrollFactor(0).setDepth(1001);
+
+      this.tweens.add({
+        targets: particle,
+        y: GAME_HEIGHT + 50,
+        x: x + (Math.random() - 0.5) * 200,
+        rotation: Math.random() * 10,
+        duration: 2000 + Math.random() * 2000,
+        delay: Math.random() * 1000,
+        ease: 'Quad.easeIn'
+      });
+    }
+  }
+
+  // Show mode announcement at game start
+  private showModeAnnouncement(): void {
+    const modeText = this.gameMode === 'dogfight' ? 'DOGFIGHT MODE' : '2 PLAYER MODE';
+    const modeColor = this.gameMode === 'dogfight' ? '#FF4444' : '#44AAFF';
+
+    // Main mode text only
+    const mainText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, modeText, {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '64px',
+      color: modeColor,
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 6,
+    });
+    mainText.setOrigin(0.5, 0.5);
+    mainText.setScrollFactor(0);
+    mainText.setDepth(2001);
+
+    // Scale in animation
+    mainText.setScale(0);
+
+    this.tweens.add({
+      targets: mainText,
+      scale: 1,
+      duration: 300,
+      ease: 'Back.easeOut',
+    });
+
+    // Fade out after 1.5 seconds
+    this.time.delayedCall(1500, () => {
+      this.tweens.add({
+        targets: mainText,
+        alpha: 0,
+        scale: 1.2,
+        duration: 400,
+        onComplete: () => {
+          mainText.destroy();
+        },
+      });
+    });
+  }
+
+  // Check if shuttles have flown out of bounds and kill them
+  private checkOutOfBounds(): void {
+    // Don't check during invulnerability period (spawn protection)
+    if (this.invulnerable) return;
+
+    const VOID_TOP = -500;           // Too high above the screen
+    const VOID_LEFT = WORLD_START_X - 200;  // Too far left
+    const VOID_RIGHT = WORLD_WIDTH + 200;   // Too far right
+
+    for (const shuttle of this.shuttles) {
+      if (!shuttle.active) continue;
+
+      const isOutOfBounds =
+        shuttle.y < VOID_TOP ||
+        shuttle.x < VOID_LEFT ||
+        shuttle.x > VOID_RIGHT;
+
+      if (isOutOfBounds) {
+        const playerIndex = shuttle.getPlayerIndex(); // 0-based
+        const playerNum = playerIndex + 1; // 1-based for display
+        console.log(`VOID DEATH: Player ${playerNum} flew out of bounds at`, { x: shuttle.x, y: shuttle.y });
+
+        // Track which player died for kill tracking
+        this.lastDeadPlayerIndex = playerIndex;
+
+        // Set death message
+        if (playerNum === 1) {
+          this.p1DeathMessage = 'Lost in the void!';
+        } else {
+          this.p2DeathMessage = 'Lost in the void!';
+        }
+
+        // Kill the shuttle
+        shuttle.explode();
+        this.checkGameOverAfterCrash();
+      }
+    }
+  }
+
+  // Auto landing gear management for dogfight mode
+  private updateAutoLandingGear(): void {
+    for (const shuttle of this.shuttles) {
+      if (!shuttle.active) continue;
+
+      // Find minimum distance to any landing pad
+      let minDistToPad = Infinity;
+      for (const pad of this.landingPads) {
+        const dx = shuttle.x - pad.x;
+        const dy = shuttle.y - pad.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDistToPad) {
+          minDistToPad = dist;
+        }
+      }
+
+      // Auto-extend when close to a pad
+      if (minDistToPad < DOGFIGHT_CONFIG.AUTO_GEAR_EXTEND_DISTANCE) {
+        shuttle.extendLandingGear();
+      }
+      // Auto-retract when far from all pads
+      else if (minDistToPad > DOGFIGHT_CONFIG.AUTO_GEAR_RETRACT_DISTANCE) {
+        shuttle.retractLandingGear();
+      }
+    }
   }
 
   /**

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem, InventoryItem } from '../systems/InventorySystem';
-import { GAME_WIDTH, GAME_HEIGHT, COLORS, MAX_SAFE_LANDING_VELOCITY, BOMB_DROPPABLE_TYPES } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, COLORS, MAX_SAFE_LANDING_VELOCITY, BOMB_DROPPABLE_TYPES, GameMode, DOGFIGHT_CONFIG } from '../constants';
 import { AchievementPopup } from '../ui/AchievementPopup';
 import { getAchievementSystem } from '../systems/AchievementSystem';
 import { Achievement } from '../data/achievements';
@@ -24,6 +24,8 @@ interface UISceneData {
   isP2Active?: () => boolean;
   // Kill tally for 2-player mode
   getKillCounts?: () => { p1Kills: number; p2Kills: number };
+  // Game mode
+  gameMode?: GameMode;
 }
 
 export class UIScene extends Phaser.Scene {
@@ -68,6 +70,8 @@ export class UIScene extends Phaser.Scene {
   private p1TallyGraphics: Phaser.GameObjects.Graphics | null = null;
   private p2TallyGraphics: Phaser.GameObjects.Graphics | null = null;
   private getKillCounts: () => { p1Kills: number; p2Kills: number } = () => ({ p1Kills: 0, p2Kills: 0 });
+  // Game mode
+  private gameMode: GameMode = 'normal';
 
   // Achievement popup (displayed in UI scene so it's on top of everything)
   private achievementPopup!: AchievementPopup;
@@ -93,6 +97,7 @@ export class UIScene extends Phaser.Scene {
     this.getP2LegsExtended = data.getP2LegsExtended ?? (() => false);
     this.isP2Active = data.isP2Active ?? (() => false);
     this.getKillCounts = data.getKillCounts ?? (() => ({ p1Kills: 0, p2Kills: 0 }));
+    this.gameMode = data.gameMode ?? 'normal';
 
     // Reset state variables (Phaser may reuse scene instances)
     this.lastTime = -1;
@@ -855,8 +860,23 @@ export class UIScene extends Phaser.Scene {
     this.p2TallyGraphics = this.add.graphics();
     this.killTallyContainer.add(this.p2TallyGraphics);
 
-    // Start hidden - only show after first kill
-    this.killTallyContainer.setVisible(false);
+    // In dogfight mode, add "FIRST TO X" indicator and show immediately
+    if (this.gameMode === 'dogfight') {
+      const firstTo10 = this.add.text(80, -28, `FIRST TO ${DOGFIGHT_CONFIG.KILLS_TO_WIN}`, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '12px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2,
+      });
+      firstTo10.setOrigin(0.5, 0.5);
+      this.killTallyContainer.add(firstTo10);
+      this.killTallyContainer.setVisible(true);
+    } else {
+      // Start hidden - only show after first kill in normal mode
+      this.killTallyContainer.setVisible(false);
+    }
 
     // Initial display with current kill counts
     const { p1Kills, p2Kills } = this.getKillCounts();
