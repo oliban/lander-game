@@ -60,6 +60,40 @@ export class Terrain {
       heights[i] = height;
     }
 
+    // Switzerland mountain generation (x=10000 to x=12000)
+    // Create multiple distinct mountain peaks with gentle slopes
+    const switzerlandStart = COUNTRIES.find(c => c.name === 'Switzerland')?.startX ?? 10000;
+    const switzerlandEnd = COUNTRIES.find(c => c.name === 'Germany')?.startX ?? 12000;
+    const swissWidth = switzerlandEnd - switzerlandStart; // 2000px
+
+    for (let i = 0; i < numPoints; i++) {
+      const x = startX + i * TERRAIN_SEGMENT_WIDTH;
+
+      // Only modify Switzerland region
+      if (x >= switzerlandStart && x < switzerlandEnd) {
+        // Define 3 distinct mountain peaks with WIDE sigma for gentle slopes
+        const peaks = [
+          { x: switzerlandStart + swissWidth * 0.18, height: GAME_HEIGHT * 0.6, sigma: 280 },   // First mountain
+          { x: switzerlandStart + swissWidth * 0.50, height: GAME_HEIGHT * 1.5, sigma: 350 },   // MATTERHORN - tallest
+          { x: switzerlandStart + swissWidth * 0.82, height: GAME_HEIGHT * 0.5, sigma: 260 },   // Third mountain
+        ];
+
+        // Calculate mountain height using MAX of Gaussian peaks (not sum!)
+        // This creates distinct separate peaks with valleys between
+        let mountainHeight = 0;
+        for (const peak of peaks) {
+          // Gaussian: height * exp(-((x-peak)^2) / (2*sigma^2))
+          const contrib = peak.height * Math.exp(-Math.pow(x - peak.x, 2) / (2 * peak.sigma * peak.sigma));
+          mountainHeight = Math.max(mountainHeight, contrib);
+        }
+
+        // Add subtle rocky texture
+        const rockNoise = Math.sin(x * 0.03) * 8 + Math.sin(x * 0.07) * 4;
+
+        heights[i] = baseHeight - mountainHeight + rockNoise;
+      }
+    }
+
     // Smooth the terrain with a moving average
     const smoothedHeights: number[] = [];
     const smoothRadius = 3;
@@ -81,16 +115,21 @@ export class Terrain {
       heights[i] = smoothedHeights[i];
     }
 
-    // Flatten landing pad areas
+    // Flatten landing pad areas (with extra room on the left for flag)
     for (const pad of LANDING_PADS) {
-      const padStartIdx = Math.floor((pad.x - pad.width / 2 - startX) / TERRAIN_SEGMENT_WIDTH);
-      const padEndIdx = Math.ceil((pad.x + pad.width / 2 - startX) / TERRAIN_SEGMENT_WIDTH);
+      // Add 60px extra on left side for flag pole
+      const extraLeft = 60;
+      const extraRight = 20;
+      const padStartIdx = Math.floor((pad.x - pad.width / 2 - extraLeft - startX) / TERRAIN_SEGMENT_WIDTH);
+      const padEndIdx = Math.ceil((pad.x + pad.width / 2 + extraRight - startX) / TERRAIN_SEGMENT_WIDTH);
 
       if (padStartIdx >= 0 && padEndIdx < numPoints) {
-        // Find average height in pad area
+        // Find average height in pad area (use center area for height calculation)
+        const centerStartIdx = Math.floor((pad.x - pad.width / 2 - startX) / TERRAIN_SEGMENT_WIDTH);
+        const centerEndIdx = Math.ceil((pad.x + pad.width / 2 - startX) / TERRAIN_SEGMENT_WIDTH);
         let avgHeight = 0;
         let count = 0;
-        for (let i = padStartIdx; i <= padEndIdx; i++) {
+        for (let i = centerStartIdx; i <= centerEndIdx; i++) {
           if (i >= 0 && i < heights.length) {
             avgHeight += heights[i];
             count++;
@@ -98,7 +137,7 @@ export class Terrain {
         }
         avgHeight = count > 0 ? avgHeight / count : baseHeight;
 
-        // Flatten the area
+        // Flatten the wider area (including flag space)
         for (let i = padStartIdx; i <= padEndIdx; i++) {
           if (i >= 0 && i < heights.length) {
             heights[i] = avgHeight;
@@ -107,16 +146,21 @@ export class Terrain {
       }
     }
 
-    // Create flat plateau areas for buildings (not in Atlantic Ocean)
+    // Create flat plateau areas for buildings (not in Atlantic Ocean or Switzerland)
     const oceanStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const oceanEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const switzerlandStartX = COUNTRIES.find(c => c.name === 'Switzerland')?.startX ?? 10000;
+    const switzerlandEndX = COUNTRIES.find(c => c.name === 'Germany')?.startX ?? 12000;
     const plateauWidth = 300; // Width of flat area in pixels
     const plateauSpacing = 800; // Average spacing between plateaus
 
-    // Create plateaus throughout the terrain, avoiding ocean and landing pads
+    // Create plateaus throughout the terrain, avoiding ocean, Switzerland (mountains), and landing pads
     for (let x = startX + 400; x < endX - 400; x += plateauSpacing + Math.random() * 400) {
       // Skip Atlantic Ocean
       if (x >= oceanStart && x < oceanEnd) continue;
+
+      // Skip Switzerland (mountainous terrain, no buildings)
+      if (x >= switzerlandStartX && x < switzerlandEndX) continue;
 
       // Skip areas near landing pads
       const nearPad = LANDING_PADS.some(pad => Math.abs(x - pad.x) < pad.width + 200);
@@ -157,9 +201,15 @@ export class Terrain {
       }
     }
 
-    // Clamp heights
+    // Clamp heights (but NOT for Switzerland mountains)
+    const swissStart = COUNTRIES.find(c => c.name === 'Switzerland')?.startX ?? 10000;
+    const swissEnd = COUNTRIES.find(c => c.name === 'Germany')?.startX ?? 12000;
     for (let i = 0; i < heights.length; i++) {
-      heights[i] = Phaser.Math.Clamp(heights[i], GAME_HEIGHT * 0.4, GAME_HEIGHT * 0.9);
+      const x = startX + i * TERRAIN_SEGMENT_WIDTH;
+      // Don't clamp Switzerland - mountains go much higher
+      if (x < swissStart || x >= swissEnd) {
+        heights[i] = Phaser.Math.Clamp(heights[i], GAME_HEIGHT * 0.4, GAME_HEIGHT * 0.9);
+      }
     }
 
     // Make Atlantic Ocean completely flat
@@ -432,6 +482,66 @@ export class Terrain {
       if (nextCountry && nextCountry.name !== 'Atlantic Ocean' && country.name !== 'Atlantic Ocean') {
         this.drawCountryTransition(country.color, nextCountry.color, nextCountry.startX, BLEND_WIDTH);
       }
+
+      // Draw snow caps for Switzerland (high altitude terrain)
+      if (country.name === 'Switzerland') {
+        this.drawSwissSnowCaps(countryVertices);
+      }
+    }
+  }
+
+  private drawSwissSnowCaps(vertices: TerrainVertex[]): void {
+    // Snow appears above a certain altitude (lower y value = higher altitude)
+    // Snow line is about 40% up the screen
+    const snowLineY = GAME_HEIGHT * 0.35;
+
+    // Draw snow layer on terrain above snow line
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const v1 = vertices[i];
+      const v2 = vertices[i + 1];
+
+      // Only draw snow above the snow line
+      if (v1.y < snowLineY || v2.y < snowLineY) {
+        // Calculate how much of this segment is above snow line
+        const minY = Math.min(v1.y, v2.y);
+
+        // Snow is whiter at higher altitudes
+        const altitude = snowLineY - minY;
+        const snowIntensity = Math.min(1, altitude / (GAME_HEIGHT * 0.5));
+
+        // Draw snow cap - white layer on top of terrain
+        const snowDepth = 15 + snowIntensity * 20; // Deeper snow at higher elevations
+
+        // Pure white snow at peaks, slightly gray lower
+        const snowColor = snowIntensity > 0.5 ? 0xFFFFFF : 0xF0F0F0;
+
+        this.graphics.fillStyle(snowColor, 0.95);
+        this.graphics.beginPath();
+        this.graphics.moveTo(v1.x, Math.min(v1.y, snowLineY));
+        this.graphics.lineTo(v2.x, Math.min(v2.y, snowLineY));
+        this.graphics.lineTo(v2.x, Math.min(v2.y, snowLineY) + snowDepth);
+        this.graphics.lineTo(v1.x, Math.min(v1.y, snowLineY) + snowDepth);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+
+        // Add some snow texture/sparkle
+        if (i % 3 === 0) {
+          const seed = Math.sin(v1.x * 0.1) * 1000;
+          this.graphics.fillStyle(0xFFFFFF, 0.8);
+          this.graphics.fillCircle(v1.x + (seed % 10), v1.y + 5, 2 + (seed % 2));
+        }
+      }
+    }
+
+    // Draw icicles/snow edges at snow line boundary
+    for (let i = 0; i < vertices.length - 1; i += 4) {
+      const v = vertices[i];
+      if (v.y < snowLineY + 50 && v.y > snowLineY - 100) {
+        const seed = Math.cos(v.x * 0.08) * 1000;
+        // Small snow patches near snow line
+        this.graphics.fillStyle(0xFFFFFF, 0.7);
+        this.graphics.fillCircle(v.x + (seed % 15) - 7, v.y - 3, 4 + (seed % 3));
+      }
     }
   }
 
@@ -557,12 +667,12 @@ export class Terrain {
   }
 
   private drawOcean(waterPollutionLevel: number = 0): void {
-    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
-    if (this.oceanGraphics) {
-      this.oceanGraphics.destroy();
+    // Reuse graphics object - just clear it each frame
+    if (!this.oceanGraphics) {
+      this.oceanGraphics = this.scene.add.graphics();
+      this.oceanGraphics.setDepth(-1);
     }
-    this.oceanGraphics = this.scene.add.graphics();
-    this.oceanGraphics.setDepth(-1);
+    this.oceanGraphics.clear();
 
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;

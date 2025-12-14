@@ -169,6 +169,8 @@ export class GameScene extends Phaser.Scene {
   private rainDrops: { x: number; y: number; speed: number; length: number }[] = [];
   private rainIntensity: 'none' | 'light' | 'medium' | 'heavy' = 'none';
   private rainSplashes: { x: number; y: number; particles: { dx: number; dy: number; vy: number }[]; age: number }[] = [];
+  // GPU-accelerated rain particle emitter
+  private rainEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private lastLightningCheck: number = 0;
   private pendingLightningStrike: { cloud: { x: number; y: number; scale: number; type: 'cumulus' | 'stratus' | 'alto' | 'storm'; isStormCloud: boolean; lastLightningTime: number }; shuttle: Shuttle; warningStart: number; strikeDelay: number } | null = null;
   // Unstable weather system
@@ -869,6 +871,10 @@ export class GameScene extends Phaser.Scene {
         this.rainGraphics.destroy();
         this.rainGraphics = null;
       }
+      // Stop particle emitter
+      if (this.rainEmitter) {
+        this.rainEmitter.stop();
+      }
     } else if (targetCount > currentCount) {
       // Add more drops
       for (let i = currentCount; i < targetCount; i++) {
@@ -912,21 +918,20 @@ export class GameScene extends Phaser.Scene {
 
   private updateWindDebris(): void {
     if (Math.abs(this.windStrength) < 0.1) {
-      // Calm wind - hide debris
+      // Calm wind - just clear graphics
       if (this.windDebrisGraphics) {
-        this.windDebrisGraphics.destroy();
-        this.windDebrisGraphics = null;
+        this.windDebrisGraphics.clear();
       }
       return;
     }
 
-    // Destroy/recreate pattern
-    if (this.windDebrisGraphics) {
-      this.windDebrisGraphics.destroy();
+    // Lazy create graphics object (reuse instead of destroy/recreate each frame)
+    if (!this.windDebrisGraphics) {
+      this.windDebrisGraphics = this.add.graphics();
+      this.windDebrisGraphics.setScrollFactor(0);
+      this.windDebrisGraphics.setDepth(-70); // In front of rain
     }
-    this.windDebrisGraphics = this.add.graphics();
-    this.windDebrisGraphics.setScrollFactor(0);
-    this.windDebrisGraphics.setDepth(-70); // In front of rain
+    this.windDebrisGraphics.clear();
 
     const cameraX = this.cameras.main.scrollX;
     const speed = Math.abs(this.windStrength) * 8;
@@ -977,92 +982,43 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateRain(): void {
-    if (this.rainIntensity === 'none' || this.rainDrops.length === 0) return;
-
-    // Destroy old graphics and create fresh one each frame to prevent memory buildup
-    if (this.rainGraphics) {
-      this.rainGraphics.destroy();
-    }
-    this.rainGraphics = this.add.graphics();
-    this.rainGraphics.setScrollFactor(0);
-    this.rainGraphics.setDepth(-80);
-
-    // Rain parameters based on intensity
-    const params = {
-      light: { alpha: 0.45, thickness: 1, speedMin: 7, speedRange: 5, lengthMin: 10, lengthRange: 12 },
-      medium: { alpha: 0.6, thickness: 1, speedMin: 10, speedRange: 8, lengthMin: 15, lengthRange: 20 },
-      heavy: { alpha: 0.75, thickness: 2, speedMin: 14, speedRange: 10, lengthMin: 20, lengthRange: 30 }
-    }[this.rainIntensity];
-
-    // Get water bounds (Atlantic Ocean) in screen space
-    const cameraX = this.cameras.main.scrollX;
-    const cameraY = this.cameras.main.scrollY;
-    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
-    const waterScreenStart = atlanticStart - cameraX;
-    const waterScreenEnd = atlanticEnd - cameraX;
-    // Water surface is at terrain height in the ocean area (around y=500 in world coords)
-    const waterWorldY = this.terrain ? this.terrain.getHeightAt(atlanticStart + 500) : 500;
-    const waterY = waterWorldY - cameraY;
-
-    // Rain color - slightly blue-grey - use single path for all drops
-    this.rainGraphics.lineStyle(params.thickness, 0x8899AA, params.alpha);
-    this.rainGraphics.beginPath();
-
-    for (const drop of this.rainDrops) {
-      // Draw rain drop as angled line (wind affects angle)
-      const windOffset = this.windStrength * 15; // Wind affects rain angle
-      this.rainGraphics.moveTo(drop.x, drop.y);
-      this.rainGraphics.lineTo(drop.x + windOffset, drop.y + drop.length);
-
-      // Move drop down and drift with wind
-      drop.y += drop.speed;
-      drop.x += this.windStrength * 2; // Drift with wind
-
-      // Check if drop hits water surface - spawn upward splash
-      if (drop.y > waterY && drop.y < waterY + drop.speed + 10) {
-        if (drop.x > waterScreenStart && drop.x < waterScreenEnd) {
-          // Splash parameters vary by intensity
-          const splashParams = {
-            light: { maxSplashes: 25, particleCount: [2, 3], spread: 5, velocityMin: 1.5, velocityRange: 2, spawnChance: 0.3 },
-            medium: { maxSplashes: 40, particleCount: [3, 4], spread: 7, velocityMin: 2, velocityRange: 3, spawnChance: 0.5 },
-            heavy: { maxSplashes: 60, particleCount: [4, 6], spread: 10, velocityMin: 2.5, velocityRange: 4, spawnChance: 0.7 }
-          }[this.rainIntensity] || { maxSplashes: 40, particleCount: [3, 4], spread: 7, velocityMin: 2, velocityRange: 3, spawnChance: 0.5 };
-
-          // Spawn splash particles at this location (limit total for performance)
-          if (this.rainSplashes.length < splashParams.maxSplashes && Math.random() < splashParams.spawnChance) {
-            // Create particles that shoot upward
-            const numParticles = splashParams.particleCount[0] + Math.floor(Math.random() * (splashParams.particleCount[1] - splashParams.particleCount[0] + 1));
-            const particles: { dx: number; dy: number; vy: number }[] = [];
-            for (let p = 0; p < numParticles; p++) {
-              particles.push({
-                dx: (Math.random() - 0.5) * splashParams.spread, // Spread horizontally
-                dy: 0, // Start at water surface
-                vy: -(splashParams.velocityMin + Math.random() * splashParams.velocityRange) // Upward velocity
-              });
-            }
-            this.rainSplashes.push({
-              x: drop.x + cameraX, // Store in world coords
-              y: waterWorldY,
-              particles,
-              age: 0
-            });
-          }
-        }
+    // Handle rain emitter based on intensity
+    if (this.rainIntensity === 'none') {
+      // Stop emitter when no rain
+      if (this.rainEmitter) {
+        this.rainEmitter.stop();
       }
-
-      // Reset drop when it falls off screen
-      if (drop.y > GAME_HEIGHT + 20) {
-        drop.y = -drop.length;
-        drop.x = Math.random() * (GAME_WIDTH + 200) - 100;
-        drop.speed = params.speedMin + Math.random() * params.speedRange;
-        drop.length = params.lengthMin + Math.random() * params.lengthRange;
-      }
+      return;
     }
 
-    this.rainGraphics.strokePath();
+    // Wind affects rain angle
+    const windSpeedX = this.windStrength * 150;
 
-    // Update and draw splashes
+    // Create emitter if it doesn't exist - use medium intensity config as base
+    if (!this.rainEmitter) {
+      this.rainEmitter = this.add.particles(0, 0, 'raindrop', {
+        x: { min: -50, max: GAME_WIDTH + 50 },
+        y: -20,
+        lifespan: 1500,
+        speedY: { min: 500, max: 800 },
+        speedX: { min: windSpeedX - 30, max: windSpeedX + 30 },
+        alpha: { start: 0.6, end: 0.3 },
+        scaleY: 1.0,
+        scaleX: 1,
+        quantity: 6,
+        frequency: 16,
+        blendMode: Phaser.BlendModes.NORMAL,
+      });
+      this.rainEmitter.setScrollFactor(0);
+      this.rainEmitter.setDepth(-80);
+    }
+
+    // Start emitter if it was stopped
+    if (!this.rainEmitter.emitting) {
+      this.rainEmitter.start();
+    }
+
+    // Update and draw splashes (kept for visual effect on water)
     this.updateRainSplashes();
   }
 
@@ -2802,17 +2758,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePeaceMedalGraphics(): void {
-    if (!this.peaceMedalGraphics || !this.hasPeaceMedal || !this.medalCarrier) return;
+    if (!this.hasPeaceMedal || !this.medalCarrier) return;
 
     // Update physics first
     this.updateMedalPhysics();
 
-    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
-    if (this.peaceMedalGraphics) {
-      this.peaceMedalGraphics.destroy();
+    // Reuse graphics object - just clear it each frame
+    if (!this.peaceMedalGraphics) {
+      this.peaceMedalGraphics = this.add.graphics();
+      this.peaceMedalGraphics.setDepth(100);
     }
-    this.peaceMedalGraphics = this.add.graphics();
-    this.peaceMedalGraphics.setDepth(100);
+    this.peaceMedalGraphics.clear();
 
     const carrier = this.medalCarrier;
     const shuttleX = carrier.x;
@@ -3031,17 +2987,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateGreenlandIceGraphics(): void {
-    if (!this.greenlandIceGraphics || !this.hasGreenlandIce || !this.iceCarrier) return;
+    if (!this.hasGreenlandIce || !this.iceCarrier) return;
 
     // Update physics first
     this.updateGreenlandIcePhysics();
 
-    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
-    if (this.greenlandIceGraphics) {
-      this.greenlandIceGraphics.destroy();
+    // Reuse graphics object - just clear it each frame
+    if (!this.greenlandIceGraphics) {
+      this.greenlandIceGraphics = this.add.graphics();
+      this.greenlandIceGraphics.setDepth(100);
     }
-    this.greenlandIceGraphics = this.add.graphics();
-    this.greenlandIceGraphics.setDepth(100);
+    this.greenlandIceGraphics.clear();
 
     const carrier = this.iceCarrier;
     const shuttleX = carrier.x;
@@ -5370,12 +5326,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateWaterPollution(): void {
-    if (!this.waterPollution) return;
-
-    // Destroy and recreate to prevent Phaser internal state accumulation
-    this.waterPollution.destroy();
-    this.waterPollution = this.add.graphics();
-    this.waterPollution.setDepth(-50);
+    // Lazy create graphics object (reuse instead of destroy/recreate each frame)
+    if (!this.waterPollution) {
+      this.waterPollution = this.add.graphics();
+      this.waterPollution.setDepth(100); // Above water surface
+    }
+    this.waterPollution.clear();
 
     // Get water bounds
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;

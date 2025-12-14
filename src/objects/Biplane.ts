@@ -6,6 +6,7 @@ const BIPLANE_COLORS: Record<string, { primary: number; secondary: number; accen
   'USA': { primary: 0xFFFFFF, secondary: 0xB22234, accent: 0x3C3B6E },
   'United Kingdom': { primary: 0xFFFFFF, secondary: 0xC8102E, accent: 0x012169 },
   'France': { primary: 0xFFFFFF, secondary: 0x0055A4, accent: 0xEF4135 },
+  'Switzerland': { primary: 0xFFFFFF, secondary: 0xDA291C, accent: 0xDA291C }, // White and red
   'Germany': { primary: 0xFFCC00, secondary: 0x000000, accent: 0xDD0000 },
   'Poland': { primary: 0xFFFFFF, secondary: 0xDC143C, accent: 0xDC143C },
   'Russia': { primary: 0xFFFFFF, secondary: 0x0039A6, accent: 0xD52B1E },
@@ -50,6 +51,16 @@ const BANNER_MESSAGES: Record<string, string[]> = {
     "35-HOUR FLIGHT WEEK ONLY",
     "WINE PAIRS WELL WITH EXPLOSIONS",
     "REVOLUTION TIME? OUI OUI",
+  ],
+  'Switzerland': [
+    "NEUTRAL ON YOUR CRASH LANDING",
+    "CHOCOLATE TASTES BETTER AT ALTITUDE",
+    "SWISS BANK: YOUR WRECKAGE IS SECURE",
+    "CUCKOO CLOCK SAYS TIME TO DIE",
+    "FONDUE YOUR FUEL TANK",
+    "MOUNTAINS DON'T MOVE FOR YOU",
+    "ARMY KNIFE WON'T FIX THIS",
+    "CHEESE HAS MORE HOLES THAN YOUR HULL",
   ],
   'Germany': [
     "EFFICIENCY IS MANDATORY",
@@ -98,7 +109,7 @@ const BANNER_MESSAGES: Record<string, string[]> = {
 };
 
 // Valid countries for biplane spawning (excluding Washington DC and Atlantic Ocean)
-const VALID_COUNTRIES = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+const VALID_COUNTRIES = ['USA', 'United Kingdom', 'France', 'Switzerland', 'Germany', 'Poland', 'Russia'];
 
 export class Biplane extends Phaser.GameObjects.Container {
   public isDestroyed: boolean = false;
@@ -118,6 +129,7 @@ export class Biplane extends Phaser.GameObjects.Container {
   private collisionWidth: number = 70;
   private collisionHeight: number = 35;
   private baseY: number;
+  private propellerGraphics: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, targetCountry: string, cameraX: number, spawnCountry?: string) {
     // Use spawn country for position, target country for colors/messages
@@ -138,7 +150,15 @@ export class Biplane extends Phaser.GameObjects.Container {
     const spawnX = playerComingFromLeft
       ? countryCenter + 400  // Spawn to the right, will fly left toward player
       : countryCenter - 400; // Spawn to the left, will fly right toward player
-    const spawnY = 100 + Math.random() * 40; // 100-140px from top
+
+    // For Switzerland, spawn much higher to be above the mountains
+    // Switzerland mountains can reach y = -1000 or lower
+    let spawnY: number;
+    if (positionCountry === 'Switzerland') {
+      spawnY = -1200 + Math.random() * 40; // Well above the tallest peaks
+    } else {
+      spawnY = 100 + Math.random() * 40; // 100-140px from top for normal countries
+    }
 
     super(scene, spawnX, spawnY);
 
@@ -153,13 +173,18 @@ export class Biplane extends Phaser.GameObjects.Container {
     // Fly toward the player
     this.direction = playerComingFromLeft ? -1 : 1;
 
-    this.graphics = scene.add.graphics();
-    this.bannerContainer = scene.add.container(0, 0);
+    // Static body graphics (drawn once)
+    this.graphics = new Phaser.GameObjects.Graphics(scene);
+    // Animated propeller graphics (cleared and redrawn each frame)
+    this.propellerGraphics = new Phaser.GameObjects.Graphics(scene);
+    this.bannerContainer = new Phaser.GameObjects.Container(scene, 0, 0);
 
     this.add(this.graphics);
+    this.add(this.propellerGraphics);
     this.add(this.bannerContainer);
 
-    this.drawBiplane();
+    this.drawBiplaneBody(); // Static - only called once
+    this.drawPropeller();   // Animated - called each frame
     this.createBanner();
     this.setDepth(5); // Below shuttle but visible
 
@@ -171,16 +196,8 @@ export class Biplane extends Phaser.GameObjects.Container {
     scene.add.existing(this);
   }
 
-  private drawBiplane(): void {
-    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
-    if (this.graphics) {
-      this.graphics.destroy();
-    }
-    this.graphics = this.scene.add.graphics();
-    // Position graphics at biplane's world position
-    this.graphics.setPosition(this.x, this.y);
-    this.graphics.setRotation(this.rotation);
-    this.graphics.setScale(this.scaleX, this.scaleY);
+  private drawBiplaneBody(): void {
+    // Static body - only drawn once, not every frame
     this.graphics.setDepth(200);
 
     const { primary, secondary, accent } = this.colors;
@@ -234,9 +251,6 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.graphics.fillStyle(0x333333, 1);
     this.graphics.fillCircle(32, 1, 5);
 
-    // PROPELLER
-    this.drawPropeller();
-
     // COCKPIT (open cockpit with pilot)
     this.graphics.fillStyle(0x333333, 1);
     this.graphics.fillRect(2, -8, 14, 6);
@@ -289,11 +303,15 @@ export class Biplane extends Phaser.GameObjects.Container {
   }
 
   private drawPropeller(): void {
+    // Clear and redraw propeller each frame (animated)
+    this.propellerGraphics.clear();
+    this.propellerGraphics.setDepth(201); // Above body
+
     const hubX = 36;
 
     // Propeller hub
-    this.graphics.fillStyle(0x444444, 1);
-    this.graphics.fillCircle(hubX, 1, 3);
+    this.propellerGraphics.fillStyle(0x444444, 1);
+    this.propellerGraphics.fillCircle(hubX, 1, 3);
 
     // Draw 2-blade propeller (simple wooden blades)
     const bladeLength = 16;
@@ -304,23 +322,23 @@ export class Biplane extends Phaser.GameObjects.Container {
       const endY = 1 + Math.sin(angle) * bladeLength;
 
       // Wooden blade
-      this.graphics.lineStyle(4, 0xDEB887, 1);
-      this.graphics.beginPath();
-      this.graphics.moveTo(hubX, 1);
-      this.graphics.lineTo(endX, endY);
-      this.graphics.strokePath();
+      this.propellerGraphics.lineStyle(4, 0xDEB887, 1);
+      this.propellerGraphics.beginPath();
+      this.propellerGraphics.moveTo(hubX, 1);
+      this.propellerGraphics.lineTo(endX, endY);
+      this.propellerGraphics.strokePath();
 
       // Dark edge
-      this.graphics.lineStyle(1, 0x8B4513, 0.6);
-      this.graphics.beginPath();
-      this.graphics.moveTo(hubX, 1);
-      this.graphics.lineTo(endX, endY);
-      this.graphics.strokePath();
+      this.propellerGraphics.lineStyle(1, 0x8B4513, 0.6);
+      this.propellerGraphics.beginPath();
+      this.propellerGraphics.moveTo(hubX, 1);
+      this.propellerGraphics.lineTo(endX, endY);
+      this.propellerGraphics.strokePath();
     }
 
     // Blur disc when spinning
-    this.graphics.lineStyle(1, 0xDEB887, 0.12);
-    this.graphics.strokeCircle(hubX, 1, bladeLength - 1);
+    this.propellerGraphics.lineStyle(1, 0xDEB887, 0.12);
+    this.propellerGraphics.strokeCircle(hubX, 1, bladeLength - 1);
   }
 
   private createBanner(): void {
@@ -337,7 +355,7 @@ export class Biplane extends Phaser.GameObjects.Container {
     const bannerY = 3;
 
     // Create tow rope
-    const ropeGraphics = this.scene.add.graphics();
+    const ropeGraphics = new Phaser.GameObjects.Graphics(this.scene);
     ropeGraphics.lineStyle(2, 0x8B4513, 1);
     ropeGraphics.beginPath();
     ropeGraphics.moveTo(-36, 1);
@@ -350,7 +368,7 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.bannerContainer.add(ropeGraphics);
 
     // Banner
-    const bannerGraphics = this.scene.add.graphics();
+    const bannerGraphics = new Phaser.GameObjects.Graphics(this.scene);
 
     // Banner shadow
     bannerGraphics.fillStyle(0x000000, 0.15);
@@ -395,7 +413,7 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.bannerContainer.add(bannerGraphics);
 
     // Banner text
-    const bannerText = this.scene.add.text(bannerX, bannerY, this.message, {
+    const bannerText = new Phaser.GameObjects.Text(this.scene, bannerX, bannerY, this.message, {
       fontSize: '14px',
       fontFamily: 'Arial Black, Arial',
       color: '#1a1a1a',
@@ -411,7 +429,7 @@ export class Biplane extends Phaser.GameObjects.Container {
     this.bannerContainer.add(bannerText);
 
     // Attachment grommet
-    const grommetGraphics = this.scene.add.graphics();
+    const grommetGraphics = new Phaser.GameObjects.Graphics(this.scene);
     grommetGraphics.fillStyle(0x888888, 1);
     grommetGraphics.fillCircle(bannerX + bannerWidth / 2 - 3, bannerY, 3);
     grommetGraphics.fillStyle(0x666666, 1);
@@ -436,8 +454,8 @@ export class Biplane extends Phaser.GameObjects.Container {
     // Slight pitch variation
     this.rotation = Math.sin(time * 0.002) * 0.02;
 
-    // Redraw biplane (for propeller animation)
-    this.drawBiplane();
+    // Redraw propeller (animated)
+    this.drawPropeller();
 
     // Check if WAY off screen (relative to camera) - use very large margin
     const camera = this.scene.cameras.main;
@@ -457,6 +475,10 @@ export class Biplane extends Phaser.GameObjects.Container {
       this.graphics.destroy();
       this.graphics = null as any;
     }
+    if (this.propellerGraphics) {
+      this.propellerGraphics.destroy();
+      this.propellerGraphics = null as any;
+    }
 
     // Wait 5 seconds then re-enter
     this.waitTimer = this.scene.time.delayedCall(5000, () => {
@@ -470,6 +492,14 @@ export class Biplane extends Phaser.GameObjects.Container {
       } else {
         this.x = camera.scrollX + GAME_WIDTH + 200;
       }
+
+      // Recreate graphics before becoming visible to avoid one-frame gap
+      this.graphics = new Phaser.GameObjects.Graphics(this.scene);
+      this.propellerGraphics = new Phaser.GameObjects.Graphics(this.scene);
+      this.add(this.graphics);
+      this.add(this.propellerGraphics);
+      this.drawBiplaneBody();
+      this.drawPropeller();
 
       this.isWaiting = false;
       this.setVisible(true);
@@ -612,8 +642,12 @@ export class Biplane extends Phaser.GameObjects.Container {
     if (this.waitTimer) {
       this.waitTimer.destroy();
     }
-    this.graphics.destroy();
-    this.bannerContainer.destroy(true);
+    if (this.graphics) {
+      this.graphics.destroy();
+    }
+    if (this.bannerContainer) {
+      this.bannerContainer.destroy(true);
+    }
     super.destroy(fromScene);
   }
 }
