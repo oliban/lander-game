@@ -16,6 +16,7 @@ import { GreenlandIce } from '../objects/GreenlandIce';
 import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
+import { getCollectionSystem } from '../systems/CollectionSystem';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -272,7 +273,7 @@ export class GameScene extends Phaser.Scene {
     if (Math.random() < 0.3) {
       this.biplaneTargetCountry = 'GAME_INFO';
     } else {
-      const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+      const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Switzerland', 'Germany', 'Poland', 'Russia'];
       this.biplaneTargetCountry = biplaneCountries[Math.floor(Math.random() * biplaneCountries.length)];
     }
     this.biplaneSpawned = false;
@@ -359,8 +360,8 @@ export class GameScene extends Phaser.Scene {
     // Invulnerability at start - prevents crashes until player launches
     this.invulnerable = true;
 
-    // Set up camera - allow space for flying high and Washington to the left
-    this.cameras.main.setBounds(WORLD_START_X, -300, WORLD_WIDTH - WORLD_START_X, GAME_HEIGHT + 300);
+    // Set up camera - allow space for flying high (especially Switzerland mountains) and Washington to the left
+    this.cameras.main.setBounds(WORLD_START_X, -2500, WORLD_WIDTH - WORLD_START_X, GAME_HEIGHT + 2500);
     // IMPORTANT: Center camera on shuttle FIRST before enabling follow
     this.cameras.main.centerOn(this.shuttle.x, this.shuttle.y);
     // For 2-player mode, we'll update camera manually in the update loop
@@ -1465,12 +1466,21 @@ export class GameScene extends Phaser.Scene {
       const isWashington = padData.isWashington === true;
       const isOilPlatform = padData.isOilPlatform === true;
 
+      // Determine the country for this landing pad based on x position
+      let padCountry = 'Atlantic Ocean';
+      for (const country of COUNTRIES) {
+        if (padData.x >= country.startX) {
+          padCountry = country.name;
+        }
+      }
+
       const pad = new LandingPad(
         this,
         padData.x,
         terrainY,
         padData.width,
         padData.name,
+        padCountry,
         isFinal,
         isWashington,
         isOilPlatform
@@ -1480,13 +1490,8 @@ export class GameScene extends Phaser.Scene {
       // Create oil tower for fuel depots and oil platform
       const isFuelDepot = !isOilPlatform && (padData.name.includes('Fuel') || padData.name.includes('Gas') || padData.name.includes('Depot') || padData.name.includes('Station'));
       if (isFuelDepot || isOilPlatform) {
-        // Get the country name based on location
-        let countryName = 'Atlantic Ocean';
-        for (const country of COUNTRIES) {
-          if (padData.x >= country.startX) {
-            countryName = country.name;
-          }
-        }
+        // Use the already determined country name
+        const countryName = padCountry;
 
         // Position tower to the right of landing pad
         const towerX = padData.x + padData.width / 2 + 35;
@@ -1583,12 +1588,15 @@ export class GameScene extends Phaser.Scene {
       const nextCountry = COUNTRIES[COUNTRIES.indexOf(country) + 1];
       const endX = nextCountry ? nextCountry.startX : WORLD_WIDTH;
 
-      // Calculate number of cannons
+      // Calculate number of cannons - ensure minimum of 3 so they don't all get filtered by landing pads
       const countryWidth = endX - country.startX;
-      const numCannons = Math.floor(countryWidth * country.cannonDensity / 500);
+      const numCannons = Math.max(3, Math.floor(countryWidth * country.cannonDensity / 500));
 
       for (let i = 0; i < numCannons; i++) {
-        const x = country.startX + (countryWidth / (numCannons + 1)) * (i + 1);
+        // Add some randomization to avoid cannons landing exactly on landing pads
+        const baseX = country.startX + (countryWidth / (numCannons + 1)) * (i + 1);
+        const randomOffset = (Math.random() - 0.5) * 100; // +/- 50px random offset
+        const x = baseX + randomOffset;
 
         // Skip if too close to landing pads
         const tooCloseTopad = LANDING_PADS.some(
@@ -1812,8 +1820,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isShuttleCollision(bodyA: MatterJS.BodyType, bodyB: MatterJS.BodyType, label: string): boolean {
-    const isShuttleA = bodyA.label === 'Body' || bodyA.label === 'Rectangle Body';
-    const isShuttleB = bodyB.label === 'Body' || bodyB.label === 'Rectangle Body';
+    // Check if body belongs to shuttle1 or shuttle2 by ID
+    const shuttle1BodyId = this.shuttle?.body ? (this.shuttle.body as MatterJS.BodyType).id : -1;
+    const shuttle2BodyId = this.shuttle2?.body ? (this.shuttle2.body as MatterJS.BodyType).id : -1;
+
+    const isShuttleA = bodyA.id === shuttle1BodyId || bodyA.id === shuttle2BodyId;
+    const isShuttleB = bodyB.id === shuttle1BodyId || bodyB.id === shuttle2BodyId;
 
     return (isShuttleA && bodyB.label === label) || (isShuttleB && bodyA.label === label);
   }
@@ -2646,6 +2658,10 @@ export class GameScene extends Phaser.Scene {
       const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
       invSys.add('FISH_PACKAGE');
 
+      // Track in collection
+      const collectionSystem = getCollectionSystem();
+      collectionSystem.markDiscovered('FISH_PACKAGE');
+
       const fishText = this.add.text(shuttle.x, shuttle.y - 90, '"Fish" acquired!', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '16px',
@@ -3293,6 +3309,10 @@ export class GameScene extends Phaser.Scene {
     const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
     const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
     const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+
+    // Track item discovery in collection (for both players)
+    const collectionSystem = getCollectionSystem();
+    collectionSystem.markDiscovered(collectible.collectibleType);
 
     // Play pickup sound based on collectible type
     this.playPickupSound(collectible.collectibleType);
@@ -4492,6 +4512,10 @@ export class GameScene extends Phaser.Scene {
         // Add to cargo inventory
         this.inventorySystem.add('EPSTEIN_FILES');
 
+        // Track in collection
+        const collectionSystem = getCollectionSystem();
+        collectionSystem.markDiscovered('EPSTEIN_FILES');
+
         // Show pickup text
         const pickupText = this.add.text(file.x, file.y - 20, '+1 EPSTEIN FILES', {
           fontFamily: 'Arial, Helvetica, sans-serif',
@@ -4684,6 +4708,10 @@ export class GameScene extends Phaser.Scene {
         // Add to cargo inventory
         const propagandaType = banner.getData('propagandaType') as keyof typeof COLLECTIBLE_TYPES;
         this.inventorySystem.add(propagandaType);
+
+        // Track in collection
+        const collectionSystem = getCollectionSystem();
+        collectionSystem.markDiscovered(propagandaType);
 
         // Get display name from constants
         const itemData = COLLECTIBLE_TYPES[propagandaType];
@@ -5703,7 +5731,7 @@ export class GameScene extends Phaser.Scene {
     // Spawn biplane when any player gets close to the target country (or any country for GAME_INFO)
     if (!this.biplaneSpawned && this.biplaneTargetCountry) {
       const spawnDistance = 1500; // Spawn when player is within 1500px of country center
-      const validCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
+      const validCountries = ['USA', 'United Kingdom', 'France', 'Switzerland', 'Germany', 'Poland', 'Russia'];
 
       // For GAME_INFO, check all countries; for propaganda, check only target country
       const countriesToCheck = this.biplaneTargetCountry === 'GAME_INFO'

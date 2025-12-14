@@ -262,14 +262,14 @@ export class AchievementSystem {
         this.unlock('ace_pilot');
       }
     }
-  }
 
-  onTwoPlayerGameEnd(p1Kills: number, p2Kills: number): void {
-    const diff = Math.abs(p1Kills - p2Kills);
+    // Check for domination (5+ kill lead) immediately when kill happens
+    const diff = Math.abs(this.sessionStats.p1Kills - this.sessionStats.p2Kills);
     if (diff >= 5) {
       this.unlock('domination');
     }
   }
+
 
   onCasinoChipCollected(value: number): void {
     this.sessionStats.casinoChipValue += value;
