@@ -71,6 +71,12 @@ export class BootScene extends Phaser.Scene {
     this.load.image('baguette', 'assets/baguette.png');
     this.load.image('wine', 'assets/wine.png');
     this.load.image('croissant', 'assets/croissant.png');
+    // Switzerland projectiles
+    this.load.image('cheese', 'assets/cheese.png');
+    this.load.image('chocolate', 'assets/chocolate.png');
+    this.load.image('watch', 'assets/watch.png');
+    this.load.image('cuckoo', 'assets/cuckoo.png');
+    this.load.image('fondue', 'assets/fondue.png');
     // Germany projectiles
     this.load.image('pretzel', 'assets/pretzel.png');
     this.load.image('beer', 'assets/beer.png');
@@ -263,6 +269,20 @@ export class BootScene extends Phaser.Scene {
     particleGraphics.fillCircle(8, 8, 8);
     particleGraphics.generateTexture('particle', 16, 16);
     particleGraphics.destroy();
+
+    // Create raindrop texture for particle emitter (2x16 white line)
+    const raindropGraphics = this.make.graphics({ x: 0, y: 0 });
+    raindropGraphics.fillStyle(0x8899AA, 0.7);
+    raindropGraphics.fillRect(0, 0, 2, 16);
+    raindropGraphics.generateTexture('raindrop', 2, 16);
+    raindropGraphics.destroy();
+
+    // Create splash particle texture (small circle)
+    const splashGraphics = this.make.graphics({ x: 0, y: 0 });
+    splashGraphics.fillStyle(0xAABBCC, 0.8);
+    splashGraphics.fillCircle(3, 3, 3);
+    splashGraphics.generateTexture('splash', 6, 6);
+    splashGraphics.destroy();
 
     // Create cannon texture
     const cannonGraphics = this.make.graphics({ x: 0, y: 0 });

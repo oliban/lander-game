@@ -75,13 +75,14 @@ export class Shark extends Phaser.GameObjects.Container {
   }
 
   private drawShark(): void {
-    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
-    if (this.graphics) {
-      this.graphics.destroy();
+    // Reuse graphics object - just clear it each frame
+    if (!this.graphics) {
+      this.graphics = this.scene.add.graphics();
+      this.graphics.setDepth(20);
     }
-    this.graphics = this.scene.add.graphics();
+    this.graphics.clear();
     this.graphics.setPosition(this.x, this.y);
-    this.graphics.setDepth(20);
+    this.graphics.setRotation(this.rotation);
 
     const isFlipped = this.direction === -1;
 
@@ -299,9 +300,7 @@ export class Shark extends Phaser.GameObjects.Container {
       }
     }
 
-    // Update graphics position and redraw
-    this.graphics.setPosition(this.x, this.y);
-    this.graphics.setRotation(this.rotation);
+    // Redraw shark (position and rotation applied in drawShark)
     this.drawShark();
   }
 
