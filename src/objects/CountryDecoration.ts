@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { GameScene } from '../scenes/GameScene';
 
 // Building and landmark names for each country
 // Index corresponds to image number (0-15)
@@ -109,7 +110,7 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
   public pointValue: number;
   public isDestroyed: boolean = false;
   public country: string;
-  private matterBody: MatterJS.BodyType | null = null;
+  protected matterBody: MatterJS.BodyType | null = null;
   public collisionWidth: number = 0;
   public collisionHeight: number = 0;
 
@@ -207,6 +208,7 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
     if (this.isDestroyed) return { name: this.buildingName, points: 0, textureKey: this.texture.key, country: this.country };
 
     this.isDestroyed = true;
+    console.log(`[DEBRIS] 💥 ${this.buildingName} BOMBED! Starting explosion...`);
 
     // Remove physics body
     if (this.matterBody) {
@@ -299,11 +301,15 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
       // Create piece sprites at their positions within the building
       const pieces: { sprite: Phaser.GameObjects.Sprite; startY: number }[] = [];
 
+      const gameScene = scene as unknown as GameScene;
       for (const data of pieceData) {
         const piece = scene.add.sprite(data.worldX, data.worldY, data.key);
         piece.setScale(scale);
         piece.setDepth(6);
         piece.setOrigin(0.5, 0.5);
+
+        // Register debris for tracking
+        gameScene.registerDebris(piece);
 
         pieces.push({ sprite: piece, startY: data.worldY });
       }
@@ -314,6 +320,9 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
       // Explosion origin at bottom center of building
       const explosionX = x;
       const explosionY = groundY;
+
+      // Track texture keys for cleanup
+      const textureKeys = pieceData.map(d => d.key);
 
       pieces.forEach((piece, index) => {
         // Calculate force direction from explosion point (bottom center)
@@ -364,6 +373,99 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
         });
       });
 
+      // ============ PHASE 5: CONSOLIDATE DEBRIS (reduce 60 → 15 pieces) ============
+      // After pieces settle, create smoke puff and reduce piece count
+      scene.time.delayedCall(1200, () => {
+        // Create smoke puff to hide the consolidation
+        for (let i = 0; i < 20; i++) {
+          const smokeX = x + (Math.random() - 0.5) * buildingWidth * 0.8;
+          const smokeY = groundY - 5 - Math.random() * 15;
+          const smoke = scene.add.circle(smokeX, smokeY, 15 + Math.random() * 25, 0x555555, 0.7);
+          smoke.setDepth(8);
+
+          scene.tweens.add({
+            targets: smoke,
+            y: smokeY - 30 - Math.random() * 40,
+            x: smokeX + (Math.random() - 0.5) * 30,
+            alpha: 0,
+            scale: 2 + Math.random(),
+            duration: 800 + Math.random() * 400,
+            ease: 'Power1',
+            onComplete: () => smoke.destroy(),
+          });
+        }
+
+        // Keep only 15 pieces (every 4th piece), destroy the rest
+        console.log(`[DEBRIS] Reducing ${pieces.length} pieces to 15...`);
+        const keepCount = 15;
+        const keepInterval = Math.floor(pieces.length / keepCount);
+        const piecesToKeep: typeof pieces = [];
+
+        const piecesToDestroy: typeof pieces = [];
+        pieces.forEach((piece, index) => {
+          if (index % keepInterval === 0 && piecesToKeep.length < keepCount) {
+            piecesToKeep.push(piece);
+          } else {
+            // Kill any active tweens and hide the sprite
+            scene.tweens.killTweensOf(piece.sprite);
+            piece.sprite.setVisible(false);
+            piece.sprite.setActive(false);
+            piecesToDestroy.push(piece);
+          }
+        });
+
+        // Update pieces array to only contain kept pieces
+        pieces.length = 0;
+        pieces.push(...piecesToKeep);
+
+        // Delay actual destruction to avoid render pipeline issues
+        scene.time.delayedCall(500, () => {
+          console.log(`[DEBRIS] Destroying ${piecesToDestroy.length} excess pieces (delayed 500ms)...`);
+          for (const piece of piecesToDestroy) {
+            gameScene.unregisterDebris(piece.sprite);
+            piece.sprite.destroy();
+          }
+          console.log(`[DEBRIS] ✅ ${piecesToDestroy.length} pieces destroyed successfully!`);
+        });
+
+        // ============ PHASE 6: AUTO-CLEANUP after 5 seconds ============
+        scene.time.delayedCall(5000, () => {
+          // Final smoke puff
+          for (let i = 0; i < 12; i++) {
+            const smokeX = x + (Math.random() - 0.5) * buildingWidth * 0.6;
+            const smokeY = groundY - 3 - Math.random() * 10;
+            const smoke = scene.add.circle(smokeX, smokeY, 10 + Math.random() * 15, 0x666666, 0.5);
+            smoke.setDepth(8);
+
+            scene.tweens.add({
+              targets: smoke,
+              y: smokeY - 25 - Math.random() * 30,
+              alpha: 0,
+              scale: 1.8,
+              duration: 600 + Math.random() * 300,
+              ease: 'Power1',
+              onComplete: () => smoke.destroy(),
+            });
+          }
+
+          // Destroy all remaining pieces
+          console.log(`[DEBRIS] Auto-cleanup: destroying ${pieces.length} remaining pieces`);
+          for (const piece of pieces) {
+            scene.tweens.killTweensOf(piece.sprite);
+            gameScene.unregisterDebris(piece.sprite);
+            piece.sprite.destroy();
+          }
+          // Delay texture removal to next frame to avoid render pipeline race condition
+          scene.time.delayedCall(100, () => {
+            for (const key of textureKeys) {
+              if (scene.textures.exists(key)) {
+                scene.textures.remove(key);
+              }
+            }
+          });
+        });
+      });
+
       // ============ SMOKE EFFECTS ============
       // Immediate thick smoke burst during explosion
       for (let i = 0; i < 25; i++) {
@@ -405,26 +507,22 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
         }
       });
 
-      // Lingering smoke at the base - 12 waves over 10 seconds for long-lasting effect
+      // Lingering smoke at the base - 4 waves over 3 seconds (reduced for performance)
       scene.time.delayedCall(300, () => {
-        for (let wave = 0; wave < 12; wave++) {
-          scene.time.delayedCall(wave * 800, () => {
-            // Fewer particles per wave as time goes on (fire dying down)
-            const particleCount = Math.max(3, 8 - Math.floor(wave / 2));
+        for (let wave = 0; wave < 4; wave++) {
+          scene.time.delayedCall(wave * 700, () => {
+            const particleCount = 3;
             for (let i = 0; i < particleCount; i++) {
               const smokeX = x + (Math.random() - 0.5) * buildingWidth * 0.7;
-              // Smoke gets lighter/less opaque as fire dies
-              const baseOpacity = Math.max(0.15, 0.4 - wave * 0.02);
-              const smoke = scene.add.circle(smokeX, groundY - 5, 8 + Math.random() * 12, 0x555555, baseOpacity + Math.random() * 0.15);
+              const smoke = scene.add.circle(smokeX, groundY - 5, 8 + Math.random() * 12, 0x555555, 0.3);
               smoke.setDepth(4);
 
               scene.tweens.add({
                 targets: smoke,
                 y: groundY - 30 - Math.random() * 40,
-                x: smokeX + (Math.random() - 0.5) * 35,
                 alpha: 0,
-                scale: 2 + Math.random() * 1,
-                duration: 1500 + Math.random() * 800,
+                scale: 2,
+                duration: 1200,
                 ease: 'Power1',
                 onComplete: () => smoke.destroy(),
               });
@@ -433,40 +531,7 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
         }
       });
 
-      // Air pollution - persistent smoke haze using particle emitter (like chemtrails)
-      // Create a stationary emitter for long-lasting pollution particles
-      const pollutionEmitter = scene.add.particles(0, 0, 'particle', {
-        speed: { min: 5, max: 15 }, // Very slow drift (same as chemtrails)
-        angle: { min: 0, max: 360 }, // Random drift direction (same as chemtrails)
-        scale: { start: 0.4, end: 0.1 }, // Same size as chemtrails
-        alpha: { start: 0.3, end: 0 }, // Same alpha as chemtrails
-        lifespan: 60000, // 1 minute (same as chemtrails)
-        blendMode: Phaser.BlendModes.NORMAL,
-        frequency: -1, // Manual emission only
-        tint: [0x555555, 0x666666, 0x777777, 0x444444], // Same grey colors as chemtrails
-      });
-      pollutionEmitter.setDepth(3);
-
-      // Emit pollution particles over time from bomb site
-      scene.time.delayedCall(300, () => {
-        for (let wave = 0; wave < 15; wave++) {
-          scene.time.delayedCall(wave * 400, () => {
-            const particleCount = Math.max(2, 6 - Math.floor(wave / 3));
-            for (let i = 0; i < particleCount; i++) {
-              const emitX = x + (Math.random() - 0.5) * buildingWidth;
-              const emitY = groundY - Math.random() * buildingHeight * 0.7;
-              pollutionEmitter.emitParticleAt(emitX, emitY, 1);
-            }
-          });
-        }
-      });
-
-      // Clean up emitter after all particles have faded (60s lifespan + 6s emission time)
-      scene.time.delayedCall(70000, () => {
-        pollutionEmitter.destroy();
-      });
-
-      // Pieces remain as permanent rubble
+      // Debris consolidates after 1s (60→15 pieces) and auto-cleans after 5s
     });
 
     return { name: this.buildingName, points: this.pointValue, textureKey: this.texture.key, country: this.country };

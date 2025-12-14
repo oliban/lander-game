@@ -134,8 +134,10 @@ export class GameScene extends Phaser.Scene {
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
 
-  // Scorch marks from thrust
-  private scorchMarks: Phaser.GameObjects.Graphics | null = null;
+  // Scorch marks from thrust - using RenderTexture for performance
+  private scorchTexture: Phaser.GameObjects.RenderTexture | null = null;
+  private scorchGraphics: Phaser.GameObjects.Graphics | null = null; // Temp graphics for drawing to texture
+  private scorchTextureOffsetX: number = 0; // World X position of texture's left edge
   private lastScorchTime: number = 0;
   private scorchMarkData: { x: number; y: number; width: number; height: number; type: 'thrust' | 'crater'; seed: number; distance?: number }[] = [];
 
@@ -147,6 +149,14 @@ export class GameScene extends Phaser.Scene {
 
   // Debug monitoring display
   private debugText: Phaser.GameObjects.Text | null = null;
+
+  // FPS tracking for diagnostics
+  private fpsMin: number = 60;
+  private fpsMax: number = 0;
+  private fpsBaseline: number = 0;        // Settled FPS after game stabilizes
+  private fpsBaselineSetTime: number = 0; // When baseline was established
+  private fpsHistory: number[] = [];      // Rolling history for baseline calculation
+  private debrisSprites: Phaser.GameObjects.Sprite[] = [];
 
   // Tombstones for death locations (persistent across restarts)
   private tombstoneGraphics: Phaser.GameObjects.Container[] = [];
@@ -188,6 +198,16 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
+  // Public methods for debris tracking
+  public registerDebris(sprite: Phaser.GameObjects.Sprite): void {
+    this.debrisSprites.push(sprite);
+  }
+
+  public unregisterDebris(sprite: Phaser.GameObjects.Sprite): void {
+    const idx = this.debrisSprites.indexOf(sprite);
+    if (idx !== -1) this.debrisSprites.splice(idx, 1);
+  }
+
   create(data?: { playerCount?: number }): void {
     this.gameState = 'playing';
     this.gameStartTime = Date.now(); // Use Date.now() for reliable timing across scene restarts
@@ -205,6 +225,12 @@ export class GameScene extends Phaser.Scene {
     this.waterPollutionLevel = 0;
     this.totalWaterPollutionParticles = 0;
     this.sinkingScorchParticles = [];
+    this.debrisSprites = [];
+    this.fpsMin = 60;
+    this.fpsMax = 0;
+    this.fpsBaseline = 0;
+    this.fpsBaselineSetTime = 0;
+    this.fpsHistory = [];
     this.shuttles = [];
     this.shuttle2 = null;
     this.fuelSystem2 = null;
@@ -217,6 +243,10 @@ export class GameScene extends Phaser.Scene {
     this.sharks = [];
     this.sunkenFood = [];
     this.gameInitialized = false; // Reset to prevent splash effects on load
+    // Reset weather graphics (Phaser may reuse scene instances with stale references)
+    this.rainEmitter = null;
+    this.rainGraphics = null;
+    this.windDebrisGraphics = null;
     // Note: p1Kills and p2Kills persist across restarts within a session
     // Reset death messages for new game
     this.p1DeathMessage = '';
@@ -247,9 +277,14 @@ export class GameScene extends Phaser.Scene {
     // Load tombstones from previous deaths (persistent across restarts)
     this.loadTombstones();
 
-    // Create scorch marks graphics layer (behind buildings, on top of terrain)
-    this.scorchMarks = this.add.graphics();
-    this.scorchMarks.setDepth(2);
+    // Create scorch marks using RenderTexture for performance (bakes draw commands into texture)
+    // Use a camera-following texture (4096px wide to stay within WebGL limits)
+    this.scorchTextureOffsetX = WORLD_START_X;
+    this.scorchTexture = this.add.renderTexture(WORLD_START_X, 0, 4096, GAME_HEIGHT);
+    this.scorchTexture.setOrigin(0, 0);
+    this.scorchTexture.setDepth(2);
+    // Temp graphics for drawing individual marks (not added to scene, just used for stamping)
+    this.scorchGraphics = this.make.graphics({ x: 0, y: 0 });
 
     // Create water pollution graphics layer (for sinking scorch particles in ocean)
     this.waterPollution = this.add.graphics();
@@ -473,9 +508,14 @@ export class GameScene extends Phaser.Scene {
     this.currentCountryText.setScrollFactor(0);
     // Removed postFX glow - was causing black screen issues
 
-    // Stop rocket sound when scene shuts down
+    // Stop rocket sound and clean up graphics when scene shuts down
     this.events.on('shutdown', () => {
       this.shuttles.forEach(shuttle => shuttle.stopRocketSound());
+      // Destroy rain emitter to prevent stale reference errors on restart
+      if (this.rainEmitter) {
+        this.rainEmitter.destroy();
+        this.rainEmitter = null;
+      }
     });
   }
 
@@ -4978,7 +5018,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateScorchMarks(time: number): void {
-    if (!this.scorchMarks || !this.shuttle.getIsThrusting()) return;
+    if (!this.scorchTexture || !this.shuttle.getIsThrusting()) return;
 
     // Only create scorch marks every 50ms to avoid too many draws
     if (time - this.lastScorchTime < 50) return;
@@ -5087,7 +5127,7 @@ export class GameScene extends Phaser.Scene {
   private static readonly MAX_SCORCH_MARKS = 150; // Higher cap - rely mainly on off-screen culling
 
   private createScorchMark(x: number, y: number, distance: number, existingSeed?: number): void {
-    if (!this.scorchMarks) return;
+    if (!this.scorchTexture || !this.scorchGraphics) return;
 
     // Only enforce hard limit as emergency fallback (prefer off-screen culling)
     if (existingSeed === undefined && this.scorchMarkData.length >= GameScene.MAX_SCORCH_MARKS) {
@@ -5132,43 +5172,54 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Draw to temp graphics at local coordinates (centered at 0,0)
+    const g = this.scorchGraphics;
+    g.clear();
+
     // Outer glow/heat discoloration (reddish-brown)
-    this.scorchMarks.fillStyle(0x4a2810, baseAlpha * 0.3);
-    this.scorchMarks.fillEllipse(x + offsetX, y + offsetY - 1, width * 1.4, height * 1.3);
+    g.fillStyle(0x4a2810, baseAlpha * 0.3);
+    g.fillEllipse(offsetX, offsetY - 1, width * 1.4, height * 1.3);
 
     // Main char mark
-    this.scorchMarks.fillStyle(0x1a1a1a, baseAlpha);
-    this.scorchMarks.fillEllipse(x + offsetX, y + offsetY, width, height);
+    g.fillStyle(0x1a1a1a, baseAlpha);
+    g.fillEllipse(offsetX, offsetY, width, height);
 
     // Darker center with slight gradient effect
-    this.scorchMarks.fillStyle(0x050505, baseAlpha * 0.9);
-    this.scorchMarks.fillEllipse(x + offsetX, y + offsetY, width * 0.5, height * 0.5);
+    g.fillStyle(0x050505, baseAlpha * 0.9);
+    g.fillEllipse(offsetX, offsetY, width * 0.5, height * 0.5);
 
     // Ashy grey edges
-    this.scorchMarks.fillStyle(0x3a3a3a, baseAlpha * 0.4);
+    g.fillStyle(0x3a3a3a, baseAlpha * 0.4);
     const numAshSpots = 3 + Math.floor(rand() * 4);
     for (let i = 0; i < numAshSpots; i++) {
       const angle = (i / numAshSpots) * Math.PI * 2 + rand() * 0.5;
       const dist = width * 0.4 + rand() * width * 0.3;
-      const spotX = x + offsetX + Math.cos(angle) * dist;
-      const spotY = y + offsetY + Math.sin(angle) * dist * 0.4;
+      const spotX = offsetX + Math.cos(angle) * dist;
+      const spotY = offsetY + Math.sin(angle) * dist * 0.4;
       const spotSize = 2 + rand() * 4;
-      this.scorchMarks.fillCircle(spotX, spotY, spotSize);
+      g.fillCircle(spotX, spotY, spotSize);
     }
 
     // Brown singe marks radiating outward
-    this.scorchMarks.fillStyle(0x3d2817, baseAlpha * 0.5);
+    g.fillStyle(0x3d2817, baseAlpha * 0.5);
     const numSpots = 2 + Math.floor(rand() * 3);
     for (let i = 0; i < numSpots; i++) {
-      const spotX = x + offsetX + (rand() - 0.5) * width * 1.5;
-      const spotY = y + offsetY + (rand() - 0.5) * height * 0.8;
+      const spotX = offsetX + (rand() - 0.5) * width * 1.5;
+      const spotY = offsetY + (rand() - 0.5) * height * 0.8;
       const spotSize = 2 + rand() * 3;
-      this.scorchMarks.fillCircle(spotX, spotY, spotSize);
+      g.fillCircle(spotX, spotY, spotSize);
+    }
+
+    // Stamp the graphics onto the RenderTexture at local texture position
+    const localX = x - this.scorchTextureOffsetX;
+    // Only draw if within texture bounds
+    if (localX >= -50 && localX < 4096 + 50) {
+      this.scorchTexture.draw(g, localX, y);
     }
   }
 
   private createBombCrater(x: number, y: number, existingSeed?: number): void {
-    if (!this.scorchMarks) return;
+    if (!this.scorchTexture || !this.scorchGraphics) return;
 
     const seed = existingSeed ?? Date.now() + Math.random() * 10000;
     const rand = this.seededRandom(seed);
@@ -5184,38 +5235,42 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
+    // Draw to temp graphics at local coordinates (centered at 0,0)
+    const g = this.scorchGraphics;
+    g.clear();
+
     // Outer heat discoloration ring (dark reddish-brown)
-    this.scorchMarks.fillStyle(0x3d1a0a, 0.5);
-    this.scorchMarks.fillEllipse(x, y - 2, craterRadius * 2.2, craterRadius * 0.9);
+    g.fillStyle(0x3d1a0a, 0.5);
+    g.fillEllipse(0, -2, craterRadius * 2.2, craterRadius * 0.9);
 
     // Scorched earth ring (dark brown)
-    this.scorchMarks.fillStyle(0x2a1a0a, 0.6);
-    this.scorchMarks.fillEllipse(x, y - 1, craterRadius * 1.8, craterRadius * 0.75);
+    g.fillStyle(0x2a1a0a, 0.6);
+    g.fillEllipse(0, -1, craterRadius * 1.8, craterRadius * 0.75);
 
     // Main blast mark (very dark)
-    this.scorchMarks.fillStyle(0x0f0f0f, 0.8);
-    this.scorchMarks.fillEllipse(x, y, craterRadius * 1.4, craterRadius * 0.6);
+    g.fillStyle(0x0f0f0f, 0.8);
+    g.fillEllipse(0, 0, craterRadius * 1.4, craterRadius * 0.6);
 
     // Charred center (black)
-    this.scorchMarks.fillStyle(0x050505, 0.9);
-    this.scorchMarks.fillEllipse(x, y, craterRadius * 0.8, craterRadius * 0.35);
+    g.fillStyle(0x050505, 0.9);
+    g.fillEllipse(0, 0, craterRadius * 0.8, craterRadius * 0.35);
 
     // Impact point (darkest)
-    this.scorchMarks.fillStyle(0x020202, 0.95);
-    this.scorchMarks.fillEllipse(x, y, craterRadius * 0.3, craterRadius * 0.15);
+    g.fillStyle(0x020202, 0.95);
+    g.fillEllipse(0, 0, craterRadius * 0.3, craterRadius * 0.15);
 
     // Radiating scorch lines (blast pattern)
-    this.scorchMarks.lineStyle(2, 0x1a1a1a, 0.6);
+    g.lineStyle(2, 0x1a1a1a, 0.6);
     const numRays = 8 + Math.floor(rand() * 6);
     for (let i = 0; i < numRays; i++) {
       const angle = (i / numRays) * Math.PI * 2 + (rand() - 0.5) * 0.3;
       const rayLength = craterRadius * (0.8 + rand() * 0.8);
       const startDist = craterRadius * 0.3;
-      this.scorchMarks.lineBetween(
-        x + Math.cos(angle) * startDist,
-        y + Math.sin(angle) * startDist * 0.4,
-        x + Math.cos(angle) * rayLength,
-        y + Math.sin(angle) * rayLength * 0.4
+      g.lineBetween(
+        Math.cos(angle) * startDist,
+        Math.sin(angle) * startDist * 0.4,
+        Math.cos(angle) * rayLength,
+        Math.sin(angle) * rayLength * 0.4
       );
     }
 
@@ -5224,31 +5279,38 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < numDebris; i++) {
       const angle = rand() * Math.PI * 2;
       const dist = craterRadius * (0.6 + rand() * 1.2);
-      const spotX = x + Math.cos(angle) * dist;
-      const spotY = y + Math.sin(angle) * dist * 0.4;
+      const spotX = Math.cos(angle) * dist;
+      const spotY = Math.sin(angle) * dist * 0.4;
       const spotSize = 2 + rand() * 5;
 
       // Vary colors between black, dark grey, and brown
       const colorChoice = rand();
       if (colorChoice < 0.4) {
-        this.scorchMarks.fillStyle(0x1a1a1a, 0.7);
+        g.fillStyle(0x1a1a1a, 0.7);
       } else if (colorChoice < 0.7) {
-        this.scorchMarks.fillStyle(0x3a3a3a, 0.5);
+        g.fillStyle(0x3a3a3a, 0.5);
       } else {
-        this.scorchMarks.fillStyle(0x3d2817, 0.6);
+        g.fillStyle(0x3d2817, 0.6);
       }
-      this.scorchMarks.fillCircle(spotX, spotY, spotSize);
+      g.fillCircle(spotX, spotY, spotSize);
     }
 
     // Ash ring around outer edge
-    this.scorchMarks.fillStyle(0x4a4a4a, 0.3);
+    g.fillStyle(0x4a4a4a, 0.3);
     const numAshPiles = 12 + Math.floor(rand() * 8);
     for (let i = 0; i < numAshPiles; i++) {
       const angle = (i / numAshPiles) * Math.PI * 2 + (rand() - 0.5) * 0.4;
       const dist = craterRadius * (1.5 + rand() * 0.5);
-      const spotX = x + Math.cos(angle) * dist;
-      const spotY = y + Math.sin(angle) * dist * 0.4;
-      this.scorchMarks.fillEllipse(spotX, spotY, 4 + rand() * 6, 2 + rand() * 3);
+      const spotX = Math.cos(angle) * dist;
+      const spotY = Math.sin(angle) * dist * 0.4;
+      g.fillEllipse(spotX, spotY, 4 + rand() * 6, 2 + rand() * 3);
+    }
+
+    // Stamp the graphics onto the RenderTexture at local texture position
+    const localX = x - this.scorchTextureOffsetX;
+    // Only draw if within texture bounds (with margin for large craters)
+    if (localX >= -100 && localX < 4096 + 100) {
+      this.scorchTexture.draw(g, localX, y);
     }
   }
 
@@ -5273,10 +5335,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private redrawAllScorchMarks(): void {
-    if (!this.scorchMarks) return;
+    if (!this.scorchTexture) return;
 
-    // Clear the graphics layer
-    this.scorchMarks.clear();
+    // Clear the RenderTexture
+    this.scorchTexture.clear();
 
     // Redraw all remaining scorch marks
     for (const mark of this.scorchMarkData) {
@@ -5298,6 +5360,32 @@ export class GameScene extends Phaser.Scene {
     // Only redraw if we actually removed some marks
     if (this.scorchMarkData.length < originalLength) {
       this.redrawAllScorchMarks();
+    }
+  }
+
+  private updateScorchTexturePosition(): void {
+    if (!this.scorchTexture) return;
+
+    const cameraX = this.cameras.main.scrollX;
+    const textureWidth = 4096;
+    const shiftThreshold = 1024; // Shift when camera is this far from texture edge
+
+    // Check if we need to shift the texture
+    // Shift right: camera has moved beyond texture's right coverage
+    if (cameraX + GAME_WIDTH > this.scorchTextureOffsetX + textureWidth - shiftThreshold) {
+      const newOffset = cameraX - shiftThreshold;
+      this.scorchTextureOffsetX = newOffset;
+      this.scorchTexture.setPosition(newOffset, 0);
+      this.redrawAllScorchMarks();
+    }
+    // Shift left: camera has moved behind texture's left coverage (player going backward)
+    else if (cameraX < this.scorchTextureOffsetX + shiftThreshold) {
+      const newOffset = Math.max(WORLD_START_X, cameraX - textureWidth + GAME_WIDTH + shiftThreshold);
+      if (newOffset !== this.scorchTextureOffsetX) {
+        this.scorchTextureOffsetX = newOffset;
+        this.scorchTexture.setPosition(newOffset, 0);
+        this.redrawAllScorchMarks();
+      }
     }
   }
 
@@ -5726,13 +5814,19 @@ export class GameScene extends Phaser.Scene {
       this.fisherBoat.update(this.terrain.getWaveOffset());
     }
 
-    // Update sharks
+    // Update sharks (with off-screen culling for performance)
     const foodTargets = this.getFoodTargetsInOcean();
+    const cameraLeft = this.cameras.main.scrollX - 400;
+    const cameraRight = this.cameras.main.scrollX + GAME_WIDTH + 400;
     for (const shark of this.sharks) {
       if (!shark.isDestroyed) {
-        shark.update(this.terrain.getWaveOffset(), this.waterPollutionLevel, foodTargets);
+        // Only fully update sharks near the camera
+        const isNearCamera = shark.x >= cameraLeft && shark.x <= cameraRight;
+        shark.update(this.terrain.getWaveOffset(), this.waterPollutionLevel, foodTargets, !isNearCamera);
         // Check if shark can eat any sunken food
-        this.checkSharkEatsSunkenFood(shark);
+        if (isNearCamera) {
+          this.checkSharkEatsSunkenFood(shark);
+        }
       }
     }
 
@@ -5909,6 +6003,9 @@ export class GameScene extends Phaser.Scene {
     // Cull off-screen scorch marks (2 screen widths behind player)
     this.cullOffScreenScorchMarks();
 
+    // Update scorch texture position to follow camera
+    this.updateScorchTexturePosition();
+
     // Update cannons
     const activeShuttlesForCannons = this.shuttles.filter(s => s.active);
     for (const cannon of this.cannons) {
@@ -5972,6 +6069,54 @@ export class GameScene extends Phaser.Scene {
     // Update debug monitoring display
     if (this.debugText) {
       const fps = Math.round(this.game.loop.actualFps);
+      const now = Date.now();
+      const gameTime = now - this.gameStartTime;
+
+      // Establish FPS baseline after 20 seconds of gameplay (letting FPS fully settle)
+      if (fps > 0) {
+        if (this.fpsBaseline === 0) {
+          // Collect FPS samples during calibration period
+          this.fpsHistory.push(fps);
+          // Keep only last 120 samples (about 2 seconds of data at 60fps)
+          if (this.fpsHistory.length > 120) {
+            this.fpsHistory.shift();
+          }
+          if (gameTime > 10000 && this.fpsHistory.length >= 60) {
+            // Calculate baseline as average of last 60 samples (settled FPS)
+            const samples = this.fpsHistory.slice(-60);
+            this.fpsBaseline = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+            this.fpsBaselineSetTime = now;
+            this.fpsMin = this.fpsBaseline; // Reset min to baseline
+            this.fpsMax = this.fpsBaseline; // Reset max to baseline
+            console.log(`[PERF] Baseline FPS established: ${this.fpsBaseline} (after 10s settle time)`);
+          }
+        } else {
+          // Track min/max relative to baseline
+          if (fps < this.fpsMin) {
+            const drop = this.fpsBaseline - fps;
+            this.fpsMin = fps;
+            if (drop >= 5) { // Only log significant drops (5+ FPS below baseline)
+              console.log(`[PERF] FPS dropped to ${fps} (${drop} below baseline). Debris:${this.debrisSprites.length} Children:${this.children.list.length}`);
+            }
+          }
+          if (fps > this.fpsMax) this.fpsMax = fps;
+        }
+      }
+
+      // Count particles from all particle emitters
+      let particleCount = 0;
+      this.children.list.forEach(child => {
+        if (child.type === 'ParticleEmitter') {
+          particleCount += (child as Phaser.GameObjects.Particles.ParticleEmitter).getAliveParticleCount();
+        }
+      });
+
+      // Count textures in memory
+      const textureCount = Object.keys(this.textures.list).length;
+
+      // Count pending time events (Phaser stores them in _pendingInsertion and _active)
+      const timeEventCount = (this.time as any)._pendingInsertion?.length + (this.time as any)._active?.length || 0;
+
       // Sum chemtrail particles from all shuttles
       let totalChemtrails = 0;
       for (const shuttle of this.shuttles) {
@@ -5993,15 +6138,47 @@ export class GameScene extends Phaser.Scene {
       for (const tower of this.oilTowers) {
         oilSpurts += (tower as any).oilSpurts?.length || 0;
       }
+
+      // Log detailed graphics breakdown every 5 seconds
+      if (Math.floor(gameTime / 5000) !== Math.floor((gameTime - this.game.loop.delta) / 5000)) {
+        // Count graphics by depth to identify what they are
+        const depthCounts: Record<number, number> = {};
+        const graphicsList = this.children.list.filter(c => c.type === 'Graphics') as Phaser.GameObjects.Graphics[];
+        graphicsList.forEach(g => {
+          const depth = g.depth;
+          depthCounts[depth] = (depthCounts[depth] || 0) + 1;
+        });
+
+        // Show depths with count >= 2 (the important ones)
+        const bigGroups = Object.entries(depthCounts)
+          .filter(([, c]) => c >= 2)
+          .sort((a, b) => Number(b[1]) - Number(a[1])) // sort by count desc
+          .map(([d, c]) => `d${d}:${c}`)
+          .join(' ');
+
+        // Count by known depths (from code inspection)
+        const sceneGraphics = graphicsList.filter(g => g.depth < 0).length; // negative depths = scene-level
+        const objectGraphics = graphicsList.filter(g => g.depth >= 0 && g.depth < 100).length; // normal objects
+        const uiGraphics = graphicsList.filter(g => g.depth >= 100).length; // UI layer
+
+        console.log(`[GFX] Total:${graphicsCount} Scene:${sceneGraphics} Objects:${objectGraphics} UI:${uiGraphics} | Big groups: ${bigGroups}`);
+        console.log(`[GFX EXPECTED] Pads:${this.landingPads.length}×2=${this.landingPads.length * 2} Cannons:${this.cannons.length}×3=${this.cannons.length * 3} Sharks:${this.sharks.length} Oil:${this.oilTowers.length}`);
+      }
+
+      // Show baseline status in display
+      const baselineStr = this.fpsBaseline > 0
+        ? `base:${this.fpsBaseline}`
+        : `calibrating ${Math.max(0, Math.ceil((10000 - gameTime) / 1000))}s...`;
+
       this.debugText.setText(
-        `FPS: ${fps}\n` +
+        `FPS: ${fps} (${baselineStr} min:${this.fpsMin})\n` +
+        `Particles: ${particleCount}\n` +
+        `Debris: ${this.debrisSprites.length}\n` +
+        `Textures: ${textureCount}\n` +
+        `TimeEvents: ${timeEventCount}\n` +
         `Graphics: ${graphicsCount}\n` +
         `Children: ${totalChildren}\n` +
         `Tweens: ${tweenCount}\n` +
-        `Rain: ${this.rainDrops.length}\n` +
-        `Splashes: ${this.rainSplashes.length}(${splashParticles}p)\n` +
-        `SinkScorch: ${this.sinkingScorchParticles.length}\n` +
-        `OilSpurts: ${oilSpurts}\n` +
         `Bombs: ${this.bombs.length}`
       );
     }

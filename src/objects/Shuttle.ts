@@ -124,7 +124,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       angle: { min: 0, max: 360 }, // Random drift direction
       scale: { start: 0.4, end: 0.1 },
       alpha: { start: 0.3, end: 0 },
-      lifespan: 60000, // 1 minute
+      lifespan: 15000, // 15 seconds (reduced for performance)
       blendMode: Phaser.BlendModes.NORMAL,
       frequency: -1, // Manual emission only (no auto-emit)
       tint: [0x555555, 0x666666, 0x777777, 0x444444], // Grey colors
