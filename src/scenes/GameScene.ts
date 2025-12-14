@@ -2308,6 +2308,11 @@ export class GameScene extends Phaser.Scene {
     // Track landing achievement
     this.achievementSystem.onLanding(landingResult.quality);
 
+    // Track country visit for World Traveller achievement (only on landing, not passing through)
+    if (pad.country) {
+      this.achievementSystem.onCountryVisited(pad.country);
+    }
+
     // Play landing sound based on quality (louder volumes for better audibility)
     if (landingResult.quality === 'perfect') {
       this.sound.play('landing_perfect', { volume: 1.0 });
@@ -5763,9 +5768,8 @@ export class GameScene extends Phaser.Scene {
     this.updateRain();
 
 
-    // Track country visits for achievement
+    // Country visits are now tracked on successful landing, not just passing through
     const currentCountry = this.getCurrentCountry();
-    this.achievementSystem.onCountryVisited(currentCountry.name);
 
     // Check for reaching Russia in heavy rain
     if (currentCountry.name === 'Russia' && this.rainIntensity === 'heavy') {

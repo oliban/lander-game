@@ -357,9 +357,13 @@ export class Terrain {
       const dirtColor = this.darkenColor(country.color, 0.5);
       const rockColor = this.darkenColor(country.color, 0.35);
 
+      // For Switzerland, use alpine meadow green for the base fill
+      const isSwiss = country.name === 'Switzerland';
+      const baseFillColor = isSwiss ? 0x3d6834 : rockColor; // Dark meadow green for Swiss
+
       // FIRST: Draw a solid base fill from terrain surface to bottom of screen
       // This ensures no gaps can appear
-      this.graphics.fillStyle(rockColor, 1);
+      this.graphics.fillStyle(baseFillColor, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
@@ -372,7 +376,8 @@ export class Terrain {
 
       // Middle dirt layer (on top of rock)
       // Draw with bottom edge following terrain profile offset by 60px
-      this.graphics.fillStyle(dirtColor, 1);
+      const middleLayerColor = isSwiss ? 0x4a7c3f : dirtColor; // Meadow green for Swiss
+      this.graphics.fillStyle(middleLayerColor, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
@@ -387,7 +392,8 @@ export class Terrain {
 
       // Top grass/surface layer
       // Draw with bottom edge following terrain profile offset by 30px
-      this.graphics.fillStyle(country.color, 1);
+      const topLayerColor = isSwiss ? 0x5a9c4f : country.color; // Light meadow green for Swiss
+      this.graphics.fillStyle(topLayerColor, 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
@@ -485,7 +491,49 @@ export class Terrain {
 
       // Draw snow caps for Switzerland (high altitude terrain)
       if (country.name === 'Switzerland') {
+        this.drawSwissGrassSlopes(countryVertices, country.color);
         this.drawSwissSnowCaps(countryVertices);
+      }
+    }
+  }
+
+  private drawSwissGrassSlopes(vertices: TerrainVertex[], baseGrassColor: number): void {
+    // The base terrain is already green - just add decorative grass tufts and flowers
+    const snowLineY = GAME_HEIGHT * 0.35;
+    const groundLevel = GAME_HEIGHT * 0.75;
+    const lightMeadowGreen = 0x5a9c4f;
+
+    // Draw grass tufts and alpine flowers on the meadow slopes
+    for (let i = 0; i < vertices.length - 1; i += 3) {
+      const v = vertices[i];
+
+      // Only on slopes below snow line
+      if (v.y > snowLineY && v.y < groundLevel - 20) {
+        const seed = Math.sin(v.x * 0.1) * 10000;
+        const elevationRatio = (v.y - snowLineY) / (groundLevel - snowLineY);
+
+        // Draw grass tufts - more at lower elevations
+        const tuftsCount = Math.floor(2 + elevationRatio * 4);
+        for (let t = 0; t < tuftsCount; t++) {
+          const tX = v.x + (seed % 20) - 10 + t * 8;
+          const tY = v.y + 5 + (seed % 15);
+          const height = 8 + (seed % 8);
+          const lean = Math.sin(seed + t) * 4;
+
+          this.graphics.lineStyle(2, lightMeadowGreen, 0.9);
+          this.graphics.beginPath();
+          this.graphics.moveTo(tX, tY);
+          this.graphics.lineTo(tX + lean, tY - height);
+          this.graphics.strokePath();
+        }
+
+        // Occasional alpine flowers (small colored dots)
+        if (Math.abs(seed % 15) < 3 && elevationRatio > 0.2) {
+          const flowerColors = [0xFFFF00, 0xFF69B4, 0x9370DB, 0xFFFFFF]; // Yellow, pink, purple, white
+          const flowerColor = flowerColors[Math.floor(Math.abs(seed % 4))];
+          this.graphics.fillStyle(flowerColor, 0.9);
+          this.graphics.fillCircle(v.x + (seed % 25) - 12, v.y + 10 + (seed % 20), 3);
+        }
       }
     }
   }
