@@ -160,6 +160,12 @@ export class BootScene extends Phaser.Scene {
       this.load.audio(`explosion${i}`, `assets/audio/explosion${i}.mp3`);
     }
 
+    // Load country background music
+    const musicTracks = ['washington', 'usa', 'atlantic', 'uk', 'france', 'switzerland', 'germany', 'poland', 'russia'];
+    for (const track of musicTracks) {
+      this.load.audio(`music_${track}`, `assets/audio/music_${track}.mp3`);
+    }
+
     // Medal house images
     for (let i = 0; i < 2; i++) {
       this.load.image(`medal_house_${i}`, `assets/images/medal_house/FIFA_buildings_${i}.png`);

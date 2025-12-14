@@ -17,6 +17,7 @@ import { FuelSystem } from '../systems/FuelSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
 import { getCollectionSystem } from '../systems/CollectionSystem';
+import { MusicManager } from '../systems/MusicManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -54,6 +55,7 @@ export class GameScene extends Phaser.Scene {
   private fuelSystem2: FuelSystem | null = null; // P2's fuel system
   private inventorySystem!: InventorySystem;
   private inventorySystem2: InventorySystem | null = null; // P2's inventory
+  private musicManager!: MusicManager;
   private gameState: GameState = 'playing';
   private starfield!: Phaser.GameObjects.Graphics;
   private currentCountryText!: Phaser.GameObjects.Text;
@@ -287,6 +289,9 @@ export class GameScene extends Phaser.Scene {
     this.achievementSystem.startSession();
     // Note: Achievement popup is created in UIScene so it appears on top of all UI elements
 
+    // Initialize music manager (music starts after shuttle is created)
+    this.musicManager = new MusicManager(this);
+
     // Initialize P2 systems if 2-player mode
     if (this.playerCount === 2) {
       this.fuelSystem2 = new FuelSystem();
@@ -432,6 +437,10 @@ export class GameScene extends Phaser.Scene {
     // Invulnerability at start - prevents crashes until player launches
     this.invulnerable = true;
 
+    // Start background music for starting country (now that shuttle exists)
+    const startingCountry = this.getCurrentCountry();
+    this.musicManager.startMusic(startingCountry.name);
+
     // Set up camera - allow space for flying high (especially Switzerland mountains) and Washington to the left
     this.cameras.main.setBounds(WORLD_START_X, -2500, WORLD_WIDTH - WORLD_START_X, GAME_HEIGHT + 2500);
     // IMPORTANT: Center camera on shuttle FIRST before enabling follow
@@ -562,6 +571,8 @@ export class GameScene extends Phaser.Scene {
     // Stop rocket sound and clean up graphics when scene shuts down
     this.events.on('shutdown', () => {
       this.shuttles.forEach(shuttle => shuttle.stopRocketSound());
+      // Stop music when scene shuts down
+      this.musicManager.stopAll();
       // Destroy rain emitter to prevent stale reference errors on restart
       if (this.rainEmitter) {
         this.rainEmitter.destroy();
@@ -1469,6 +1480,8 @@ export class GameScene extends Phaser.Scene {
     if (this.gameState !== 'playing') return;
 
     const playerNum = shuttle === this.shuttle2 ? 2 : 1;
+    const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+    console.log(`[DEATH] P${playerNum} died: "Struck by lightning!" | Cause: lightning | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)})`);
 
     // Track achievement
     this.achievementSystem.onDeath('lightning');
@@ -1933,7 +1946,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (isOverWater && !nearLandingPad && !overFisherBoat) {
-      console.log(`CRASH P${playerNum}: Splashed into the Atlantic Ocean at`, { x: shuttle.x, y: shuttle.y });
+      const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+      const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
+      console.log(`[DEATH] P${playerNum} died: "Splashed into the Atlantic!" | Cause: water | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'}`);
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
@@ -1985,7 +2000,9 @@ export class GameScene extends Phaser.Scene {
     const cause: CauseOfDeath = outOfFuel ? 'fuel' : 'terrain';
     const message = outOfFuel ? 'Ran out of fuel!' : 'Crashed into terrain!';
 
-    console.log(`CRASH P${playerNum}: Terrain collision at`, { x: shuttle.x, y: shuttle.y }, 'terrainHeight:', terrainHeight.toFixed(1), 'velocity:', velocity.total.toFixed(2), 'outOfFuel:', outOfFuel);
+    const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+    const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
+    console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'} | TerrainHeight: ${terrainHeight.toFixed(1)}`);
 
     // In 2-player mode, only destroy this shuttle
     if (this.playerCount === 2) {
@@ -2030,7 +2047,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    console.log(`CRASH P${playerNum}: Hit brick wall at velocity:`, velocity.total.toFixed(2));
+    const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+    const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
+    console.log(`[DEATH] P${playerNum} died: "Crashed into the wall!" | Cause: terrain | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'}`);
 
     // In 2-player mode, only destroy this shuttle
     if (this.playerCount === 2) {
@@ -2343,6 +2362,9 @@ export class GameScene extends Phaser.Scene {
     const landingResult = shuttle.checkLandingSafety();
 
     if (!landingResult.safe) {
+      const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+      const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
+      console.log(`[DEATH] P${playerNum} died: "Crash landing! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'} | Pad: ${pad.name}`);
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
@@ -2690,7 +2712,9 @@ export class GameScene extends Phaser.Scene {
     const landingResult = shuttle.checkLandingSafety();
 
     if (!landingResult.safe) {
-      console.log('CRASH: Bad landing on boat deck');
+      const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+      const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
+      console.log(`[DEATH] P${playerNum} died: "Crash landing on boat! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'}`);
 
       if (this.playerCount === 2) {
         this.handleShuttleCrash(playerNum, `Crash landing on boat! ${landingResult.reason}`, 'landing');
@@ -3237,7 +3261,10 @@ export class GameScene extends Phaser.Scene {
     // Track which player died (0-based index) for dogfight kill tracking
     this.lastDeadPlayerIndex = playerNum - 1;
 
-    console.log(`P${playerNum} crashed: ${message}`);
+    // Detailed death logging
+    const fuelSystem = playerNum === 2 ? this.fuelSystem2 : this.fuelSystem;
+    const vel = shuttle.body?.velocity || { x: 0, y: 0 };
+    console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuelSystem?.getFuel().toFixed(1) ?? 'N/A'}`);
 
     // Store death message for this player
     if (playerNum === 1) {
@@ -4890,6 +4917,9 @@ export class GameScene extends Phaser.Scene {
     destroyedBuildings: { name: string; points: number; textureKey: string; country: string }[];
     noShake?: boolean;
   }): void {
+    // Fade out music during game over transition
+    this.musicManager.fadeOutAndStop(2000);
+
     // Create fade overlay
     const fadeOverlay = this.add.rectangle(
       this.cameras.main.scrollX + this.cameras.main.width / 2,
@@ -5692,6 +5722,9 @@ export class GameScene extends Phaser.Scene {
   private triggerSittingDuckGameOver(): void {
     if (this.gameState !== 'playing') return;
 
+    const vel = this.shuttle.body?.velocity || { x: 0, y: 0 };
+    console.log(`[DEATH] P1 died: "Sitting duck" | Cause: duck | Position: (${this.shuttle.x.toFixed(0)}, ${this.shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${this.fuelSystem.getFuel().toFixed(1)}`);
+
     this.gameState = 'crashed';
     this.shuttle.stopRocketSound();
 
@@ -6193,6 +6226,9 @@ export class GameScene extends Phaser.Scene {
     this.currentCountryText.setText(country.name);
     this.currentCountryText.setColor('#' + country.color.toString(16).padStart(6, '0'));
 
+    // Update music (handles crossfade on country change)
+    this.musicManager.update(country.name);
+
     // Check for out of fuel while in air
     if (this.fuelSystem.isEmpty() && this.shuttle.body!.velocity.y > 0.5) {
       // Show warning (handled in UI)
@@ -6320,6 +6356,9 @@ export class GameScene extends Phaser.Scene {
 
     // Check if fell off the bottom
     if (this.shuttle.y > GAME_HEIGHT + 100) {
+      const vel = this.shuttle.body?.velocity || { x: 0, y: 0 };
+      console.log(`[DEATH] P1 died: "Lost in the void!" | Cause: void | Position: (${this.shuttle.x.toFixed(0)}, ${this.shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${this.fuelSystem.getFuel().toFixed(1)}`);
+
       this.gameState = 'crashed';
       this.shuttle.stopRocketSound();
 
@@ -6361,12 +6400,12 @@ export class GameScene extends Phaser.Scene {
     // Brief delay for death animation, then restart round
     this.time.delayedCall(DOGFIGHT_CONFIG.RESTART_DELAY_MS, () => {
       this.scene.stop('UIScene');
+      // Don't pass dogfightPadIndex - let it pick a new random pad each round
       this.scene.restart({
         playerCount: 2,
         gameMode: 'dogfight',
         p1Kills: this.p1Kills,
         p2Kills: this.p2Kills,
-        dogfightPadIndex: this.dogfightPadIndex, // Keep same spawn pad for entire match
       });
     });
   }
@@ -6496,22 +6535,23 @@ export class GameScene extends Phaser.Scene {
     // Don't check during invulnerability period (spawn protection)
     if (this.invulnerable) return;
 
-    const VOID_TOP = -500;           // Too high above the screen
     const VOID_LEFT = WORLD_START_X - 200;  // Too far left
     const VOID_RIGHT = WORLD_WIDTH + 200;   // Too far right
 
     for (const shuttle of this.shuttles) {
       if (!shuttle.active) continue;
 
+      // Only kill for flying too far left or right - flying high is allowed
       const isOutOfBounds =
-        shuttle.y < VOID_TOP ||
         shuttle.x < VOID_LEFT ||
         shuttle.x > VOID_RIGHT;
 
       if (isOutOfBounds) {
         const playerIndex = shuttle.getPlayerIndex(); // 0-based
         const playerNum = playerIndex + 1; // 1-based for display
-        console.log(`VOID DEATH: Player ${playerNum} flew out of bounds at`, { x: shuttle.x, y: shuttle.y });
+        const reason = shuttle.x < VOID_LEFT ? `TOO FAR LEFT (x=${shuttle.x.toFixed(0)} < ${VOID_LEFT})` :
+                       `TOO FAR RIGHT (x=${shuttle.x.toFixed(0)} > ${VOID_RIGHT})`;
+        console.log(`[DEATH] P${playerNum} died: "Lost in the void!" | Cause: void | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Reason: ${reason}`);
 
         // Track which player died for kill tracking
         this.lastDeadPlayerIndex = playerIndex;

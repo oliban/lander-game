@@ -130,3 +130,18 @@ export const COLORS = {
   WARNING: 0xFFAA00,
   TEXT: 0x333333,
 };
+
+// Country background music mapping
+export const COUNTRY_MUSIC: Record<string, string> = {
+  'Washington DC': 'music_washington',
+  'USA': 'music_usa',
+  'Atlantic Ocean': 'music_atlantic',
+  'United Kingdom': 'music_uk',
+  'France': 'music_france',
+  'Switzerland': 'music_switzerland',
+  'Germany': 'music_germany',
+  'Poland': 'music_poland',
+  'Russia': 'music_russia',
+};
+export const MUSIC_CROSSFADE_DURATION = 1500; // ms for crossfade transition
+export const MUSIC_DEFAULT_VOLUME = 0.3; // Background music volume
