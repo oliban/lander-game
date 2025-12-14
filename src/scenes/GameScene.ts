@@ -510,7 +510,8 @@ export class GameScene extends Phaser.Scene {
       const intensityOptions: ('none' | 'light' | 'medium' | 'heavy')[] = ['none', 'light', 'medium', 'heavy'];
       const startIntensity = Math.floor(Math.random() * intensityOptions.length);
       this.rainIntensity = intensityOptions[startIntensity];
-      console.log(`[Weather] UNSTABLE - weather will change periodically! Starting at: ${this.rainIntensity}`);
+      const displayIntensity = this.rainIntensity === 'none' ? 'clear' : this.rainIntensity;
+      console.log(`[Weather] UNSTABLE - weather will change periodically! Starting at: ${displayIntensity}`);
     } else {
       console.log(`[Weather] ${this.weatherState.toUpperCase()}${this.weatherState === 'stormy' ? ' - watch out for lightning!' : ''}`);
     }
@@ -807,7 +808,10 @@ export class GameScene extends Phaser.Scene {
       if (newIntensity !== this.rainIntensity) {
         const oldIntensity = this.rainIntensity;
         this.rainIntensity = newIntensity;
-        console.log(`[Weather] Unstable weather shift: ${oldIntensity} -> ${newIntensity}`);
+        // Display 'clear' instead of 'none' for better readability
+        const displayOld = oldIntensity === 'none' ? 'clear' : oldIntensity;
+        const displayNew = newIntensity === 'none' ? 'clear' : newIntensity;
+        console.log(`[Weather] Unstable weather shift: ${displayOld} -> ${displayNew}`);
 
         // Adjust rain drops count based on new intensity
         this.adjustRainDropCount();
@@ -828,9 +832,13 @@ export class GameScene extends Phaser.Scene {
     const currentCount = this.rainDrops.length;
 
     if (targetCount === 0) {
-      // Clear all rain
+      // Clear all rain and destroy graphics so it doesn't freeze on screen
       this.rainDrops = [];
       this.rainSplashes = [];
+      if (this.rainGraphics) {
+        this.rainGraphics.destroy();
+        this.rainGraphics = null;
+      }
     } else if (targetCount > currentCount) {
       // Add more drops
       for (let i = currentCount; i < targetCount; i++) {
