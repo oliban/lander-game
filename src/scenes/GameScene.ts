@@ -1546,7 +1546,7 @@ export class GameScene extends Phaser.Scene {
 
     // Add currently falling bombs that are in Atlantic Ocean and underwater
     for (const bomb of this.bombs) {
-      if (bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
+      if (bomb && bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
         targets.push({ x: bomb.x, y: bomb.y });
       }
     }
@@ -3635,7 +3635,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.bombs.length - 1; i >= 0; i--) {
       const bomb = this.bombs[i];
 
-      if (bomb.hasExploded || !bomb.active) {
+      if (!bomb || bomb.hasExploded || !bomb.active) {
         this.bombs.splice(i, 1);
         continue;
       }
