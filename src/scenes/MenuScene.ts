@@ -206,7 +206,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Press Enter hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, panelY + panelH + 80, 'Press 1 for 1 Player  |  Press 2 for 2 Players', {
+    const enterHint = this.add.text(GAME_WIDTH / 2, panelY + panelH + 80, 'Press 1 for 1P  |  Press 2 for 2P  |  Press 3 for Dogfight', {
       fontSize: '13px',
       color: '#666666',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -228,6 +228,12 @@ export class MenuScene extends Phaser.Scene {
     const key2 = this.input.keyboard!.addKey(50);
     key2.on('down', () => {
       this.startGame(2);
+    });
+
+    // Listen for 3 key (dogfight mode) - key code 51 is '3'
+    const key3 = this.input.keyboard!.addKey(51);
+    key3.on('down', () => {
+      this.scene.start('GameScene', { playerCount: 2, gameMode: 'dogfight' });
     });
 
     }

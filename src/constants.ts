@@ -13,6 +13,17 @@ export const MAX_SAFE_LANDING_ANGLE = 0.45; // radians (~26 degrees) - reasonabl
 export const INITIAL_FUEL = 100;
 export const FUEL_CONSUMPTION_RATE = 0.15; // per frame when thrusting
 
+// Game modes
+export type GameMode = 'normal' | 'dogfight';
+
+// Dogfight mode configuration
+export const DOGFIGHT_CONFIG = {
+  KILLS_TO_WIN: 10,                    // First to this many kills wins
+  RESTART_DELAY_MS: 1500,              // Delay after death before round restart
+  AUTO_GEAR_EXTEND_DISTANCE: 150,      // Extend landing gear when within this distance of pad
+  AUTO_GEAR_RETRACT_DISTANCE: 200,     // Retract landing gear when farther than this from all pads
+};
+
 // Terrain
 export const TERRAIN_SEGMENT_WIDTH = 20;
 export const TERRAIN_ROUGHNESS = 0.5;
