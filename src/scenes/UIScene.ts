@@ -45,13 +45,10 @@ export class UIScene extends Phaser.Scene {
   private fuelBarBg!: Phaser.GameObjects.Graphics;
   private fuelBar!: Phaser.GameObjects.Graphics;
   private fuelText!: Phaser.GameObjects.Text;
-  private velocityText!: Phaser.GameObjects.Text;
   private inventoryContainer!: Phaser.GameObjects.Container;
   private p2InventoryContainer: Phaser.GameObjects.Container | null = null;
   private progressBar!: Phaser.GameObjects.Graphics;
   private progressText!: Phaser.GameObjects.Text;
-  private gearIndicator!: Phaser.GameObjects.Text;
-  private gearBg!: Phaser.GameObjects.Graphics;
   private timerText!: Phaser.GameObjects.Text;
   private timerBg!: Phaser.GameObjects.Graphics;
   private medalIndicator!: Phaser.GameObjects.Container;
@@ -59,8 +56,6 @@ export class UIScene extends Phaser.Scene {
   private scoreBg!: Phaser.GameObjects.Graphics;
 
   private lastProgress: number = -1;
-  private lastVelocity: number = -1;
-  private lastLegsState: boolean = false;
   private lastTime: number = -1;
   private lastMedalState: boolean = false;
   private currentScore: number = 0;
@@ -68,8 +63,6 @@ export class UIScene extends Phaser.Scene {
   private p2FuelBarBg: Phaser.GameObjects.Graphics | null = null;
   private p2FuelBar: Phaser.GameObjects.Graphics | null = null;
   private p2FuelText: Phaser.GameObjects.Text | null = null;
-  private lastP2Velocity: number = -1;
-  private lastP2LegsState: boolean = false;
   // Kill tally (2-player mode)
   private killTallyContainer: Phaser.GameObjects.Container | null = null;
   private p1TallyGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -102,13 +95,9 @@ export class UIScene extends Phaser.Scene {
     this.getKillCounts = data.getKillCounts ?? (() => ({ p1Kills: 0, p2Kills: 0 }));
 
     // Reset state variables (Phaser may reuse scene instances)
-    this.lastVelocity = -1;
-    this.lastLegsState = false;
     this.lastTime = -1;
     this.lastMedalState = false;
     this.currentScore = 0;
-    this.lastP2Velocity = -1;
-    this.lastP2LegsState = false;
     this.p2FuelBarBg = null;
     this.p2FuelBar = null;
     this.p2FuelText = null;
@@ -118,8 +107,6 @@ export class UIScene extends Phaser.Scene {
     this.p2TallyGraphics = null;
 
     this.createFuelGauge();
-    this.createVelocityMeter();
-    this.createGearIndicator();
     this.createTimer();
     this.createScoreCounter();
     this.createInventoryDisplay();
@@ -397,49 +384,6 @@ export class UIScene extends Phaser.Scene {
       this.p2FuelBar.fillStyle(0xFFFFFF, 0.3);
       this.p2FuelBar.fillRoundedRect(x + 6, y + height - 4 - fillHeight + 2, 4, fillHeight - 4, 2);
     }
-  }
-
-  private createVelocityMeter(): void {
-    // Background box
-    const velBg = this.add.graphics();
-    velBg.fillStyle(0xFFFFFF, 0.9);
-    velBg.fillRoundedRect(20, 315, 70, 50, 8);
-    velBg.lineStyle(2, 0x333333);
-    velBg.strokeRoundedRect(20, 315, 70, 50, 8);
-
-    this.velocityText = this.add.text(55, 340, '', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '12px',
-      color: '#333333',
-      fontStyle: 'bold',
-      align: 'center',
-    });
-    this.velocityText.setOrigin(0.5, 0.5);
-  }
-
-  private updateVelocityMeter(): void {
-    const velocity = this.getShuttleVelocity();
-    const total = velocity.total;
-
-    // Only update if velocity changed significantly
-    if (Math.abs(total - this.lastVelocity) < 0.1) {
-      return;
-    }
-    this.lastVelocity = total;
-
-    let color = '#4CAF50'; // Green
-    let status = 'SAFE';
-
-    if (total > MAX_SAFE_LANDING_VELOCITY * 1.5) {
-      color = '#F44336'; // Red
-      status = 'DANGER';
-    } else if (total > MAX_SAFE_LANDING_VELOCITY) {
-      color = '#FFA000'; // Orange
-      status = 'CAUTION';
-    }
-
-    this.velocityText.setText(`VEL: ${total.toFixed(1)}\n${status}`);
-    this.velocityText.setColor(color);
   }
 
   private createInventoryDisplay(): void {
@@ -740,52 +684,6 @@ export class UIScene extends Phaser.Scene {
     this.progressText.setText(`${percentage}% to Russia`);
   }
 
-  private createGearIndicator(): void {
-    // Background box below velocity meter
-    this.gearBg = this.add.graphics();
-    this.gearBg.fillStyle(0xFFFFFF, 0.9);
-    this.gearBg.fillRoundedRect(20, 375, 70, 35, 8);
-    this.gearBg.lineStyle(2, 0x333333);
-    this.gearBg.strokeRoundedRect(20, 375, 70, 35, 8);
-
-    this.gearIndicator = this.add.text(55, 392, 'GEAR\nUP', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '11px',
-      color: '#F44336',
-      fontStyle: 'bold',
-      align: 'center',
-    });
-    this.gearIndicator.setOrigin(0.5, 0.5);
-  }
-
-  private updateGearIndicator(): void {
-    const legsExtended = this.getLegsExtended();
-
-    // Only update if state changed
-    if (legsExtended === this.lastLegsState) {
-      return;
-    }
-    this.lastLegsState = legsExtended;
-
-    if (legsExtended) {
-      this.gearIndicator.setText('GEAR\nDOWN');
-      this.gearIndicator.setColor('#4CAF50');
-      this.gearBg.clear();
-      this.gearBg.fillStyle(0xE8F5E9, 0.95);
-      this.gearBg.fillRoundedRect(20, 375, 70, 35, 8);
-      this.gearBg.lineStyle(2, 0x4CAF50);
-      this.gearBg.strokeRoundedRect(20, 375, 70, 35, 8);
-    } else {
-      this.gearIndicator.setText('GEAR\nUP');
-      this.gearIndicator.setColor('#F44336');
-      this.gearBg.clear();
-      this.gearBg.fillStyle(0xFFEBEE, 0.95);
-      this.gearBg.fillRoundedRect(20, 375, 70, 35, 8);
-      this.gearBg.lineStyle(2, 0xF44336);
-      this.gearBg.strokeRoundedRect(20, 375, 70, 35, 8);
-    }
-  }
-
   private createTimer(): void {
     // Timer in upper right corner
     this.timerBg = this.add.graphics();
@@ -1032,9 +930,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   update(): void {
-    this.updateVelocityMeter();
     this.updateProgressBar();
-    this.updateGearIndicator();
     this.updateTimer();
     this.updateMedalIndicator();
   }
