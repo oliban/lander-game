@@ -159,6 +159,18 @@ export class GameScene extends Phaser.Scene {
   private juggledTombstoneId: number | null = null; // Track which tombstone is being juggled
   private lastTombstoneBounceTime: number = 0; // Debounce multiple collision events
 
+  // Weather system
+  private weatherState: 'clear' | 'cloudy' | 'stormy' = 'clear';
+  private cloudData: { x: number; y: number; scale: number; type: 'cumulus' | 'stratus' | 'alto' | 'storm'; isStormCloud: boolean; lastLightningTime: number }[] = [];
+  private cloudGraphics: Phaser.GameObjects.Graphics | null = null;
+  private lightningGraphics: Phaser.GameObjects.Graphics | null = null;
+  private rainGraphics: Phaser.GameObjects.Graphics | null = null;
+  private rainDrops: { x: number; y: number; speed: number; length: number }[] = [];
+  private rainIntensity: 'none' | 'light' | 'medium' | 'heavy' = 'none';
+  private rainSplashes: { x: number; y: number; particles: { dx: number; dy: number; vy: number }[]; age: number }[] = [];
+  private lastLightningCheck: number = 0;
+  private pendingLightningStrike: { cloud: { x: number; y: number; scale: number; type: 'cumulus' | 'stratus' | 'alto' | 'storm'; isStormCloud: boolean; lastLightningTime: number }; shuttle: Shuttle; warningStart: number; strikeDelay: number } | null = null;
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -249,11 +261,9 @@ export class GameScene extends Phaser.Scene {
     // Pick biplane type: 30% chance for info plane, 70% for country propaganda
     if (Math.random() < 0.3) {
       this.biplaneTargetCountry = 'GAME_INFO';
-      console.log(`[Biplane] Info plane - will spawn when player approaches any country`);
     } else {
       const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Germany', 'Poland', 'Russia'];
       this.biplaneTargetCountry = biplaneCountries[Math.floor(Math.random() * biplaneCountries.length)];
-      console.log(`[Biplane] Propaganda plane - will spawn when player approaches ${this.biplaneTargetCountry}`);
     }
     this.biplaneSpawned = false;
 
@@ -479,45 +489,94 @@ export class GameScene extends Phaser.Scene {
       this.starfield.fillRect(0, y, GAME_WIDTH, 1);
     }
 
-    // Draw some clouds with parallax and shading
-    const cloudGraphics = this.add.graphics();
-    cloudGraphics.setScrollFactor(0.02);
-    cloudGraphics.setDepth(-90);
+    // Initialize weather state (60% clear, 25% cloudy, 15% stormy)
+    const weatherRoll = Math.random();
+    if (weatherRoll < 0.15) {
+      this.weatherState = 'stormy';
+    } else if (weatherRoll < 0.40) {
+      this.weatherState = 'cloudy';
+    } else {
+      this.weatherState = 'clear';
+    }
+    console.log(`[Weather] ${this.weatherState.toUpperCase()}${this.weatherState === 'stormy' ? ' - watch out for lightning!' : ''}`);
 
-    for (let i = 0; i < 20; i++) {
-      const x = Math.random() * GAME_WIDTH * 5;
-      const y = 50 + Math.random() * 200;
-      const scale = 0.5 + Math.random() * 0.8;
+    // Determine cloud count based on weather
+    const cloudCounts = { clear: 15, cloudy: 25, stormy: 35 };
+    const cloudCount = cloudCounts[this.weatherState];
 
-      // Shadow layer (grey, offset down)
-      cloudGraphics.fillStyle(0xCCCCCC, 0.5);
-      cloudGraphics.fillCircle(x, y + 4 * scale, 25 * scale);
-      cloudGraphics.fillCircle(x + 20 * scale, y - 8 * scale + 4 * scale, 20 * scale);
-      cloudGraphics.fillCircle(x + 40 * scale, y + 4 * scale, 28 * scale);
-      cloudGraphics.fillCircle(x + 20 * scale, y + 8 * scale + 4 * scale, 18 * scale);
+    // Determine storm cloud chance based on weather
+    const stormCloudChance = { clear: 0, cloudy: 0.15, stormy: 0.4 };
+    const stormChance = stormCloudChance[this.weatherState];
 
-      // Main white layer
-      cloudGraphics.fillStyle(0xFFFFFF, 0.85);
-      cloudGraphics.fillCircle(x, y, 25 * scale);
-      cloudGraphics.fillCircle(x + 20 * scale, y - 8 * scale, 20 * scale);
-      cloudGraphics.fillCircle(x + 40 * scale, y, 28 * scale);
-      cloudGraphics.fillCircle(x + 20 * scale, y + 8 * scale, 18 * scale);
+    // Generate varied cloud data
+    this.cloudData = [];
+    for (let i = 0; i < cloudCount; i++) {
+      // Decide cloud type
+      const typeRoll = Math.random();
+      let type: 'cumulus' | 'stratus' | 'alto' | 'storm';
+      let y: number;
+      let scale: number;
 
-      // Highlight layer (brighter, offset up, smaller)
-      cloudGraphics.fillStyle(0xFFFFFF, 0.4);
-      cloudGraphics.fillCircle(x + 5 * scale, y - 5 * scale, 12 * scale);
-      cloudGraphics.fillCircle(x + 25 * scale, y - 12 * scale, 10 * scale);
+      // Check if this should be a storm cloud first
+      if (Math.random() < stormChance) {
+        type = 'storm';
+        y = 80 + Math.random() * 120; // Storm clouds at mid-height
+        scale = 1.0 + Math.random() * 1.0; // Larger scale
+      } else if (typeRoll < 0.15) {
+        type = 'alto';
+        y = 30 + Math.random() * 50; // High clouds
+        scale = 0.3 + Math.random() * 0.3; // Smaller
+      } else if (typeRoll < 0.35) {
+        type = 'stratus';
+        y = 60 + Math.random() * 150; // Mid-level
+        scale = 0.5 + Math.random() * 0.6;
+      } else {
+        type = 'cumulus';
+        y = 50 + Math.random() * 200; // Various heights
+        scale = 0.5 + Math.random() * 0.8;
+      }
+
+      this.cloudData.push({
+        x: Math.random() * GAME_WIDTH * 5,
+        y,
+        scale,
+        type,
+        isStormCloud: type === 'storm',
+        lastLightningTime: 0
+      });
+    }
+
+    // Draw clouds with parallax and shading
+    this.cloudGraphics = this.add.graphics();
+    this.cloudGraphics.setScrollFactor(0.02);
+    this.cloudGraphics.setDepth(-90);
+
+    for (const cloud of this.cloudData) {
+      this.drawCloud(this.cloudGraphics, cloud);
     }
 
     // Add gentle cloud drift animation
     this.tweens.add({
-      targets: cloudGraphics,
+      targets: this.cloudGraphics,
       x: 30,
       duration: 15000,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+
+    // Create lightning graphics layer (above clouds)
+    this.lightningGraphics = this.add.graphics();
+    this.lightningGraphics.setScrollFactor(0.02);
+    this.lightningGraphics.setDepth(-85);
+
+    // Create rain graphics layer (in front of clouds but behind UI)
+    this.rainGraphics = this.add.graphics();
+    this.rainGraphics.setScrollFactor(0);
+    this.rainGraphics.setDepth(-80);
+
+    // Initialize rain (intensity depends on weather state)
+    this.initializeRain();
 
     // Sun with multi-layer corona
     const sunX = 100;
@@ -556,6 +615,628 @@ export class GameScene extends Phaser.Scene {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+  }
+
+  private drawCloud(graphics: Phaser.GameObjects.Graphics, cloud: typeof this.cloudData[0]): void {
+    const { x, y, scale: s, type } = cloud;
+
+    switch (type) {
+      case 'cumulus':
+        // Very fluffy cumulus cloud with many soft overlapping puffs
+        // Outer soft shadow/glow
+        graphics.fillStyle(0xE8E8E8, 0.3);
+        graphics.fillCircle(x - 25 * s, y + 8 * s, 30 * s);
+        graphics.fillCircle(x + 15 * s, y + 10 * s, 35 * s);
+        graphics.fillCircle(x + 55 * s, y + 8 * s, 28 * s);
+        // Shadow layer
+        graphics.fillStyle(0xDDDDDD, 0.6);
+        graphics.fillCircle(x - 20 * s, y + 5 * s, 26 * s);
+        graphics.fillCircle(x + 8 * s, y + 8 * s, 30 * s);
+        graphics.fillCircle(x + 38 * s, y + 6 * s, 28 * s);
+        graphics.fillCircle(x + 60 * s, y + 5 * s, 22 * s);
+        // Main white layer - many overlapping puffs for fluffy cotton look
+        graphics.fillStyle(0xFFFFFF, 0.92);
+        graphics.fillCircle(x - 25 * s, y - 2 * s, 28 * s);
+        graphics.fillCircle(x - 5 * s, y - 8 * s, 32 * s);
+        graphics.fillCircle(x + 25 * s, y - 12 * s, 30 * s);
+        graphics.fillCircle(x + 55 * s, y - 5 * s, 26 * s);
+        graphics.fillCircle(x + 10 * s, y + 3 * s, 24 * s);
+        graphics.fillCircle(x + 40 * s, y + 2 * s, 22 * s);
+        graphics.fillCircle(x - 12 * s, y + 6 * s, 20 * s);
+        // Top billowy puffs for extra fluffiness
+        graphics.fillStyle(0xFFFFFF, 0.97);
+        graphics.fillCircle(x - 10 * s, y - 18 * s, 20 * s);
+        graphics.fillCircle(x + 12 * s, y - 22 * s, 22 * s);
+        graphics.fillCircle(x + 35 * s, y - 18 * s, 18 * s);
+        graphics.fillCircle(x + 5 * s, y - 12 * s, 16 * s);
+        graphics.fillCircle(x + 48 * s, y - 10 * s, 14 * s);
+        // Bright highlights on top edges
+        graphics.fillStyle(0xFFFFFF, 0.6);
+        graphics.fillCircle(x - 5 * s, y - 25 * s, 12 * s);
+        graphics.fillCircle(x + 18 * s, y - 28 * s, 10 * s);
+        graphics.fillCircle(x + 40 * s, y - 22 * s, 11 * s);
+        break;
+
+      case 'stratus':
+        // Wispy elongated cloud
+        // Shadow layer
+        graphics.fillStyle(0xCCCCCC, 0.4);
+        graphics.fillEllipse(x, y + 3 * s, 70 * s, 15 * s);
+        graphics.fillEllipse(x + 50 * s, y + 5 * s, 50 * s, 12 * s);
+        // Main layer
+        graphics.fillStyle(0xFFFFFF, 0.7);
+        graphics.fillEllipse(x, y, 70 * s, 15 * s);
+        graphics.fillEllipse(x + 50 * s, y + 2 * s, 50 * s, 12 * s);
+        graphics.fillEllipse(x - 30 * s, y + 3 * s, 40 * s, 10 * s);
+        // Soft highlight
+        graphics.fillStyle(0xFFFFFF, 0.3);
+        graphics.fillEllipse(x - 10 * s, y - 3 * s, 40 * s, 8 * s);
+        break;
+
+      case 'alto':
+        // Small high-altitude cloud
+        // Shadow
+        graphics.fillStyle(0xDDDDDD, 0.4);
+        graphics.fillCircle(x, y + 2 * s, 15 * s);
+        graphics.fillCircle(x + 15 * s, y + 2 * s, 12 * s);
+        // Main layer
+        graphics.fillStyle(0xFFFFFF, 0.6);
+        graphics.fillCircle(x, y, 15 * s);
+        graphics.fillCircle(x + 15 * s, y, 12 * s);
+        graphics.fillCircle(x + 8 * s, y - 5 * s, 10 * s);
+        break;
+
+      case 'storm':
+        // Dark menacing storm cloud
+        // Deep shadow layer
+        graphics.fillStyle(0x333333, 0.6);
+        graphics.fillCircle(x, y + 12 * s, 40 * s);
+        graphics.fillCircle(x - 38 * s, y + 10 * s, 32 * s);
+        graphics.fillCircle(x + 42 * s, y + 10 * s, 35 * s);
+
+        // Main dark body - upper puffs
+        graphics.fillStyle(0x555555, 0.9);
+        graphics.fillCircle(x, y - 5 * s, 40 * s);
+        graphics.fillCircle(x - 38 * s, y - 8 * s, 32 * s);
+        graphics.fillCircle(x + 42 * s, y - 6 * s, 35 * s);
+        graphics.fillCircle(x + 12 * s, y - 22 * s, 30 * s);
+        graphics.fillCircle(x - 22 * s, y - 15 * s, 27 * s);
+
+        // Bottom belly - overlapping dark circles instead of rectangle
+        graphics.fillStyle(0x444444, 0.95);
+        graphics.fillCircle(x - 30 * s, y + 18 * s, 25 * s);
+        graphics.fillCircle(x, y + 20 * s, 28 * s);
+        graphics.fillCircle(x + 32 * s, y + 18 * s, 26 * s);
+        // Darker underbelly shading
+        graphics.fillStyle(0x3A3A3A, 0.9);
+        graphics.fillCircle(x - 15 * s, y + 25 * s, 20 * s);
+        graphics.fillCircle(x + 18 * s, y + 24 * s, 22 * s);
+
+        // Slight internal glow hint (pre-lightning charge)
+        if (this.weatherState === 'stormy') {
+          graphics.fillStyle(0xFFFFAA, 0.1 + Math.random() * 0.08);
+          graphics.fillCircle(x + 5 * s, y + 8 * s, 20 * s);
+        }
+        break;
+    }
+  }
+
+  private initializeRain(): void {
+    // Set rain intensity based on weather
+    if (this.weatherState === 'stormy') {
+      // Stormy: random between medium and heavy
+      this.rainIntensity = Math.random() < 0.5 ? 'medium' : 'heavy';
+    } else if (this.weatherState === 'cloudy') {
+      // Cloudy: random chance of light rain
+      this.rainIntensity = Math.random() < 0.3 ? 'light' : 'none';
+    } else {
+      this.rainIntensity = 'none';
+    }
+
+    if (this.rainIntensity === 'none') {
+      this.rainDrops = [];
+      return;
+    }
+
+    // Rain parameters based on intensity
+    const params = {
+      light: { count: 150, speedMin: 7, speedRange: 5, lengthMin: 10, lengthRange: 12, alpha: 0.45 },
+      medium: { count: 300, speedMin: 10, speedRange: 8, lengthMin: 15, lengthRange: 20, alpha: 0.6 },
+      heavy: { count: 500, speedMin: 14, speedRange: 10, lengthMin: 20, lengthRange: 30, alpha: 0.75 }
+    }[this.rainIntensity];
+
+    // Create initial rain drops spread across the screen
+    this.rainDrops = [];
+    for (let i = 0; i < params.count; i++) {
+      this.rainDrops.push({
+        x: Math.random() * (GAME_WIDTH + 200) - 100,
+        y: Math.random() * GAME_HEIGHT,
+        speed: params.speedMin + Math.random() * params.speedRange,
+        length: params.lengthMin + Math.random() * params.lengthRange
+      });
+    }
+
+    console.log(`[Weather] Rain intensity: ${this.rainIntensity}`);
+  }
+
+  private updateRain(): void {
+    if (this.rainIntensity === 'none' || this.rainDrops.length === 0) return;
+
+    // Destroy old graphics and create fresh one each frame to prevent memory buildup
+    if (this.rainGraphics) {
+      this.rainGraphics.destroy();
+    }
+    this.rainGraphics = this.add.graphics();
+    this.rainGraphics.setScrollFactor(0);
+    this.rainGraphics.setDepth(-80);
+
+    // Rain parameters based on intensity
+    const params = {
+      light: { alpha: 0.45, thickness: 1, speedMin: 7, speedRange: 5, lengthMin: 10, lengthRange: 12 },
+      medium: { alpha: 0.6, thickness: 1, speedMin: 10, speedRange: 8, lengthMin: 15, lengthRange: 20 },
+      heavy: { alpha: 0.75, thickness: 2, speedMin: 14, speedRange: 10, lengthMin: 20, lengthRange: 30 }
+    }[this.rainIntensity];
+
+    // Get water bounds (Atlantic Ocean) in screen space
+    const cameraX = this.cameras.main.scrollX;
+    const cameraY = this.cameras.main.scrollY;
+    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
+    const waterScreenStart = atlanticStart - cameraX;
+    const waterScreenEnd = atlanticEnd - cameraX;
+    // Water surface is at terrain height in the ocean area (around y=500 in world coords)
+    const waterWorldY = this.terrain ? this.terrain.getHeightAt(atlanticStart + 500) : 500;
+    const waterY = waterWorldY - cameraY;
+
+    // Rain color - slightly blue-grey - use single path for all drops
+    this.rainGraphics.lineStyle(params.thickness, 0x8899AA, params.alpha);
+    this.rainGraphics.beginPath();
+
+    for (const drop of this.rainDrops) {
+      // Draw rain drop as angled line (slight wind effect)
+      this.rainGraphics.moveTo(drop.x, drop.y);
+      this.rainGraphics.lineTo(drop.x - 2, drop.y + drop.length);
+
+      // Move drop down
+      drop.y += drop.speed;
+
+      // Check if drop hits water surface - spawn upward splash
+      if (drop.y > waterY && drop.y < waterY + drop.speed + 10) {
+        if (drop.x > waterScreenStart && drop.x < waterScreenEnd) {
+          // Splash parameters vary by intensity
+          const splashParams = {
+            light: { maxSplashes: 25, particleCount: [2, 3], spread: 5, velocityMin: 1.5, velocityRange: 2, spawnChance: 0.3 },
+            medium: { maxSplashes: 40, particleCount: [3, 4], spread: 7, velocityMin: 2, velocityRange: 3, spawnChance: 0.5 },
+            heavy: { maxSplashes: 60, particleCount: [4, 6], spread: 10, velocityMin: 2.5, velocityRange: 4, spawnChance: 0.7 }
+          }[this.rainIntensity] || { maxSplashes: 40, particleCount: [3, 4], spread: 7, velocityMin: 2, velocityRange: 3, spawnChance: 0.5 };
+
+          // Spawn splash particles at this location (limit total for performance)
+          if (this.rainSplashes.length < splashParams.maxSplashes && Math.random() < splashParams.spawnChance) {
+            // Create particles that shoot upward
+            const numParticles = splashParams.particleCount[0] + Math.floor(Math.random() * (splashParams.particleCount[1] - splashParams.particleCount[0] + 1));
+            const particles: { dx: number; dy: number; vy: number }[] = [];
+            for (let p = 0; p < numParticles; p++) {
+              particles.push({
+                dx: (Math.random() - 0.5) * splashParams.spread, // Spread horizontally
+                dy: 0, // Start at water surface
+                vy: -(splashParams.velocityMin + Math.random() * splashParams.velocityRange) // Upward velocity
+              });
+            }
+            this.rainSplashes.push({
+              x: drop.x + cameraX, // Store in world coords
+              y: waterWorldY,
+              particles,
+              age: 0
+            });
+          }
+        }
+      }
+
+      // Reset drop when it falls off screen
+      if (drop.y > GAME_HEIGHT + 20) {
+        drop.y = -drop.length;
+        drop.x = Math.random() * (GAME_WIDTH + 200) - 100;
+        drop.speed = params.speedMin + Math.random() * params.speedRange;
+        drop.length = params.lengthMin + Math.random() * params.lengthRange;
+      }
+    }
+
+    this.rainGraphics.strokePath();
+
+    // Update and draw splashes
+    this.updateRainSplashes();
+  }
+
+  private updateRainSplashes(): void {
+    if (this.rainSplashes.length === 0 || !this.rainGraphics) return;
+
+    const cameraX = this.cameras.main.scrollX;
+    const cameraY = this.cameras.main.scrollY;
+
+    // Collect all particles to draw, then batch them
+    const particlesToDraw: { x: number; y: number; alpha: number }[] = [];
+
+    // Update splashes - particles rise then fall
+    for (let i = this.rainSplashes.length - 1; i >= 0; i--) {
+      const splash = this.rainSplashes[i];
+      splash.age++;
+
+      // Remove old splashes
+      if (splash.age > 20) {
+        this.rainSplashes.splice(i, 1);
+        continue;
+      }
+
+      // Calculate screen position
+      const screenX = splash.x - cameraX;
+      const screenY = splash.y - cameraY;
+
+      if (screenX > -50 && screenX < GAME_WIDTH + 50 && screenY > 0 && screenY < GAME_HEIGHT) {
+        const alpha = (1 - (splash.age / 20)) * 0.8;
+
+        for (const particle of splash.particles) {
+          // Update particle physics
+          particle.dy += particle.vy;
+          particle.vy += 0.3; // Gravity pulls back down
+
+          // Only collect if above or near water surface
+          if (particle.dy <= 2) {
+            particlesToDraw.push({
+              x: screenX + particle.dx,
+              y: screenY + particle.dy,
+              alpha
+            });
+          }
+        }
+      }
+    }
+
+    // Draw all particles as short vertical lines (batched)
+    if (particlesToDraw.length > 0) {
+      this.rainGraphics.lineStyle(2, 0xCCDDEE, 0.7);
+      this.rainGraphics.beginPath();
+      for (const p of particlesToDraw) {
+        this.rainGraphics.moveTo(p.x, p.y);
+        this.rainGraphics.lineTo(p.x, p.y - 3); // Short upward line
+      }
+      this.rainGraphics.strokePath();
+    }
+  }
+
+  private getCloudScreenX(cloud: typeof this.cloudData[0]): number {
+    // Clouds are drawn with scrollFactor 0.02
+    // Screen position = cloud.x - cameraX * 0.02 + graphics.x (drift from tween)
+    const cameraX = this.cameras.main.scrollX;
+    const driftX = this.cloudGraphics ? this.cloudGraphics.x : 0;
+    return cloud.x - cameraX * 0.02 + driftX;
+  }
+
+  private getVisibleStormClouds(): typeof this.cloudData {
+    // Find storm clouds currently visible on screen (with some margin)
+    const margin = 100;
+    return this.cloudData.filter(c => {
+      if (!c.isStormCloud) return false;
+      const screenX = this.getCloudScreenX(c);
+      return screenX > -margin && screenX < GAME_WIDTH + margin;
+    });
+  }
+
+  private checkLightningStrikes(time: number): void {
+    // Only check in stormy weather
+    if (this.weatherState !== 'stormy') return;
+
+    // Check every 500ms
+    if (time - this.lastLightningCheck < 500) return;
+    this.lastLightningCheck = time;
+
+    // Handle pending lightning strike (warning flash has been shown)
+    if (this.pendingLightningStrike) {
+      const elapsed = time - this.pendingLightningStrike.warningStart;
+      if (elapsed >= this.pendingLightningStrike.strikeDelay) {
+        // 2 seconds passed - check if shuttle is STILL in danger zone
+        const shuttle = this.pendingLightningStrike.shuttle;
+        const cloud = this.pendingLightningStrike.cloud;
+
+        if (shuttle.active) {
+          const cameraX = this.cameras.main.scrollX;
+          const cameraY = this.cameras.main.scrollY;
+          const shuttleScreenX = shuttle.x - cameraX;
+          const shuttleScreenY = shuttle.y - cameraY;
+          const cloudScreenX = this.getCloudScreenX(cloud);
+          const cloudScreenY = cloud.y - cameraY * 0.02;
+          const cloudVisualCenterY = cloudScreenY + 5 * cloud.scale;
+          const dx = Math.abs(shuttleScreenX - cloudScreenX);
+          // Check if shuttle is grounded (close to terrain)
+          const terrainY = this.terrain.getHeightAt(shuttle.x);
+          const distanceFromGround = terrainY - shuttle.y;
+          const isGrounded = distanceFromGround < 50; // Within 50px of ground = safe
+
+          // Lightning strikes if NOT grounded
+          if (!isGrounded) {
+            this.triggerLightningStrike(cloud, shuttle);
+          }
+          // If shuttle is grounded, lightning misses (hits ground nearby)
+          else {
+            this.triggerAmbientLightning(cloud);
+          }
+        }
+        this.pendingLightningStrike = null;
+      }
+      return; // Don't check for new strikes while one is pending
+    }
+
+    // Get storm clouds that are visible on screen
+    const visibleStormClouds = this.getVisibleStormClouds();
+    if (visibleStormClouds.length === 0) return;
+
+    // Check for targeted strikes at shuttles
+    const cameraX = this.cameras.main.scrollX;
+    const cameraY = this.cameras.main.scrollY;
+    for (const shuttle of this.shuttles) {
+      if (!shuttle.active) continue;
+
+      const shuttleScreenX = shuttle.x - cameraX;
+      const shuttleScreenY = shuttle.y - cameraY;
+
+      // Find clouds near this shuttle (in screen space)
+      for (const cloud of visibleStormClouds) {
+        // Cooldown per cloud (5-10 seconds between strikes)
+        if (time - cloud.lastLightningTime < 5000 + Math.random() * 5000) continue;
+
+        const cloudScreenX = this.getCloudScreenX(cloud);
+        const cloudScreenY = cloud.y - cameraY * 0.02;
+        const cloudVisualCenterY = cloudScreenY + 5 * cloud.scale;
+        const dx = Math.abs(shuttleScreenX - cloudScreenX);
+        const dy = shuttleScreenY - cloudVisualCenterY;
+        const collisionRadius = cloud.scale * 35;
+        const warningStartY = collisionRadius + 10; // Warning zone starts below collision radius
+
+        // Shuttle must be in warning zone - within 100px horizontally, below collision radius
+        if (dx < 100 && dy > warningStartY && dy < warningStartY + 120) {
+          // Chance to strike shuttle if in range
+          if (Math.random() < 0.3) {
+            // Show warning first
+            this.showLightningWarning(cloud, shuttle);
+            this.pendingLightningStrike = { cloud, shuttle, warningStart: time, strikeDelay: 2000 + Math.random() * 1000 };
+            cloud.lastLightningTime = time;
+            return;
+          }
+        }
+      }
+    }
+
+    // Random ambient lightning from a visible storm cloud
+    for (const cloud of visibleStormClouds) {
+      if (time - cloud.lastLightningTime < 5000 + Math.random() * 5000) continue;
+
+      if (Math.random() < 0.02) {
+        this.triggerAmbientLightning(cloud);
+        cloud.lastLightningTime = time;
+        return; // Only one ambient strike per check
+      }
+    }
+  }
+
+  private showLightningWarning(cloud: typeof this.cloudData[0], shuttle: Shuttle): void {
+    console.log('[Lightning] WARNING FLASH! Get to safety!');
+    // Warning sky flash - gives player 2 seconds to get to safety
+    // Make the whole sky flash bright white/yellow
+    const flash = this.add.graphics();
+    flash.fillStyle(0xFFFFAA, 1);
+    flash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    flash.setScrollFactor(0);
+    flash.setDepth(600);
+    flash.setAlpha(0.6);
+
+    // Flash then fade over 400ms
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 400,
+      onComplete: () => flash.destroy()
+    });
+
+    // Also make the storm cloud glow brighter as warning - pulsing for 2 seconds
+    const cloudScreenX = this.getCloudScreenX(cloud);
+    const glowGraphics = this.add.graphics();
+    glowGraphics.setScrollFactor(0);
+    glowGraphics.setDepth(500);
+    glowGraphics.fillStyle(0xFFFF00, 1);
+    glowGraphics.fillCircle(cloudScreenX, cloud.y, cloud.scale * 60);
+    glowGraphics.setAlpha(0.5);
+
+    // Pulse the cloud glow for 2 seconds
+    this.tweens.add({
+      targets: glowGraphics,
+      alpha: 0.15,
+      duration: 400,
+      yoyo: true,
+      repeat: 2,
+      onComplete: () => glowGraphics.destroy()
+    });
+  }
+
+  private triggerLightningStrike(cloud: typeof this.cloudData[0], shuttle: Shuttle): void {
+    console.log('[Lightning] STRIKE! Hitting shuttle after warning');
+    // Get screen coordinates
+    const cameraX = this.cameras.main.scrollX;
+    const cameraY = this.cameras.main.scrollY;
+    const cloudScreenX = this.getCloudScreenX(cloud);
+    const cloudScreenY = cloud.y - cameraY * 0.02; // Cloud has scrollFactor 0.02
+    const shuttleScreenX = shuttle.x - cameraX;
+    const shuttleScreenY = shuttle.y - cameraY;
+
+    // Generate bolt path in screen space (from cloud bottom to shuttle)
+    const segments = this.generateLightningPath(cloudScreenX, cloudScreenY + 40 * cloud.scale, shuttleScreenX, shuttleScreenY);
+
+    // Draw the lightning bolt
+    this.drawLightningBoltScreen(segments);
+
+    // Screen flash
+    this.createLightningFlash();
+
+    // Kill the shuttle with electrical death
+    this.handleElectricalDeath(shuttle);
+  }
+
+  private triggerAmbientLightning(cloud: typeof this.cloudData[0]): void {
+    // Random ground strike (visual only) - all in screen space
+    const cameraY = this.cameras.main.scrollY;
+    const cloudScreenX = this.getCloudScreenX(cloud);
+    const cloudScreenY = cloud.y - cameraY * 0.02; // Cloud has scrollFactor 0.02
+
+    // Strike random point below cloud (in screen space)
+    const targetX = cloudScreenX + (Math.random() - 0.5) * 150;
+    const targetY = cloudScreenY + 250 + Math.random() * 250;
+
+    const segments = this.generateLightningPath(cloudScreenX, cloudScreenY + 40 * cloud.scale, targetX, targetY);
+    this.drawLightningBoltScreen(segments);
+    this.createLightningFlash();
+  }
+
+  private generateLightningPath(startX: number, startY: number, endX: number, endY: number): { x: number; y: number }[] {
+    const segments: { x: number; y: number }[] = [{ x: startX, y: startY }];
+    const numSegments = 8 + Math.floor(Math.random() * 6);
+
+    for (let i = 1; i < numSegments; i++) {
+      const progress = i / numSegments;
+      const baseX = startX + (endX - startX) * progress;
+      const baseY = startY + (endY - startY) * progress;
+
+      // Add jag/offset (more variation in middle, less at ends)
+      const variationFactor = Math.sin(progress * Math.PI) * 50;
+      const offsetX = (Math.random() - 0.5) * variationFactor;
+
+      segments.push({ x: baseX + offsetX, y: baseY });
+    }
+
+    segments.push({ x: endX, y: endY });
+    return segments;
+  }
+
+  private drawLightningBoltScreen(screenSegments: { x: number; y: number }[]): void {
+    // Create a fresh graphics object for this bolt (screen-space, no scroll)
+    const bolt = this.add.graphics();
+    bolt.setScrollFactor(0);
+    bolt.setDepth(500); // High depth to be visible above most things
+
+    // Outer glow (blue-white)
+    bolt.lineStyle(12, 0x8888FF, 0.5);
+    bolt.beginPath();
+    bolt.moveTo(screenSegments[0].x, screenSegments[0].y);
+    for (let i = 1; i < screenSegments.length; i++) {
+      bolt.lineTo(screenSegments[i].x, screenSegments[i].y);
+    }
+    bolt.strokePath();
+
+    // Middle glow
+    bolt.lineStyle(6, 0xCCCCFF, 0.8);
+    bolt.beginPath();
+    bolt.moveTo(screenSegments[0].x, screenSegments[0].y);
+    for (let i = 1; i < screenSegments.length; i++) {
+      bolt.lineTo(screenSegments[i].x, screenSegments[i].y);
+    }
+    bolt.strokePath();
+
+    // Core (bright white)
+    bolt.lineStyle(3, 0xFFFFFF, 1);
+    bolt.beginPath();
+    bolt.moveTo(screenSegments[0].x, screenSegments[0].y);
+    for (let i = 1; i < screenSegments.length; i++) {
+      bolt.lineTo(screenSegments[i].x, screenSegments[i].y);
+    }
+    bolt.strokePath();
+
+    // Add branch (already in screen space)
+    if (screenSegments.length > 4 && Math.random() < 0.7) {
+      const branchPoint = Math.floor(screenSegments.length * 0.4);
+      const branchEnd = {
+        x: screenSegments[branchPoint].x + (Math.random() - 0.5) * 100,
+        y: screenSegments[branchPoint].y + 50 + Math.random() * 80
+      };
+      const branchSegments = this.generateLightningPath(
+        screenSegments[branchPoint].x,
+        screenSegments[branchPoint].y,
+        branchEnd.x,
+        branchEnd.y
+      ).slice(0, 5);
+
+      bolt.lineStyle(4, 0xCCCCFF, 0.6);
+      bolt.beginPath();
+      bolt.moveTo(branchSegments[0].x, branchSegments[0].y);
+      for (let i = 1; i < branchSegments.length; i++) {
+        bolt.lineTo(branchSegments[i].x, branchSegments[i].y);
+      }
+      bolt.strokePath();
+    }
+
+    // Destroy bolt after visible time
+    this.time.delayedCall(200, () => {
+      bolt.destroy();
+    });
+  }
+
+  private createLightningFlash(): void {
+    const flash = this.add.graphics();
+    flash.fillStyle(0xFFFFFF, 0.35);
+    flash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    flash.setScrollFactor(0);
+    flash.setDepth(1000);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 120,
+      onComplete: () => flash.destroy()
+    });
+  }
+
+  private handleElectricalDeath(shuttle: Shuttle): void {
+    if (this.gameState !== 'playing') return;
+
+    const playerNum = shuttle === this.shuttle2 ? 2 : 1;
+
+    // Track achievement
+    this.achievementSystem.onDeath('lightning');
+
+    // Use electrical death animation
+    shuttle.electrocute();
+
+    // Screen shake
+    this.cameras.main.shake(200, 0.012);
+
+    // Spawn tombstone at shuttle position after death animation completes (650ms flash + 400ms skeleton fade)
+    const deathX = shuttle.x;
+    const deathY = shuttle.y;
+    this.time.delayedCall(1050, () => {
+      this.spawnTombstone(deathX, deathY, 'lightning');
+    });
+
+    // Handle game state
+    if (this.playerCount === 2) {
+      // In 2-player mode, handle as a regular death
+      if (playerNum === 1) {
+        this.p1DeathMessage = 'Struck by lightning!';
+      } else {
+        this.p2DeathMessage = 'Struck by lightning!';
+      }
+
+      // Check if game should end
+      this.time.delayedCall(1000, () => {
+        this.checkGameOverAfterCrash();
+      });
+    } else {
+      // Single player - game over
+      this.gameState = 'crashed';
+
+      this.transitionToGameOver({
+        victory: false,
+        message: 'Struck by lightning!',
+        score: this.destructionScore,
+        debugModeUsed: shuttle.wasDebugModeUsed(),
+        destroyedBuildings: this.destroyedBuildings,
+      });
+    }
   }
 
   private createLandingPads(): void {
@@ -633,7 +1314,6 @@ export class GameScene extends Phaser.Scene {
     const zone = zones[Math.floor(Math.random() * zones.length)];
     const x = zone.min + Math.random() * (zone.max - zone.min);
     this.greenlandIce = new GreenlandIce(this, x);
-    console.log(`[Greenland Ice] Spawned at x=${x.toFixed(0)}`);
   }
 
   private getFoodTargetsInOcean(): { x: number; y: number }[] {
@@ -1896,7 +2576,12 @@ export class GameScene extends Phaser.Scene {
     // Update physics first
     this.updateMedalPhysics();
 
-    this.peaceMedalGraphics.clear();
+    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
+    if (this.peaceMedalGraphics) {
+      this.peaceMedalGraphics.destroy();
+    }
+    this.peaceMedalGraphics = this.add.graphics();
+    this.peaceMedalGraphics.setDepth(100);
 
     const carrier = this.medalCarrier;
     const shuttleX = carrier.x;
@@ -2015,15 +2700,8 @@ export class GameScene extends Phaser.Scene {
       this.greenlandIce.x, this.greenlandIce.y - 40  // Check against ice peak area
     );
 
-    // Debug logging when shuttle is in the general area (x within 500px)
-    const xDist = Math.abs(shuttle.x - this.greenlandIce.x);
-    if (xDist < 500) {
-      console.log(`[Greenland Ice] Near ice! Shuttle(${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}), Ice(${this.greenlandIce.x.toFixed(0)}, ${this.greenlandIce.y.toFixed(0)}), dist=${dist.toFixed(0)}`);
-    }
-
-    // Pickup range: 100px - generous range to make pickup easier
-    if (dist < 100) {
-      console.log(`[Greenland Ice] Picking up! Distance: ${dist.toFixed(0)}`);
+    // Pickup range: 140px - generous range to make pickup easier
+    if (dist < 140) {
       this.pickupGreenlandIce(shuttle);
     }
   }
@@ -2127,7 +2805,12 @@ export class GameScene extends Phaser.Scene {
     // Update physics first
     this.updateGreenlandIcePhysics();
 
-    this.greenlandIceGraphics.clear();
+    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
+    if (this.greenlandIceGraphics) {
+      this.greenlandIceGraphics.destroy();
+    }
+    this.greenlandIceGraphics = this.add.graphics();
+    this.greenlandIceGraphics.setDepth(100);
 
     const carrier = this.iceCarrier;
     const shuttleX = carrier.x;
@@ -3950,7 +4633,8 @@ export class GameScene extends Phaser.Scene {
       } else {
         // Draw subtle glow outline around shuttle
         if (this.bribeGraphics) {
-          this.bribeGraphics.clear();
+          this.bribeGraphics.destroy();
+          this.bribeGraphics = this.add.graphics();
           const timeLeft = this.bribeEndTime - now;
           const pulseSpeed = timeLeft < 2000 ? 0.015 : 0.006;
           const baseAlpha = timeLeft < 2000 ? 0.3 : 0.5;
@@ -3976,7 +4660,8 @@ export class GameScene extends Phaser.Scene {
       } else {
         // Update and draw floppy red tie
         if (this.speedBoostTrail && this.tieSegments.length > 0) {
-          this.speedBoostTrail.clear();
+          this.speedBoostTrail.destroy();
+          this.speedBoostTrail = this.add.graphics();
           const timeLeft = this.speedBoostEndTime - now;
           const alpha = timeLeft < 2000 ? (Math.sin(now * 0.02) * 0.3 + 0.5) : 0.9;
 
@@ -4444,8 +5129,10 @@ export class GameScene extends Phaser.Scene {
   private updateWaterPollution(): void {
     if (!this.waterPollution) return;
 
-    // Clear and redraw
-    this.waterPollution.clear();
+    // Destroy and recreate to prevent Phaser internal state accumulation
+    this.waterPollution.destroy();
+    this.waterPollution = this.add.graphics();
+    this.waterPollution.setDepth(-50);
 
     // Get water bounds
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
@@ -4733,9 +5420,22 @@ export class GameScene extends Phaser.Scene {
     // Stop here if not playing
     if (this.gameState !== 'playing') return;
 
+    // Check for lightning strikes in stormy weather
+    this.checkLightningStrikes(time);
+
+
+    // Update rain effect
+    this.updateRain();
+
+
     // Track country visits for achievement
     const currentCountry = this.getCurrentCountry();
     this.achievementSystem.onCountryVisited(currentCountry.name);
+
+    // Check for reaching Russia in heavy rain
+    if (currentCountry.name === 'Russia' && this.rainIntensity === 'heavy') {
+      this.achievementSystem.unlock('singing_in_the_rain');
+    }
 
     // Spawn biplane when any player gets close to the target country (or any country for GAME_INFO)
     if (!this.biplaneSpawned && this.biplaneTargetCountry) {
@@ -4765,7 +5465,6 @@ export class GameScene extends Phaser.Scene {
             const spawnCountry = this.biplaneTargetCountry === 'GAME_INFO' ? countryName : this.biplaneTargetCountry;
             this.biplane = new Biplane(this, this.biplaneTargetCountry, shuttle.x, spawnCountry);
             this.biplaneSpawned = true;
-            console.log(`[Biplane] Player approaching ${countryName} - spawning ${this.biplaneTargetCountry} biplane!`);
             break;
           }
         }
@@ -4790,19 +5489,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Update Greenland ice - log every frame to debug
+    // Update Greenland ice
     const shuttle = this.shuttle;
-    // Log once per second to avoid spam
-    if (Math.floor(Date.now() / 1000) !== (this as any)._lastIceLogTime) {
-      (this as any)._lastIceLogTime = Math.floor(Date.now() / 1000);
-      console.log(`[ICE STATUS] greenlandIce=${!!this.greenlandIce}, shuttle=${!!shuttle}, shuttleActive=${shuttle?.active}, shuttleX=${shuttle?.x?.toFixed(0)}, iceX=${this.greenlandIce?.x?.toFixed(0)}`);
-    }
-    if (shuttle && shuttle.active && this.greenlandIce) {
-      const xDist = Math.abs(shuttle.x - this.greenlandIce.x);
-      if (xDist < 500) {
-        console.log(`[ICE DEBUG] xDist=${xDist.toFixed(0)}, destroyed=${this.greenlandIce.isDestroyed}, hasIce=${this.hasGreenlandIce}, hasMedal=${this.hasPeaceMedal}`);
-      }
-    }
 
     if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.hasGreenlandIce) {
       this.greenlandIce.update(this.terrain.getWaveOffset());
@@ -5042,11 +5730,32 @@ export class GameScene extends Phaser.Scene {
       for (const shuttle of this.shuttles) {
         totalChemtrails += shuttle.getChemtrailParticleCount();
       }
+      // Count splash particles
+      let splashParticles = 0;
+      for (const splash of this.rainSplashes) {
+        splashParticles += splash.particles.length;
+      }
+      // Count graphics objects in scene
+      const graphicsCount = this.children.list.filter(c => c.type === 'Graphics').length;
+      // Count all scene children
+      const totalChildren = this.children.list.length;
+      // Count tweens
+      const tweenCount = this.tweens.getTweens().length;
+      // Count oil spurt graphics from oil towers
+      let oilSpurts = 0;
+      for (const tower of this.oilTowers) {
+        oilSpurts += (tower as any).oilSpurts?.length || 0;
+      }
       this.debugText.setText(
         `FPS: ${fps}\n` +
-        `Scorch: ${this.scorchMarkData.length}\n` +
-        `Water Pollution: ${this.totalWaterPollutionParticles}\n` +
-        `Air Pollution: ${totalChemtrails}`
+        `Graphics: ${graphicsCount}\n` +
+        `Children: ${totalChildren}\n` +
+        `Tweens: ${tweenCount}\n` +
+        `Rain: ${this.rainDrops.length}\n` +
+        `Splashes: ${this.rainSplashes.length}(${splashParticles}p)\n` +
+        `SinkScorch: ${this.sinkingScorchParticles.length}\n` +
+        `OilSpurts: ${oilSpurts}\n` +
+        `Bombs: ${this.bombs.length}`
       );
     }
 

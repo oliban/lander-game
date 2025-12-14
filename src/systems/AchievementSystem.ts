@@ -228,6 +228,8 @@ export class AchievementSystem {
       this.unlock('lost_in_space');
     } else if (cause === 'fuel') {
       this.unlock('running_on_empty');
+    } else if (cause === 'lightning') {
+      this.unlock('thunderstruck');
     }
 
     // Cumulative deaths

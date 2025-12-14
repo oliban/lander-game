@@ -155,6 +155,18 @@ export const ACHIEVEMENTS: Achievement[] = [
     tier: 'bronze',
   },
   {
+    id: 'thunderstruck',
+    name: 'Thunderstruck',
+    description: 'Get struck by lightning',
+    tier: 'bronze',
+  },
+  {
+    id: 'singing_in_the_rain',
+    name: 'Singing in the Rain',
+    description: 'Reach Russia in heavy rain',
+    tier: 'silver',
+  },
+  {
     id: 'puskas_award',
     name: 'Puskás Award',
     description: "Bounce a tombstone 3 times - hey you're Leo Messi!",

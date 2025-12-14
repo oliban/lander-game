@@ -557,7 +557,12 @@ export class Terrain {
   }
 
   private drawOcean(waterPollutionLevel: number = 0): void {
-    this.oceanGraphics.clear();
+    // Destroy and recreate graphics each frame to prevent Phaser internal state accumulation
+    if (this.oceanGraphics) {
+      this.oceanGraphics.destroy();
+    }
+    this.oceanGraphics = this.scene.add.graphics();
+    this.oceanGraphics.setDepth(-1);
 
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
