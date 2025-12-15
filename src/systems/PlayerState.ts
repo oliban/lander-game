@@ -33,6 +33,9 @@ export class PlayerState {
   /** Death message for game over screen */
   deathMessage: string = '';
 
+  /** Sonic boom triggered flag (prevents repeated triggers) */
+  sonicBoomTriggered: boolean = false;
+
   constructor(
     playerNum: number,
     shuttle: Shuttle,

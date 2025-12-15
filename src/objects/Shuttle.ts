@@ -45,7 +45,7 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     // Configure physics body - centered on sprite
     this.setRectangle(28, 36);
 
-    this.setFrictionAir(0.02); // Increased for heavier, more dampened feel
+    this.setFrictionAir(0.012); // Reduced for faster falling, more dramatic high-altitude drops
     this.setBounce(0.7); // Bouncy for ship-to-ship collisions
     this.setFixedRotation();
     this.setMass(5); // Heavier mass for more inertia

@@ -15,6 +15,7 @@ interface UISceneData {
   getLegsExtended: () => boolean;
   getElapsedTime: () => number;
   hasPeaceMedal?: () => boolean;
+  isDebugMode?: () => boolean;
   // P2 data for 2-player mode
   playerCount?: number;
   fuelSystem2?: FuelSystem | null;
@@ -36,6 +37,7 @@ export class UIScene extends Phaser.Scene {
   private getLegsExtended!: () => boolean;
   private getElapsedTime!: () => number;
   private hasPeaceMedal!: () => boolean;
+  private isDebugMode: () => boolean = () => false;
   // P2 data
   private playerCount: number = 1;
   private fuelSystem2: FuelSystem | null = null;
@@ -47,6 +49,12 @@ export class UIScene extends Phaser.Scene {
   private fuelBarBg!: Phaser.GameObjects.Graphics;
   private fuelBar!: Phaser.GameObjects.Graphics;
   private fuelText!: Phaser.GameObjects.Text;
+  // Speedometer
+  private speedometerBg!: Phaser.GameObjects.Graphics;
+  private speedometerNeedle!: Phaser.GameObjects.Graphics;
+  private speedText!: Phaser.GameObjects.Text;
+  private speedWarningLeft!: Phaser.GameObjects.Text;
+  private speedWarningRight!: Phaser.GameObjects.Text;
   private inventoryContainer!: Phaser.GameObjects.Container;
   private p2InventoryContainer: Phaser.GameObjects.Container | null = null;
   private progressBar!: Phaser.GameObjects.Graphics;
@@ -88,6 +96,7 @@ export class UIScene extends Phaser.Scene {
     this.getLegsExtended = data.getLegsExtended;
     this.getElapsedTime = data.getElapsedTime;
     this.hasPeaceMedal = data.hasPeaceMedal || (() => false);
+    this.isDebugMode = data.isDebugMode || (() => false);
 
     // P2 data
     this.playerCount = data.playerCount ?? 1;
@@ -112,6 +121,7 @@ export class UIScene extends Phaser.Scene {
     this.p2TallyGraphics = null;
 
     this.createFuelGauge();
+    this.createSpeedometer();
     this.createTimer();
     this.createScoreCounter();
     this.createInventoryDisplay();
@@ -211,6 +221,143 @@ export class UIScene extends Phaser.Scene {
       fontStyle: 'bold',
     });
     this.fuelText.setOrigin(0.5, 1);
+  }
+
+  private createSpeedometer(): void {
+    const x = 44; // Center of gauge
+    const y = 340; // Below fuel gauge
+    const radius = 32;
+
+    // Background arc (semi-circle gauge)
+    this.speedometerBg = this.add.graphics();
+
+    // White background circle
+    this.speedometerBg.fillStyle(0xFFFFFF, 0.9);
+    this.speedometerBg.fillCircle(x, y, radius + 4);
+
+    // Border
+    this.speedometerBg.lineStyle(3, 0x333333);
+    this.speedometerBg.strokeCircle(x, y, radius + 4);
+
+    // Colored arc segments (green -> yellow -> red)
+    const arcStart = Math.PI * 0.75; // Start at bottom-left
+    const arcEnd = Math.PI * 0.25; // End at bottom-right
+    const arcRange = Math.PI * 1.5; // Total arc span
+
+    // Green zone (0-5, safe landing) - 14% of arc
+    this.speedometerBg.lineStyle(6, 0x4CAF50);
+    this.speedometerBg.beginPath();
+    this.speedometerBg.arc(x, y, radius - 6, arcStart, arcStart + arcRange * 0.14);
+    this.speedometerBg.strokePath();
+
+    // Yellow zone (5-10) - 14% of arc
+    this.speedometerBg.lineStyle(6, 0xFFA000);
+    this.speedometerBg.beginPath();
+    this.speedometerBg.arc(x, y, radius - 6, arcStart + arcRange * 0.14, arcStart + arcRange * 0.29);
+    this.speedometerBg.strokePath();
+
+    // Red zone (10-35) - 71% of arc
+    this.speedometerBg.lineStyle(6, 0xF44336);
+    this.speedometerBg.beginPath();
+    this.speedometerBg.arc(x, y, radius - 6, arcStart + arcRange * 0.29, arcStart + arcRange);
+    this.speedometerBg.strokePath();
+
+    // Center dot
+    this.speedometerBg.fillStyle(0x333333, 1);
+    this.speedometerBg.fillCircle(x, y, 4);
+
+    // Needle (updated each frame)
+    this.speedometerNeedle = this.add.graphics();
+
+    // Speed text below gauge
+    this.speedText = this.add.text(x, y + radius + 14, '0.0', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '11px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    this.speedText.setOrigin(0.5, 0);
+
+    // Warning exclamation marks (hidden by default)
+    this.speedWarningLeft = this.add.text(x - 28, y + radius + 14, '!!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '11px',
+      color: '#F44336',
+      fontStyle: 'bold',
+    });
+    this.speedWarningLeft.setOrigin(0.5, 0);
+    this.speedWarningLeft.setVisible(false);
+
+    this.speedWarningRight = this.add.text(x + 28, y + radius + 14, '!!', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '11px',
+      color: '#F44336',
+      fontStyle: 'bold',
+    });
+    this.speedWarningRight.setOrigin(0.5, 0);
+    this.speedWarningRight.setVisible(false);
+
+    // Label
+    const label = this.add.text(x, y - radius - 8, 'SPEED', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '10px',
+      color: '#666666',
+      fontStyle: 'bold',
+    });
+    label.setOrigin(0.5, 1);
+  }
+
+  private updateSpeedometer(): void {
+    // Only show speedometer in debug mode
+    const showSpeedometer = this.isDebugMode();
+    this.speedometerBg.setVisible(showSpeedometer);
+    this.speedometerNeedle.setVisible(showSpeedometer);
+    this.speedText.setVisible(showSpeedometer);
+    this.speedWarningLeft.setVisible(false);
+    this.speedWarningRight.setVisible(false);
+
+    if (!showSpeedometer) return;
+
+    const velocity = this.getShuttleVelocity();
+    const speed = velocity.total;
+
+    const x = 44;
+    const y = 340;
+    const radius = 32;
+    const needleLength = radius - 10;
+
+    // Map speed to angle (0-35 mapped to arc)
+    const maxSpeed = 35;
+    const normalizedSpeed = Math.min(speed / maxSpeed, 1);
+    const arcStart = Math.PI * 0.75;
+    const arcRange = Math.PI * 1.5;
+    const needleAngle = arcStart + normalizedSpeed * arcRange;
+
+    // Draw needle
+    this.speedometerNeedle.clear();
+
+    // Needle color based on speed
+    let needleColor = 0x4CAF50; // Green
+    if (speed > MAX_SAFE_LANDING_VELOCITY * 2) {
+      needleColor = 0xF44336; // Red
+    } else if (speed > MAX_SAFE_LANDING_VELOCITY) {
+      needleColor = 0xFFA000; // Orange
+    }
+
+    this.speedometerNeedle.lineStyle(3, needleColor);
+    this.speedometerNeedle.beginPath();
+    this.speedometerNeedle.moveTo(x, y);
+    this.speedometerNeedle.lineTo(
+      x + Math.cos(needleAngle) * needleLength,
+      y + Math.sin(needleAngle) * needleLength
+    );
+    this.speedometerNeedle.strokePath();
+
+    // Update text - always black, show red exclamation marks if dangerous
+    this.speedText.setText(speed.toFixed(1));
+    const isDangerous = speed > MAX_SAFE_LANDING_VELOCITY * 2;
+    this.speedWarningLeft.setVisible(isDangerous);
+    this.speedWarningRight.setVisible(isDangerous);
   }
 
   private updateFuelBar(fuel: number, max: number): void {
@@ -953,5 +1100,6 @@ export class UIScene extends Phaser.Scene {
     this.updateProgressBar();
     this.updateTimer();
     this.updateMedalIndicator();
+    this.updateSpeedometer();
   }
 }

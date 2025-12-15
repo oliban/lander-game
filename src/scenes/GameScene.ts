@@ -77,6 +77,10 @@ export class GameScene extends Phaser.Scene {
   private musicManager!: MusicManager;
   private gameState: GameState = 'playing';
   private starfield!: Phaser.GameObjects.Graphics;
+  private altitudeOverlay!: Phaser.GameObjects.Graphics;
+  private speedTrailEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  // sonicBoomTriggered moved to PlayerState for per-player tracking
+  private cloudLayers: Phaser.GameObjects.Container[] = [];
   private currentCountryText!: Phaser.GameObjects.Text;
   private startPadId: number = 1; // Track which pad we started on (NYC is now index 1)
   private invulnerable: boolean = true; // Brief invulnerability at start
@@ -590,6 +594,7 @@ export class GameScene extends Phaser.Scene {
       getLegsExtended: () => this.players[0].shuttle?.areLandingLegsExtended() ?? false,
       getElapsedTime: () => this.getElapsedTime(),
       hasPeaceMedal: () => this.carriedItemManager.getHasPeaceMedal(),
+      isDebugMode: () => this.players[0]?.shuttle?.isDebugMode() ?? false,
       // P2 data for 2-player mode
       playerCount: this.playerCount,
       fuelSystem2: this.players[1]?.fuelSystem ?? null,
@@ -718,6 +723,208 @@ export class GameScene extends Phaser.Scene {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+
+    // Altitude overlay - darkens sky at high altitudes
+    this.altitudeOverlay = this.add.graphics();
+    this.altitudeOverlay.setScrollFactor(0);
+    this.altitudeOverlay.setDepth(-90); // In front of sky, behind everything else
+
+    // Speed trail emitter - smoke puffs when not thrusting at high speed
+    this.speedTrailEmitter = this.add.particles(0, 0, 'smoke', {
+      speed: { min: 10, max: 40 },
+      angle: { min: 0, max: 360 }, // Updated dynamically based on velocity
+      scale: { start: 0.15, end: 0.6 },
+      alpha: { start: 0.5, end: 0 },
+      lifespan: { min: 400, max: 700 },
+      blendMode: Phaser.BlendModes.NORMAL,
+      frequency: -1, // Manual emission only
+      rotate: { min: 0, max: 360 },
+      maxParticles: 100, // Safety limit to prevent memory issues
+    });
+    this.speedTrailEmitter.setDepth(200);
+
+    // Create parallax cloud layers
+    this.createCloudLayers();
+  }
+
+  /**
+   * Update the altitude overlay based on camera position
+   * Creates a vertical gradient - darker at top (space), lighter at bottom (atmosphere)
+   */
+  private updateAltitudeOverlay(): void {
+    const cam = this.cameras.main;
+
+    // Ground level is around Y=500, max height is Y=-2500
+    const groundLevel = 300;
+    const spaceLevel = -1500;
+
+    // Calculate altitude factor (0 = at/below ground, 1 = max altitude)
+    const altitudeFactor = Math.max(0, Math.min(1, (groundLevel - cam.scrollY) / (groundLevel - spaceLevel)));
+
+    this.altitudeOverlay.clear();
+
+    if (altitudeFactor > 0) {
+      const maxAlpha = 0.65;
+      const baseAlpha = altitudeFactor * altitudeFactor * maxAlpha;
+
+      // Draw vertical gradient - darker at top, lighter at bottom
+      // Use enough strips for smooth transition (1 strip per 4 pixels)
+      const stripHeight = 4;
+      const numStrips = Math.ceil(GAME_HEIGHT / stripHeight);
+
+      for (let i = 0; i < numStrips; i++) {
+        const y = i * stripHeight;
+        // Position in screen (0 = top, 1 = bottom)
+        const screenPos = y / GAME_HEIGHT;
+
+        // Gradient: top of screen is 100% of base alpha, bottom is 20%
+        const gradientFactor = 1 - screenPos * 0.8;
+        const alpha = baseAlpha * gradientFactor;
+
+        this.altitudeOverlay.fillStyle(0x0a0a1a, alpha);
+        this.altitudeOverlay.fillRect(0, y, GAME_WIDTH, stripHeight);
+      }
+
+      // Add stars when high enough
+      if (altitudeFactor > 0.2) {
+        const starAlpha = (altitudeFactor - 0.2) / 0.8;
+        this.drawHighAltitudeStars(starAlpha);
+      }
+    }
+  }
+
+  /**
+   * Draw twinkling stars visible at high altitude
+   */
+  private drawHighAltitudeStars(alpha: number): void {
+    const starPositions = [
+      { x: 50, y: 30 }, { x: 150, y: 80 }, { x: 280, y: 45 }, { x: 400, y: 100 },
+      { x: 520, y: 25 }, { x: 650, y: 70 }, { x: 750, y: 40 }, { x: 880, y: 90 },
+      { x: 100, y: 150 }, { x: 300, y: 180 }, { x: 500, y: 130 }, { x: 700, y: 170 },
+      { x: 200, y: 250 }, { x: 450, y: 220 }, { x: 600, y: 280 }, { x: 800, y: 240 },
+      { x: 80, y: 320 }, { x: 350, y: 350 }, { x: 550, y: 310 }, { x: 720, y: 380 },
+    ];
+
+    const time = this.time.now * 0.002;
+
+    for (let i = 0; i < starPositions.length; i++) {
+      const star = starPositions[i];
+      const twinkle = Math.sin(time + i * 1.5) * 0.3 + 0.7;
+      const starAlpha = alpha * twinkle;
+      const size = 1 + Math.sin(time * 0.5 + i) * 0.5;
+
+      this.altitudeOverlay.fillStyle(0xffffff, starAlpha);
+      this.altitudeOverlay.fillCircle(star.x, star.y, size);
+    }
+  }
+
+  /**
+   * Create parallax cloud layers at different altitudes
+   * Clouds provide visual reference for altitude and movement
+   */
+  private createCloudLayers(): void {
+    // Three cloud layers at different altitudes
+    const layers = [
+      { y: -200, scrollFactor: 0.3, alpha: 0.6, count: 8 },   // Low clouds
+      { y: -600, scrollFactor: 0.5, alpha: 0.4, count: 6 },   // Mid clouds
+      { y: -1000, scrollFactor: 0.7, alpha: 0.3, count: 5 },  // High clouds
+    ];
+
+    for (const layer of layers) {
+      const container = this.add.container(0, layer.y);
+      container.setScrollFactor(1, layer.scrollFactor);
+      container.setDepth(-80);
+      container.setAlpha(layer.alpha);
+
+      // Create clouds spread across world width
+      for (let i = 0; i < layer.count; i++) {
+        const cloud = this.createCloud();
+        cloud.x = (i / layer.count) * 3000 + Math.random() * 300;
+        cloud.y = Math.random() * 100 - 50;
+        container.add(cloud);
+      }
+
+      this.cloudLayers.push(container);
+    }
+  }
+
+  /**
+   * Create a single fluffy cloud using overlapping ellipses
+   */
+  private createCloud(): Phaser.GameObjects.Graphics {
+    const cloud = this.add.graphics();
+    cloud.fillStyle(0xffffff, 1);
+
+    // Draw fluffy cloud shape with overlapping ellipses
+    const baseWidth = 80 + Math.random() * 60;
+    const baseHeight = 30 + Math.random() * 20;
+
+    // Main body
+    cloud.fillEllipse(0, 0, baseWidth, baseHeight);
+    // Left bump
+    cloud.fillEllipse(-baseWidth * 0.3, -baseHeight * 0.2, baseWidth * 0.5, baseHeight * 0.7);
+    // Right bump
+    cloud.fillEllipse(baseWidth * 0.25, -baseHeight * 0.15, baseWidth * 0.6, baseHeight * 0.8);
+    // Top bump
+    cloud.fillEllipse(baseWidth * 0.1, -baseHeight * 0.4, baseWidth * 0.4, baseHeight * 0.5);
+
+    return cloud;
+  }
+
+  /**
+   * Update speed trails - emit smoke trails for all players when not thrusting
+   */
+  private updateSpeedLines(): void {
+    // Process smoke trails for all active players
+    for (const player of this.players) {
+      if (!player?.shuttle?.body) continue;
+
+      const shuttle = player.shuttle;
+      const velocity = shuttle.body as MatterJS.BodyType;
+      const vx = velocity.velocity.x;
+      const vy = velocity.velocity.y;
+      const speed = Math.sqrt(vx * vx + vy * vy);
+
+      // Check for sonic boom (speed >= 30) - per-player tracking
+      if (speed >= 30 && !player.sonicBoomTriggered) {
+        player.sonicBoomTriggered = true;
+        this.sound.play('sonic_boom', { volume: 0.7 });
+        this.achievementSystem.unlock('sonic_boom');
+        this.cameras.main.shake(200, 0.01);
+      }
+      // Reset when this player slows down
+      if (speed < 25) {
+        player.sonicBoomTriggered = false;
+      }
+
+      // Emit smoke particles when not thrusting and moving fast (atmospheric friction)
+      const threshold = 8;
+      const notThrusting = !shuttle.getIsThrusting();
+      if (speed > threshold && notThrusting) {
+        // Calculate trail angle - opposite to velocity direction (where smoke goes)
+        const trailAngle = Math.atan2(-vy, -vx) * (180 / Math.PI);
+
+        // Only update the angle dynamically (other config set at init)
+        this.speedTrailEmitter.particleAngle = { min: trailAngle - 30, max: trailAngle + 30 };
+
+        // Continuous emission - more particles at higher speeds
+        const intensity = Math.min((speed - threshold) / 15, 1);
+        const particleCount = 3 + Math.floor(intensity * 6);
+
+        // Emit from behind the ship
+        const behindAngle = Math.atan2(vy, vx); // Direction ship came from
+        const behindOffset = 12;
+
+        for (let i = 0; i < particleCount; i++) {
+          // Scatter emission points behind the ship
+          const spreadAngle = behindAngle + (Math.random() - 0.5) * 0.8;
+          const dist = behindOffset + Math.random() * 5;
+          const emitX = shuttle.x + Math.cos(spreadAngle) * dist;
+          const emitY = shuttle.y + Math.sin(spreadAngle) * dist;
+          this.speedTrailEmitter.emitParticleAt(emitX, emitY, 1);
+        }
+      }
+    }
   }
 
 
@@ -2197,6 +2404,12 @@ export class GameScene extends Phaser.Scene {
 
     // Update weather system (clouds, rain, lightning, wind)
     this.weatherManager.update(time, this.shuttles);
+
+    // Update altitude overlay (sky darkens at high altitude)
+    this.updateAltitudeOverlay();
+
+    // Update speed lines (motion blur when falling fast)
+    this.updateSpeedLines();
 
     // Get wind strength for physics and flags
     const windStrength = this.weatherManager.getWindStrength();

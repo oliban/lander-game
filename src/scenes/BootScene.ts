@@ -124,6 +124,7 @@ export class BootScene extends Phaser.Scene {
     this.load.audio('covfefe', 'assets/audio/covfefe.mp3');
     this.load.audio('rocket', 'assets/audio/rocket.mp3');
     this.load.audio('ice_break', 'assets/audio/ice_break.mp3');
+    this.load.audio('sonic_boom', 'assets/audio/sonic-boom.mp3');
 
     // Collectible pickup sounds
     this.load.audio('pickup_burger', 'assets/audio/pickup_burger.mp3');
@@ -286,6 +287,26 @@ export class BootScene extends Phaser.Scene {
     raindropGraphics.fillRect(0, 0, 2, 16);
     raindropGraphics.generateTexture('raindrop', 2, 16);
     raindropGraphics.destroy();
+
+    // Create streak texture for speed trails (thin elongated shape)
+    const streakGraphics = this.make.graphics({ x: 0, y: 0 });
+    streakGraphics.fillStyle(0xffffff, 1);
+    streakGraphics.fillRect(0, 0, 3, 20); // Thin and long
+    streakGraphics.generateTexture('streak', 3, 20);
+    streakGraphics.destroy();
+
+    // Create soft smoke puff texture (radial gradient effect)
+    const smokeGraphics = this.make.graphics({ x: 0, y: 0 });
+    const smokeSize = 32;
+    const center = smokeSize / 2;
+    // Create layered circles for soft edge effect
+    for (let r = center; r > 0; r -= 2) {
+      const alpha = (r / center) * 0.4; // Fade toward edges
+      smokeGraphics.fillStyle(0xcccccc, alpha);
+      smokeGraphics.fillCircle(center, center, r);
+    }
+    smokeGraphics.generateTexture('smoke', smokeSize, smokeSize);
+    smokeGraphics.destroy();
 
     // Create splash particle texture (small circle)
     const splashGraphics = this.make.graphics({ x: 0, y: 0 });
