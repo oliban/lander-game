@@ -53,6 +53,12 @@ export interface BombCallbacks {
 
   // Sunken food tracking
   addSunkenFood: (foodData: { x: number; y: number; sprite: Phaser.GameObjects.Sprite }) => void;
+
+  // Epstein files (dropped from golf cart)
+  spawnEpsteinFiles: (positions: { x: number; y: number }[]) => void;
+
+  // Propaganda banner (dropped from biplane)
+  spawnPropagandaBanner: (x: number, y: number, propagandaType: string, message: string, accentColor: number) => void;
 }
 
 export class BombManager {
@@ -429,7 +435,7 @@ export class BombManager {
       ) {
         bomb.explode(this.scene);
 
-        const { name, points } = biplane.explode();
+        const { name, points, bannerPosition, propagandaType, message, accentColor } = biplane.explode();
         this.callbacks.addDestructionScore(points);
         this.callbacks.addDestroyedBuilding({ name, points });
 
@@ -438,6 +444,15 @@ export class BombManager {
 
         this.callbacks.showDestructionPoints(biplane.x, biplane.y - 30, points, name);
         this.callbacks.applyExplosionShockwave(bombX, bombY);
+
+        // Spawn propaganda banner from the destroyed biplane
+        this.callbacks.spawnPropagandaBanner(
+          bannerPosition.x,
+          bannerPosition.y,
+          propagandaType,
+          message,
+          accentColor
+        );
 
         biplanes.splice(j, 1);
         return true;
@@ -464,7 +479,7 @@ export class BombManager {
     ) {
       bomb.explode(this.scene);
 
-      const { name, points } = golfCart.explode();
+      const { name, points, filePositions } = golfCart.explode();
       this.callbacks.addDestructionScore(points);
       this.callbacks.addDestroyedBuilding({ name, points });
 
@@ -473,6 +488,11 @@ export class BombManager {
 
       this.callbacks.showDestructionPoints(golfCart.x, golfCart.y - 30, points, name);
       this.callbacks.applyExplosionShockwave(bombX, bombY);
+
+      // Spawn Epstein files at the returned positions
+      if (filePositions && filePositions.length > 0) {
+        this.callbacks.spawnEpsteinFiles(filePositions);
+      }
 
       return true;
     }
