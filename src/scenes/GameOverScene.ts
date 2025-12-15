@@ -22,6 +22,10 @@ interface GameOverData {
   debugModeUsed?: boolean;
   noShake?: boolean;
   destroyedBuildings?: DestroyedBuilding[];
+  // 2-player mode data
+  playerCount?: number;
+  p1Kills?: number;
+  p2Kills?: number;
 }
 
 interface HighScoreEntry {
@@ -64,9 +68,22 @@ export class GameOverScene extends Phaser.Scene {
   private nameInputText!: Phaser.GameObjects.Text;
   private cursorBlink!: Phaser.Time.TimerEvent;
   private wasVictory: boolean = false; // Track if this was a victory for high score restart
+  // 2-player mode data to preserve across restart
+  private playerCount: number = 1;
+  private p1Kills: number = 0;
+  private p2Kills: number = 0;
 
   constructor() {
     super({ key: 'GameOverScene' });
+  }
+
+  /** Get restart data for GameScene, preserving 2-player kills */
+  private getRestartData(): { playerCount: number; p1Kills: number; p2Kills: number } {
+    return {
+      playerCount: this.playerCount,
+      p1Kills: this.p1Kills,
+      p2Kills: this.p2Kills,
+    };
   }
 
   private loadHighScores(): HighScoreEntry[] {
@@ -151,6 +168,11 @@ export class GameOverScene extends Phaser.Scene {
 
     // Store victory state for high score restart
     this.wasVictory = data.victory;
+
+    // Store 2-player mode data for restart
+    this.playerCount = data.playerCount ?? 1;
+    this.p1Kills = data.p1Kills ?? 0;
+    this.p2Kills = data.p2Kills ?? 0;
 
     if (data.victory) {
       this.createVictoryScreen(data);
@@ -563,7 +585,7 @@ export class GameOverScene extends Phaser.Scene {
     } else {
       // Buttons
       createColoredButton(this, GAME_WIDTH / 2 - 120, buttonY, 'PLAY AGAIN', 0x4CAF50, () => {
-        this.scene.start('GameScene');
+        this.scene.start('GameScene', this.getRestartData());
       }, 'medium');
 
       createColoredButton(this, GAME_WIDTH / 2 + 120, buttonY, 'MAIN MENU', 0x607D8B, () => {
@@ -581,7 +603,7 @@ export class GameOverScene extends Phaser.Scene {
       // Enter key to play again
       this.input.keyboard!.on('keydown-ENTER', () => {
         if (!this.nameEntryActive) {
-          this.scene.start('GameScene');
+          this.scene.start('GameScene', this.getRestartData());
         }
       });
     }
@@ -726,7 +748,7 @@ export class GameOverScene extends Phaser.Scene {
 
       // Buttons below leaderboard
       createColoredButton(this, GAME_WIDTH / 2 - 110, 480, 'TRY AGAIN', 0xFF9800, () => {
-        this.scene.start('GameScene');
+        this.scene.start('GameScene', this.getRestartData());
       }, 'medium');
 
       createColoredButton(this, GAME_WIDTH / 2 + 110, 480, 'MAIN MENU', 0x607D8B, () => {
@@ -744,7 +766,7 @@ export class GameOverScene extends Phaser.Scene {
       // Enter key to try again
       this.input.keyboard!.on('keydown-ENTER', () => {
         if (!this.nameEntryActive) {
-          this.scene.start('GameScene');
+          this.scene.start('GameScene', this.getRestartData());
         }
       });
     }
@@ -961,7 +983,7 @@ export class GameOverScene extends Phaser.Scene {
     this.addHighScore(this.playerName, score);
 
     // Start a new game after saving the high score
-    this.scene.start('GameScene');
+    this.scene.start('GameScene', this.getRestartData());
   }
 
   private createLeaderboard(x: number, y: number, currentScore: number): void {

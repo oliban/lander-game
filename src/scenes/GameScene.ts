@@ -181,18 +181,16 @@ export class GameScene extends Phaser.Scene {
     this.playerCount = data?.playerCount ?? 1;
     this.gameMode = data?.gameMode ?? 'normal';
 
-    // Restore kill counts if continuing dogfight mode
+    // Restore kill counts if provided (for dogfight and 2-player modes)
+    this.p1Kills = data?.p1Kills ?? 0;
+    this.p2Kills = data?.p2Kills ?? 0;
+
     if (this.gameMode === 'dogfight') {
-      this.p1Kills = data?.p1Kills ?? 0;
-      this.p2Kills = data?.p2Kills ?? 0;
       // Force 2-player mode for dogfight
       this.playerCount = 2;
       // Use provided pad index or pick a random one (excluding Washington at index 0)
       this.dogfightPadIndex = data?.dogfightPadIndex ?? (1 + Math.floor(Math.random() * (LANDING_PADS.length - 1)));
     } else {
-      // Reset kills for normal mode
-      this.p1Kills = 0;
-      this.p2Kills = 0;
       this.dogfightPadIndex = -1;
     }
     // Reset kill tracking flags
@@ -1777,26 +1775,38 @@ export class GameScene extends Phaser.Scene {
 
     // In dogfight mode, any death triggers quick restart (unless winner reached 10 kills)
     if (this.gameMode === 'dogfight') {
-      // Award kill to the opponent of the player who died
-      // But skip if kill was already tracked (e.g., from bomb hit)
+      // Award kill - but skip if already tracked (e.g., from bomb hit)
       if (this.lastDeadPlayerIndex >= 0 && !this.killAlreadyTracked) {
-        // The opponent of the dead player gets the kill
-        // lastDeadPlayerIndex: 0 = P1 died, so P2 gets kill
-        // lastDeadPlayerIndex: 1 = P2 died, so P1 gets kill
-        if (this.lastDeadPlayerIndex === 0) {
-          this.p2Kills++;  // P1 died, P2 gets the kill
-          if (this.players[1]) this.players[1].kills = this.p2Kills;
-          console.log('Kill awarded to P2 (blue) - P1 died');
+        // Check if both players are dead
+        const bothDead = remainingActive.length === 0;
+
+        if (bothDead) {
+          // Both died (e.g., both in water) - award kill to the one who died LAST (survived longer)
+          if (this.lastDeadPlayerIndex === 0) {
+            this.p1Kills++;  // P1 died last, P1 gets the point for surviving longer
+            if (this.players[0]) this.players[0].kills = this.p1Kills;
+            console.log('Kill awarded to P1 (white) - survived longer (both dead)');
+          } else {
+            this.p2Kills++;  // P2 died last, P2 gets the point for surviving longer
+            if (this.players[1]) this.players[1].kills = this.p2Kills;
+            console.log('Kill awarded to P2 (blue) - survived longer (both dead)');
+          }
         } else {
-          this.p1Kills++;  // P2 died, P1 gets the kill
-          if (this.players[0]) this.players[0].kills = this.p1Kills;
-          console.log('Kill awarded to P1 (white) - P2 died');
+          // Only one died - award kill to the opponent (survivor)
+          if (this.lastDeadPlayerIndex === 0) {
+            this.p2Kills++;  // P1 died, P2 gets the kill
+            if (this.players[1]) this.players[1].kills = this.p2Kills;
+            console.log('Kill awarded to P2 (blue) - P1 died');
+          } else {
+            this.p1Kills++;  // P2 died, P1 gets the kill
+            if (this.players[0]) this.players[0].kills = this.p1Kills;
+            console.log('Kill awarded to P1 (white) - P2 died');
+          }
         }
       }
       // Reset flags for next death
       this.killAlreadyTracked = false;
       this.lastDeadPlayerIndex = -1;
-      // If both dead, no kill awarded
 
       // Check for winner
       if (this.dogfightManager.checkForWinner(this.p1Kills, this.p2Kills)) {
@@ -2102,6 +2112,9 @@ export class GameScene extends Phaser.Scene {
     debugModeUsed: boolean;
     destroyedBuildings: { name: string; points: number; textureKey?: string; country?: string }[];
     noShake?: boolean;
+    playerCount?: number;
+    p1Kills?: number;
+    p2Kills?: number;
   }): void {
     // Fade out music during game over transition
     this.musicManager.fadeOutAndStop(2000);
@@ -2118,6 +2131,14 @@ export class GameScene extends Phaser.Scene {
     fadeOverlay.setDepth(1000);
     fadeOverlay.setScrollFactor(0);
 
+    // Prepare game over data with player info for restart
+    const gameOverData = {
+      ...data,
+      playerCount: data.playerCount ?? this.playerCount,
+      p1Kills: data.p1Kills ?? this.p1Kills,
+      p2Kills: data.p2Kills ?? this.p2Kills,
+    };
+
     // Wait 2 seconds, then fade out over 1 second, then transition
     this.time.delayedCall(2000, () => {
       if (this.gameState !== 'crashed') return;
@@ -2129,7 +2150,7 @@ export class GameScene extends Phaser.Scene {
         ease: 'Quad.easeIn',
         onComplete: () => {
           this.scene.stop('UIScene');
-          this.scene.start('GameOverScene', data);
+          this.scene.start('GameOverScene', gameOverData);
         },
       });
     });
@@ -2563,7 +2584,7 @@ export class GameScene extends Phaser.Scene {
   private restartWithPlayerCount(playerCount: number): void {
     // Stop UI scene
     this.scene.stop('UIScene');
-    // Restart game scene with new player count (exit dogfight if active)
+    // Restart game scene with new player count (resets kills for fresh start)
     this.scene.restart({ playerCount, gameMode: 'normal' });
   }
 
