@@ -20,6 +20,7 @@ import { getCollectionSystem } from '../systems/CollectionSystem';
 import { MusicManager } from '../systems/MusicManager';
 import { WeatherManager } from '../managers/WeatherManager';
 import { ScorchMarkManager } from '../managers/ScorchMarkManager';
+import { TombstoneManager } from '../managers/TombstoneManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -158,17 +159,12 @@ export class GameScene extends Phaser.Scene {
   private fpsHistory: number[] = [];      // Rolling history for baseline calculation
   private debrisSprites: Phaser.GameObjects.Sprite[] = [];
 
-  // Tombstones for death locations (persistent across restarts)
-  private tombstoneGraphics: Phaser.GameObjects.Container[] = [];
-  private tombstoneBodies: MatterJS.BodyType[] = [];
-  private static readonly TOMBSTONE_STORAGE_KEY = 'peaceShuttle_tombstones';
+  // Tombstone manager
+  private tombstoneManager!: TombstoneManager;
 
   // Achievement system
   private achievementSystem!: AchievementSystem;
   private cannonsDestroyedThisGame: number = 0;
-  private tombstoneBounceCount: number = 0;
-  private juggledTombstoneId: number | null = null; // Track which tombstone is being juggled
-  private lastTombstoneBounceTime: number = 0; // Debounce multiple collision events
 
   // Weather system (managed by WeatherManager)
   private weatherManager!: WeatherManager;
@@ -230,8 +226,6 @@ export class GameScene extends Phaser.Scene {
     this.fuelSystem2 = null;
     this.inventorySystem2 = null;
     this.p2Controls = null;
-    this.tombstoneGraphics = [];
-    this.tombstoneBodies = [];
     this.fisherBoat = null;
     this.shuttleOnBoat = false;
     this.sharks = [];
@@ -274,8 +268,14 @@ export class GameScene extends Phaser.Scene {
     });
     this.weatherManager.initialize();
 
-    // Load tombstones from previous deaths (persistent across restarts)
-    this.loadTombstones();
+    // Initialize tombstone manager
+    this.tombstoneManager = new TombstoneManager(this, {
+      getTerrainHeightAt: (x: number) => this.terrain.getHeightAt(x),
+      onAchievementUnlock: (id: string) => this.achievementSystem.unlock(id),
+      playSound: (key: string, config?: { volume?: number }) => this.sound.play(key, config),
+      isGameInitialized: () => this.gameInitialized,
+    });
+    this.tombstoneManager.initialize();
 
     // Initialize scorch mark system (after terrain is created)
     this.scorchMarkManager = new ScorchMarkManager(this, {
@@ -634,7 +634,7 @@ export class GameScene extends Phaser.Scene {
     const deathX = shuttle.x;
     const deathY = shuttle.y;
     this.time.delayedCall(1050, () => {
-      this.spawnTombstone(deathX, deathY, 'lightning');
+      this.tombstoneManager.spawnTombstone(deathX, deathY, 'lightning');
     });
 
     // Handle game state
@@ -985,8 +985,7 @@ export class GameScene extends Phaser.Scene {
         // Check shuttle collision with tombstone (for Puskás Award)
         if (this.isShuttleCollision(bodyA, bodyB, 'tombstone')) {
           const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
-          const shuttleBody = bodyA.label === 'tombstone' ? bodyB : bodyA;
-          this.handleTombstoneBounce(tombstoneBody, shuttleBody);
+          this.tombstoneManager.handleBounce(tombstoneBody);
         }
 
         // Check shuttle collision with brick wall
@@ -1000,55 +999,10 @@ export class GameScene extends Phaser.Scene {
         if ((bodyA.label === 'tombstone' && bodyB.label === 'terrain') ||
             (bodyB.label === 'tombstone' && bodyA.label === 'terrain')) {
           const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
-          if (tombstoneBody.id === this.juggledTombstoneId) {
-            // Tombstone hit ground - reset juggle
-            this.tombstoneBounceCount = 0;
-            this.juggledTombstoneId = null;
-          }
+          this.tombstoneManager.resetJuggle(tombstoneBody);
         }
       }
     });
-  }
-
-  private handleTombstoneBounce(tombstoneBody: MatterJS.BodyType, _shuttleBody: MatterJS.BodyType): void {
-    const now = Date.now();
-    const tombstoneId = tombstoneBody.id;
-
-    // Only count if tombstone is already in motion (being juggled, not resting on ground)
-    // First hit doesn't count - tombstone must already be airborne from a previous kick
-    const velocity = tombstoneBody.velocity;
-    const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
-
-    // If this is the first contact with this tombstone, just start tracking it
-    // but don't count as a bounce (need to kick it into the air first)
-    if (this.juggledTombstoneId !== tombstoneId) {
-      this.tombstoneBounceCount = 0;
-      this.juggledTombstoneId = tombstoneId;
-      this.lastTombstoneBounceTime = now;
-      console.log(`[PUSKAS] Started juggling tombstone ${tombstoneId} - kick it again while airborne!`);
-      return;
-    }
-
-    // Debounce - ignore if same tombstone collision within 300ms (physics fires multiple events)
-    if (now - this.lastTombstoneBounceTime < 300) {
-      return;
-    }
-
-    // Only count as bounce if tombstone has some velocity (is airborne/moving)
-    if (speed < 0.5) {
-      console.log(`[PUSKAS] Tombstone ${tombstoneId} not moving fast enough (speed: ${speed.toFixed(2)}) - not a valid bounce`);
-      return;
-    }
-
-    this.lastTombstoneBounceTime = now;
-    this.tombstoneBounceCount++;
-
-    console.log(`[PUSKAS] Tombstone bounce #${this.tombstoneBounceCount} (tombstone ${tombstoneId}, speed: ${speed.toFixed(2)})`);
-
-    // Award achievement for 3 bounces in a row without hitting ground
-    if (this.tombstoneBounceCount >= 3) {
-      this.achievementSystem.unlock('puskas_award');
-    }
   }
 
   private isShuttleCollision(bodyA: MatterJS.BodyType, bodyB: MatterJS.BodyType, label: string): boolean {
@@ -1122,7 +1076,7 @@ export class GameScene extends Phaser.Scene {
       this.achievementSystem.onDeath('water');
 
       // Spawn tombstone at water crash location (will appear after ship sinks)
-      this.spawnTombstone(shuttle.x, shuttle.y, 'water');
+      this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, 'water');
 
       // Play bubbles sound after splash, fade out after 3 seconds
       this.time.delayedCall(500, () => {
@@ -1175,7 +1129,7 @@ export class GameScene extends Phaser.Scene {
     this.achievementSystem.onDeath(cause);
 
     // Spawn tombstone at terrain crash location
-    this.spawnTombstone(shuttle.x, shuttle.y, cause);
+    this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, cause);
 
     shuttle.explode();
     this.sound.play('car_crash', { volume: 0.8 });
@@ -1220,7 +1174,7 @@ export class GameScene extends Phaser.Scene {
     shuttle.stopRocketSound();
 
     this.achievementSystem.onDeath('terrain');
-    this.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
+    this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
 
     shuttle.explode();
     this.sound.play('car_crash', { volume: 0.8 });
@@ -1535,7 +1489,7 @@ export class GameScene extends Phaser.Scene {
       shuttle.stopRocketSound();
 
       // Spawn tombstone at crash landing location
-      this.spawnTombstone(shuttle.x, shuttle.y, 'landing');
+      this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, 'landing');
 
       shuttle.explode();
 
@@ -1882,7 +1836,7 @@ export class GameScene extends Phaser.Scene {
 
       this.gameState = 'crashed';
       shuttle.stopRocketSound();
-      this.spawnTombstone(shuttle.x, shuttle.y, 'landing');
+      this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, 'landing');
       shuttle.explode();
 
       this.transitionToGameOver({
@@ -2436,7 +2390,7 @@ export class GameScene extends Phaser.Scene {
     this.achievementSystem.onDeath(cause);
 
     // Spawn tombstone at crash location
-    this.spawnTombstone(shuttle.x, shuttle.y, cause);
+    this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, cause);
 
     // Stop thrust sound
     shuttle.stopRocketSound();
@@ -2540,7 +2494,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Spawn tombstone at crash location with projectile type as cause
-    this.spawnTombstone(shuttle.x, shuttle.y, projectileSpriteKey || 'cannonball');
+    this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, projectileSpriteKey || 'cannonball');
 
     // Stop thrust sound and explode the hit shuttle
     shuttle.stopRocketSound();
@@ -4149,7 +4103,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Apply to tombstones
-    for (const body of this.tombstoneBodies) {
+    for (const body of this.tombstoneManager.getBodies()) {
       if (!body) continue;
 
       const dx = body.position.x - explosionX;
@@ -4406,7 +4360,7 @@ export class GameScene extends Phaser.Scene {
     this.achievementSystem.onDeath('duck');
 
     // Spawn tombstone at crash location
-    this.spawnTombstone(this.shuttle.x, this.shuttle.y, 'duck');
+    this.tombstoneManager.spawnTombstone(this.shuttle.x, this.shuttle.y, 'duck');
 
     // Taunting messages - all duck-themed!
     const tauntMessages = [
@@ -4557,11 +4511,8 @@ export class GameScene extends Phaser.Scene {
     // Update scorch marks and water pollution - always
     this.scorchMarkManager.update(time);
 
-    // Update tombstone physics (sync containers to bodies) - always
-    this.updateTombstonePhysics();
-
-    // Check if tombstones are in water and need to sink
-    this.updateTombstoneSinking();
+    // Update tombstones (physics sync and sinking) - always
+    this.tombstoneManager.update();
 
     // Stop here if not playing
     if (this.gameState !== 'playing') return;
@@ -4828,9 +4779,6 @@ export class GameScene extends Phaser.Scene {
     // Update peace medal graphics if carrying
     this.updatePeaceMedalGraphics();
 
-    // Update tombstone physics (sync containers to bodies)
-    this.updateTombstonePhysics();
-
     // Update power-up effects
     this.updatePowerUps();
 
@@ -5026,7 +4974,7 @@ export class GameScene extends Phaser.Scene {
       this.achievementSystem.onDeath('void');
 
       // Spawn tombstone at last known position (bottom of visible area)
-      this.spawnTombstone(this.shuttle.x, GAME_HEIGHT, 'void');
+      this.tombstoneManager.spawnTombstone(this.shuttle.x, GAME_HEIGHT, 'void');
       this.transitionToGameOver({
         victory: false,
         message: 'Lost in the void!',
@@ -5387,327 +5335,5 @@ export class GameScene extends Phaser.Scene {
       duration: 1500,
       onComplete: () => tradeText.destroy(),
     });
-  }
-
-  // Tombstone system - persistent across game restarts
-  private loadTombstones(): void {
-    try {
-      const saved = localStorage.getItem(GameScene.TOMBSTONE_STORAGE_KEY);
-      if (saved) {
-        const tombstones: { x: number; y: number; date: string; cause?: CauseOfDeath }[] = JSON.parse(saved);
-        // Limit to last 20 tombstones to prevent clutter
-        const recent = tombstones.slice(-20);
-        for (const ts of recent) {
-          // All tombstones have physics so they react to explosions
-          this.createTombstoneGraphic(ts.x, ts.y, false, false, ts.cause);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load tombstones:', e);
-    }
-  }
-
-  private saveTombstone(x: number, y: number, cause?: CauseOfDeath): void {
-    try {
-      const saved = localStorage.getItem(GameScene.TOMBSTONE_STORAGE_KEY);
-      const tombstones: { x: number; y: number; date: string; cause?: CauseOfDeath }[] = saved ? JSON.parse(saved) : [];
-      tombstones.push({ x, y, date: new Date().toISOString(), cause });
-      // Keep only last 50 tombstones
-      const trimmed = tombstones.slice(-50);
-      localStorage.setItem(GameScene.TOMBSTONE_STORAGE_KEY, JSON.stringify(trimmed));
-    } catch (e) {
-      console.error('Failed to save tombstone:', e);
-    }
-  }
-
-  private getCauseEmoji(cause?: CauseOfDeath): string {
-    // Standard death causes
-    switch (cause) {
-      case 'water': return '🌊';
-      case 'terrain': return '💥';
-      case 'landing': return '🛬';
-      case 'duck': return '🦆';
-      case 'void': return '🌌';
-      case 'fuel': return '⛽';
-      case 'p1_bombed': return '🟢'; // P1 (green) was bombed
-      case 'p2_bombed': return '🔵'; // P2 (blue) was bombed
-    }
-
-    // Projectile type emojis
-    const projectileEmojis: { [key: string]: string } = {
-      'teacup': '🫖',
-      'doubledecker': '🚌',
-      'blackcab': '🚕',
-      'guardhat': '💂',
-      'baguette': '🥖',
-      'wine': '🍷',
-      'croissant': '🥐',
-      'pretzel': '🥨',
-      'beer': '🍺',
-      'pierogi': '🥟',
-      'pottery': '🏺',
-      'proj_matryoshka': '🪆',
-      'balalaika': '🪕',
-      'borscht': '🍲',
-      'samovar': '🫖',
-      'cannonball': '💣',
-    };
-
-    if (cause && projectileEmojis[cause]) {
-      return projectileEmojis[cause];
-    }
-
-    return '💀';
-  }
-
-  private createTombstoneGraphic(x: number, y: number, isStatic: boolean = true, isUnderwater: boolean = false, cause?: CauseOfDeath): { container: Phaser.GameObjects.Container; body: MatterJS.BodyType | null } {
-    const container = this.add.container(x, y);
-    container.setDepth(5); // Above terrain, below shuttle
-
-    // Use darker, bluer colors if underwater
-    const stoneColor = isUnderwater ? 0x334455 : 0x555555;
-    const edgeColor = isUnderwater ? 0x223344 : 0x333333;
-    const crossColor = isUnderwater ? 0x556677 : 0x888888;
-    const textColor = isUnderwater ? '#667788' : '#AAAAAA';
-    const stoneAlpha = isUnderwater ? 0.6 : 1;
-    const textAlpha = isUnderwater ? 0.4 : 1;
-
-    // Tombstone body (rounded rectangle)
-    const stone = this.add.graphics();
-    stone.fillStyle(stoneColor, stoneAlpha);
-    stone.fillRoundedRect(-12, -30, 24, 30, { tl: 8, tr: 8, bl: 2, br: 2 });
-    // Darker edge
-    stone.lineStyle(2, edgeColor);
-    stone.strokeRoundedRect(-12, -30, 24, 30, { tl: 8, tr: 8, bl: 2, br: 2 });
-
-    // Cross on top
-    stone.fillStyle(crossColor, stoneAlpha);
-    stone.fillRect(-2, -38, 4, 10);
-    stone.fillRect(-6, -34, 12, 4);
-
-    // RIP text
-    const ripText = this.add.text(0, -18, 'RIP', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '10px',
-      color: textColor,
-      fontStyle: 'bold',
-    });
-    ripText.setOrigin(0.5, 0.5);
-    ripText.setAlpha(textAlpha);
-
-    // Cause of death emoji below RIP
-    const causeEmoji = this.add.text(0, -7, this.getCauseEmoji(cause), {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '9px',
-    });
-    causeEmoji.setOrigin(0.5, 0.5);
-    causeEmoji.setAlpha(textAlpha);
-
-    container.add([stone, ripText, causeEmoji]);
-    this.tombstoneGraphics.push(container);
-
-    // Create physics body for dynamic tombstones
-    let body: MatterJS.BodyType | null = null;
-    if (!isStatic) {
-      body = this.matter.add.rectangle(x, y - 15, 24, 38, {
-        isStatic: false,
-        label: 'tombstone',
-        friction: 0.8,
-        frictionAir: 0.01,
-        restitution: 0.2,
-        mass: 2,
-        collisionFilter: {
-          category: 8, // New category for tombstones
-          mask: 1 | 2, // Collide with shuttles (1) and terrain (2)
-        },
-      });
-      this.tombstoneBodies.push(body);
-
-      // Link body to container for syncing
-      (body as unknown as { containerRef: Phaser.GameObjects.Container }).containerRef = container;
-    }
-
-    return { container, body };
-  }
-
-  private spawnTombstone(deathX: number, deathY: number, cause?: CauseOfDeath): void {
-    // Check if death occurred in Atlantic Ocean (water)
-    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
-    const isInWater = deathX >= atlanticStart && deathX < atlanticEnd;
-
-    // Find ground level at death location
-    const terrainY = this.terrain.getHeightAt(deathX);
-
-    if (isInWater) {
-      // For water deaths, delay the tombstone spawn until after the ship has sunk
-      // The tombstone will appear at the sunken position (3.5 seconds matches the ship sinking time)
-      const sinkDepth = terrainY + 150; // Sink 150px below water surface
-
-      this.time.delayedCall(3500, () => {
-        // Save sunken position to localStorage
-        this.saveTombstone(deathX, sinkDepth, cause);
-
-        // Create static tombstone at sunken position with underwater tint
-        this.createTombstoneGraphic(deathX, sinkDepth, true, true, cause);
-      });
-    } else {
-      // Normal death - spawn physics tombstone at death location
-      // It will fall if in mid-air, and can be knocked around by explosions
-
-      // Save to localStorage (use terrain Y for persistence, body will settle there)
-      this.saveTombstone(deathX, terrainY, cause);
-
-      // Create a physics-enabled tombstone that falls
-      this.createTombstoneGraphic(deathX, deathY, false, false, cause);
-    }
-  }
-
-  // Update tombstone graphics to follow their physics bodies
-  private updateTombstonePhysics(): void {
-    for (const body of this.tombstoneBodies) {
-      if (!body) continue;
-      const container = (body as unknown as { containerRef: Phaser.GameObjects.Container }).containerRef;
-      if (container) {
-        container.setPosition(body.position.x, body.position.y + 15); // Offset for center
-        container.setRotation(body.angle);
-      }
-    }
-  }
-
-  // Check for tombstones entering water and make them sink with tint effect
-  private updateTombstoneSinking(): void {
-    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
-
-    for (let i = this.tombstoneBodies.length - 1; i >= 0; i--) {
-      const body = this.tombstoneBodies[i];
-      if (!body) continue;
-
-      const container = (body as unknown as { containerRef: Phaser.GameObjects.Container }).containerRef;
-      if (!container) continue;
-
-      // Check if tombstone is in the Atlantic Ocean area
-      const isInWater = body.position.x >= atlanticStart && body.position.x < atlanticEnd;
-
-      if (isInWater) {
-        const waterLevel = this.terrain.getHeightAt(body.position.x);
-
-        // Check if tombstone has entered the water
-        if (body.position.y > waterLevel - 20) {
-          // Mark as sinking if not already
-          const alreadySinking = (body as unknown as { isSinking?: boolean }).isSinking;
-
-          if (!alreadySinking) {
-            (body as unknown as { isSinking: boolean }).isSinking = true;
-
-            const splashX = body.position.x;
-            const splashY = waterLevel;
-
-            // Remove physics body from world (will sink via tween)
-            this.matter.world.remove(body);
-            this.tombstoneBodies.splice(i, 1);
-
-            // Start sinking animation with blue tint
-            const sinkDepth = waterLevel + 150;
-
-            // Save the new sunken position to localStorage
-            this.saveTombstone(splashX, sinkDepth);
-
-            // ============ SPLASH EFFECT ============
-            // Only show splash effect if game has been initialized (avoid on load)
-            if (this.gameInitialized) {
-              // Play splash sound
-              this.sound.play('water_splash', { volume: 0.3 });
-
-              // Water droplets - medium sized splash
-              for (let d = 0; d < 18; d++) {
-                const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
-                const speed = 4 + Math.random() * 8;
-                const droplet = this.add.graphics();
-                droplet.fillStyle(0x4169E1, 0.8);
-                droplet.fillCircle(0, 0, 3 + Math.random() * 5);
-                droplet.setPosition(splashX + (Math.random() - 0.5) * 25, splashY);
-                droplet.setDepth(101);
-
-                this.tweens.add({
-                  targets: droplet,
-                  x: droplet.x + Math.cos(angle) * speed * 14,
-                  y: droplet.y + Math.sin(angle) * speed * 16 + 50,
-                  alpha: 0,
-                  scale: 0.3,
-                  duration: 600 + Math.random() * 400,
-                  ease: 'Quad.easeOut',
-                  onComplete: () => droplet.destroy(),
-                });
-              }
-
-              // Splash column - medium height
-              for (let c = 0; c < 10; c++) {
-                const columnDrop = this.add.graphics();
-                columnDrop.fillStyle(0xADD8E6, 0.9);
-                columnDrop.fillEllipse(0, 0, 4 + Math.random() * 4, 10 + Math.random() * 8);
-                columnDrop.setPosition(splashX + (Math.random() - 0.5) * 25, splashY);
-                columnDrop.setDepth(103);
-
-                this.tweens.add({
-                  targets: columnDrop,
-                  y: splashY - 50 - Math.random() * 60,
-                  alpha: 0,
-                  scaleY: 2.5,
-                  duration: 450 + Math.random() * 300,
-                  ease: 'Quad.easeOut',
-                  onComplete: () => columnDrop.destroy(),
-                });
-              }
-            }
-
-            // Tween the container down with blue tint effect
-            this.tweens.add({
-              targets: container,
-              y: sinkDepth,
-              duration: 3500,
-              ease: 'Quad.easeIn',
-              onUpdate: (tween) => {
-                // Calculate progress and apply blue tint
-                const progress = tween.progress;
-
-                // Apply tint to all children in container
-                container.each((child: Phaser.GameObjects.GameObject) => {
-                  if (child instanceof Phaser.GameObjects.Graphics) {
-                    child.setAlpha(1 - progress * 0.5); // Fade slightly
-                  } else if (child instanceof Phaser.GameObjects.Text) {
-                    child.setAlpha(1 - progress * 0.7); // Fade text more
-                  }
-                });
-              },
-            });
-
-            // Also emit some bubbles while sinking
-            for (let b = 0; b < 8; b++) {
-              this.time.delayedCall(b * 300 + Math.random() * 200, () => {
-                const bubble = this.add.circle(
-                  container.x + (Math.random() - 0.5) * 20,
-                  container.y,
-                  3 + Math.random() * 4,
-                  0x87CEEB,
-                  0.6
-                );
-                bubble.setDepth(101);
-
-                this.tweens.add({
-                  targets: bubble,
-                  y: bubble.y - 30 - Math.random() * 30,
-                  alpha: 0,
-                  duration: 500 + Math.random() * 300,
-                  ease: 'Quad.easeOut',
-                  onComplete: () => bubble.destroy(),
-                });
-              });
-            }
-          }
-        }
-      }
-    }
   }
 }
