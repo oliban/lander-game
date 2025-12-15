@@ -22,6 +22,7 @@ import { WeatherManager } from '../managers/WeatherManager';
 import { ScorchMarkManager } from '../managers/ScorchMarkManager';
 import { TombstoneManager } from '../managers/TombstoneManager';
 import { BombManager } from '../managers/BombManager';
+import { CarriedItemManager } from '../managers/CarriedItemManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -66,15 +67,6 @@ export class GameScene extends Phaser.Scene {
   private startPadId: number = 1; // Track which pad we started on (NYC is now index 1)
   private invulnerable: boolean = true; // Brief invulnerability at start
   private gameStartTime: number = 0; // Track when game started for timer
-  private hasPeaceMedal: boolean = false; // Whether player picked up the peace medal
-  private peaceMedalGraphics: Phaser.GameObjects.Graphics | null = null; // Medal hanging under shuttle
-  private medalCarrier: Shuttle | null = null; // Which shuttle is carrying the medal
-
-  // Physics state for medal pendulum
-  private medalAngle: number = 0; // Current angle of the medal swing (radians)
-  private medalAngularVelocity: number = 0; // Angular velocity of the medal
-  private lastShuttleVelX: number = 0; // Track shuttle velocity for physics
-  private lastShuttleVelY: number = 0;
 
   // Power-up states
   private cannonsBribed: boolean = false;
@@ -95,6 +87,9 @@ export class GameScene extends Phaser.Scene {
 
   // Bomb system (managed by BombManager)
   private bombManager!: BombManager;
+
+  // Carried items (peace medal, Greenland ice) managed by CarriedItemManager
+  private carriedItemManager!: CarriedItemManager;
 
   // Score/kill tracking (updated by BombManager via callbacks)
   private p1Kills: number = 0;
@@ -119,15 +114,8 @@ export class GameScene extends Phaser.Scene {
   private sharks: Shark[] = [];
   private sunkenFood: { x: number; y: number; sprite: Phaser.GameObjects.Sprite }[] = [];
 
-  // Greenland ice block
+  // Greenland ice block (object, state managed by CarriedItemManager)
   private greenlandIce: GreenlandIce | null = null;
-  private hasGreenlandIce: boolean = false;
-  private iceAngle: number = 0;
-  private iceAngularVelocity: number = 0;
-  private iceCarrier: Shuttle | null = null;
-  private greenlandIceGraphics: Phaser.GameObjects.Graphics | null = null;
-  private lastIceVelX: number = 0;
-  private lastIceVelY: number = 0;
 
   // Landing pad debounce (prevent re-triggering trade after closing)
   private lastLandingTime: number = 0;
@@ -331,6 +319,12 @@ export class GameScene extends Phaser.Scene {
     });
     this.bombManager.initialize();
 
+    // Initialize carried item manager (peace medal, Greenland ice)
+    this.carriedItemManager = new CarriedItemManager(this, {
+      getGameMode: () => this.gameMode,
+    });
+    this.carriedItemManager.initialize();
+
     // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
     this.fisherBoat = new FisherBoat(this, 3500);
     // 15% chance the boat has a "fish" package
@@ -364,20 +358,6 @@ export class GameScene extends Phaser.Scene {
     // Create country decorations (buildings and landmarks) - skips areas near cannons
     this.createDecorations();
 
-    // Reset peace medal state
-    this.hasPeaceMedal = false;
-    this.peaceMedalGraphics = null;
-    this.medalCarrier = null;
-
-    // Reset Greenland ice state (note: greenlandIce object is created in spawnGreenlandIce above)
-    this.hasGreenlandIce = false;
-    this.iceAngle = 0;
-    this.iceAngularVelocity = 0;
-    this.iceCarrier = null;
-    this.greenlandIceGraphics = null;
-    this.lastIceVelX = 0;
-    this.lastIceVelY = 0;
-
     // Reset score and destroyed buildings
     this.destructionScore = 0;
     this.destroyedBuildings = [];
@@ -392,10 +372,6 @@ export class GameScene extends Phaser.Scene {
     this.speedBoostTrail = null;
 
     // Reset other state
-    this.medalAngle = 0;
-    this.medalAngularVelocity = 0;
-    this.lastShuttleVelX = 0;
-    this.lastShuttleVelY = 0;
     this.sittingDuckStartTime = 0;
     this.isSittingDuck = false;
 
@@ -519,7 +495,7 @@ export class GameScene extends Phaser.Scene {
       getCurrentCountry: () => this.getCurrentCountry(),
       getLegsExtended: () => this.shuttle?.areLandingLegsExtended() ?? false,
       getElapsedTime: () => this.getElapsedTime(),
-      hasPeaceMedal: () => this.hasPeaceMedal,
+      hasPeaceMedal: () => this.carriedItemManager.getHasPeaceMedal(),
       // P2 data for 2-player mode
       playerCount: this.playerCount,
       fuelSystem2: this.fuelSystem2,
@@ -1386,15 +1362,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // If the sinking shuttle has the peace medal, make it sink too
-    if (this.hasPeaceMedal && this.peaceMedalGraphics && this.medalCarrier === targetShuttle) {
-      this.tweens.add({
-        targets: this.peaceMedalGraphics,
-        y: waterLevel + 200, // Sink slightly deeper than shuttle
-        alpha: 0.15,
-        duration: 3500,
-        ease: 'Quad.easeIn',
-      });
-    }
+    this.carriedItemManager.sinkMedalWithShuttle(targetShuttle, waterLevel);
 
     // Bubbles rising as shuttle sinks (more bubbles over longer time)
     for (let i = 0; i < 25; i++) {
@@ -1574,13 +1542,13 @@ export class GameScene extends Phaser.Scene {
       const inventory = this.inventorySystem.getAllItems();
 
       // Add peace medal bonus to score (5000 points!)
-      if (this.hasPeaceMedal) {
+      if (this.carriedItemManager.getHasPeaceMedal()) {
         this.destructionScore += 5000;
         this.events.emit('destructionScore', this.destructionScore);
       }
 
       // Add Greenland ice bonus if carrying (2500 points!)
-      if (this.hasGreenlandIce) {
+      if (this.carriedItemManager.getHasGreenlandIce()) {
         this.destructionScore += 2500;
         this.events.emit('destructionScore', this.destructionScore);
         this.achievementSystem.onGreenlandDeliveredToRussia();
@@ -1606,10 +1574,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         // Clean up ice
-        this.hasGreenlandIce = false;
-        this.iceCarrier = null;
-        this.greenlandIceGraphics?.destroy();
-        this.greenlandIceGraphics = null;
+        this.carriedItemManager.dropGreenlandIce();
       }
 
       // Special message if carrying peace medal - Putino speaks!
@@ -1622,7 +1587,8 @@ export class GameScene extends Phaser.Scene {
         '"Zamechatelno! Magnificent! Medal so shiny, can see reflection of great Russia!"',
         '"Otlichno! Excellent work! Putino will put medal next to his other... trophies."',
       ];
-      const victoryMessage = this.hasPeaceMedal
+      const hasMedal = this.carriedItemManager.getHasPeaceMedal();
+      const victoryMessage = hasMedal
         ? putinoPhrases[Math.floor(Math.random() * putinoPhrases.length)]
         : '"Ah, my friend! Putino is happy to see you, but... something is missing, da?"';
 
@@ -1630,7 +1596,7 @@ export class GameScene extends Phaser.Scene {
       const debugModeUsed = this.shuttle.wasDebugModeUsed();
 
       // Track victory achievements
-      this.achievementSystem.onVictory(this.hasPeaceMedal, this.destroyedBuildings.length);
+      this.achievementSystem.onVictory(hasMedal, this.destroyedBuildings.length);
 
       this.time.delayedCall(1500, () => {
         this.scene.stop('UIScene');
@@ -1641,13 +1607,13 @@ export class GameScene extends Phaser.Scene {
           elapsedTime: elapsedTime,
           inventory: inventory,
           fuelRemaining: this.fuelSystem.getFuel(),
-          hasPeaceMedal: this.hasPeaceMedal,
+          hasPeaceMedal: hasMedal,
           score: this.destructionScore,
           debugModeUsed: debugModeUsed,
           destroyedBuildings: this.destroyedBuildings,
         });
       });
-    } else if (pad.isWashington && this.hasGreenlandIce) {
+    } else if (pad.isWashington && this.carriedItemManager.getHasGreenlandIce()) {
       // Deliver Greenland ice to Washington!
       this.destructionScore += 2500;
       this.events.emit('destructionScore', this.destructionScore);
@@ -1676,41 +1642,12 @@ export class GameScene extends Phaser.Scene {
       });
 
       // Remove ice and reset shuttle mass
-      this.hasGreenlandIce = false;
-      this.iceCarrier = null;
-      this.greenlandIceGraphics?.destroy();
-      this.greenlandIceGraphics = null;
+      this.carriedItemManager.dropGreenlandIce();
 
-      // Also pick up the Peace Medal if not already carried
-      if (!this.hasPeaceMedal) {
-        this.hasPeaceMedal = true;
+      // Also pick up the Peace Medal if not already carried (delayed message)
+      if (!this.carriedItemManager.getHasPeaceMedal()) {
         pad.hidePeaceMedal();
-        this.createPeaceMedalGraphics(shuttle);
-        shuttle.setMass(8); // Medal weight
-        this.medalAngle = 0;
-        this.medalAngularVelocity = 0;
-
-        // Show medal pickup message (slightly delayed so it appears after ice message)
-        this.time.delayedCall(500, () => {
-          const medalText = this.add.text(shuttle.x, shuttle.y - 80, 'PEACE MEDAL ACQUIRED!', {
-            fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '20px',
-            color: '#FFD700',
-            fontStyle: 'bold',
-            stroke: '#000000',
-            strokeThickness: 3,
-          });
-          medalText.setOrigin(0.5, 0.5);
-          medalText.setDepth(100);
-
-          this.tweens.add({
-            targets: medalText,
-            y: medalText.y - 50,
-            alpha: 0,
-            duration: 2000,
-            onComplete: () => medalText.destroy(),
-          });
-        });
+        this.carriedItemManager.pickupPeaceMedal(shuttle, true, 500);
       } else {
         shuttle.setMass(5); // Reset to normal mass (no medal)
       }
@@ -1739,41 +1676,10 @@ export class GameScene extends Phaser.Scene {
         this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
         this.gameState = 'playing';
       }
-    } else if (pad.isWashington && !this.hasPeaceMedal && this.gameMode !== 'dogfight') {
+    } else if (pad.isWashington && !this.carriedItemManager.getHasPeaceMedal() && this.gameMode !== 'dogfight') {
       // Pick up the Peace Medal at Washington! (not in dogfight mode)
-      this.hasPeaceMedal = true;
-
-      // Hide the medal model on the landing pad
       pad.hidePeaceMedal();
-
-      // Create the medal graphics that will hang under the shuttle
-      this.createPeaceMedalGraphics(shuttle);
-
-      // Make shuttle heavier
-      shuttle.setMass(8); // Heavier with medal
-
-      // Reset medal physics
-      this.medalAngle = 0;
-      this.medalAngularVelocity = 0;
-
-      // Show pickup message
-      const pickupText = this.add.text(shuttle.x, shuttle.y - 80, 'PEACE MEDAL ACQUIRED!', {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '24px',
-        color: '#FFD700',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 3,
-      });
-      pickupText.setOrigin(0.5, 0.5);
-
-      this.tweens.add({
-        targets: pickupText,
-        y: pickupText.y - 50,
-        alpha: 0,
-        duration: 2000,
-        onComplete: () => pickupText.destroy(),
-      });
+      this.carriedItemManager.pickupPeaceMedal(shuttle);
 
       // In debug mode, show trading dialogue. Otherwise auto-trade (like 2-player mode)
       if (shuttle.wasDebugModeUsed()) {
@@ -1979,420 +1885,6 @@ export class GameScene extends Phaser.Scene {
         }
       },
     });
-  }
-
-  private createPeaceMedalGraphics(shuttle: Shuttle): void {
-    // Create graphics object for the peace medal that hangs under the shuttle
-    this.peaceMedalGraphics = this.add.graphics();
-    this.peaceMedalGraphics.setDepth(50); // Above terrain, below UI
-    this.medalCarrier = shuttle; // Track which shuttle carries the medal
-  }
-
-  private updateMedalPhysics(): void {
-    if (!this.hasPeaceMedal || !this.medalCarrier) return;
-
-    const carrier = this.medalCarrier;
-    const velocity = carrier.getVelocity();
-    const shuttleRotation = carrier.rotation;
-
-    // Calculate shuttle acceleration (change in velocity per frame)
-    const accelX = velocity.x - this.lastShuttleVelX;
-    const accelY = velocity.y - this.lastShuttleVelY;
-
-    this.lastShuttleVelX = velocity.x;
-    this.lastShuttleVelY = velocity.y;
-
-    // Pendulum physics constants
-    const wireLength = 45;
-    const gravity = 0.5;
-    const damping = 0.97;
-
-    // EFFECTIVE GRAVITY: real gravity minus shuttle acceleration
-    // This is the key physics - vertical thrust affects pendulum behavior
-    // When thrusting up (accelY negative), effective gravity increases
-    // When falling freely, effective gravity approaches zero (floaty)
-    const effectiveGravityX = -accelX;  // Horizontal pseudo-force
-    const effectiveGravityY = gravity - accelY;  // Vertical: gravity minus thrust
-
-    // Calculate effective gravity magnitude and direction
-    const effGravMagnitude = Math.sqrt(effectiveGravityX * effectiveGravityX + effectiveGravityY * effectiveGravityY);
-    const effGravAngle = Math.atan2(effectiveGravityX, effectiveGravityY);  // Angle from world "down"
-
-    // Medal's world angle = shuttle rotation + local medal angle
-    const medalWorldAngle = shuttleRotation + this.medalAngle;
-
-    // Angle between medal and effective "down" direction
-    const angleFromEffectiveDown = medalWorldAngle - effGravAngle;
-
-    // Restoring torque: stronger when effective gravity is higher (more thrust)
-    const restoreFactor = effGravMagnitude / wireLength;
-    const gravityTorque = -restoreFactor * Math.sin(angleFromEffectiveDown);
-
-    // Shuttle rotation imparts momentum to medal through the wire
-    const shuttleAngularVel = (carrier.body as MatterJS.BodyType).angularVelocity;
-    const rotationTorque = -shuttleAngularVel * 0.8;
-
-    // Update angular velocity
-    this.medalAngularVelocity += gravityTorque + rotationTorque;
-    this.medalAngularVelocity *= damping;
-    this.medalAngle += this.medalAngularVelocity;
-
-    // Soft clamp - bounce back at extreme angles
-    const maxAngle = Math.PI * 0.6;
-    if (Math.abs(this.medalAngle) > maxAngle) {
-      this.medalAngle = Math.sign(this.medalAngle) * maxAngle;
-      this.medalAngularVelocity *= -0.3;
-    }
-  }
-
-  private updatePeaceMedalGraphics(): void {
-    if (!this.hasPeaceMedal || !this.medalCarrier) return;
-
-    // Update physics first
-    this.updateMedalPhysics();
-
-    // Reuse graphics object - just clear it each frame
-    if (!this.peaceMedalGraphics) {
-      this.peaceMedalGraphics = this.add.graphics();
-      this.peaceMedalGraphics.setDepth(100);
-    }
-    this.peaceMedalGraphics.clear();
-
-    const carrier = this.medalCarrier;
-    const shuttleX = carrier.x;
-    const shuttleY = carrier.y;
-    const shuttleRotation = carrier.rotation;
-
-    // Attachment point at bottom of shuttle (in shuttle's local space, then rotated)
-    const attachOffsetY = 18; // Distance from shuttle center to bottom
-    const attachX = shuttleX + Math.sin(shuttleRotation) * attachOffsetY;
-    const attachY = shuttleY + Math.cos(shuttleRotation) * attachOffsetY;
-
-    // The medal angle is in world space (0 = straight down)
-    // medalAngle represents deviation from straight down
-    const wireLength = 45;
-
-    // Medal position: hanging from attachment point at the pendulum angle
-    // medalAngle = 0 means straight down (world space)
-    const medalX = attachX + Math.sin(this.medalAngle) * wireLength;
-    const medalY = attachY + Math.cos(this.medalAngle) * wireLength;
-
-    // Draw wires (two wires from shuttle bottom to medal top)
-    this.peaceMedalGraphics.lineStyle(2, 0x555555, 1);
-
-    // Calculate wire attachment points on shuttle (spread apart)
-    const wireSpread = 6;
-    const leftAttachX = attachX - wireSpread * Math.cos(shuttleRotation);
-    const leftAttachY = attachY + wireSpread * Math.sin(shuttleRotation);
-    const rightAttachX = attachX + wireSpread * Math.cos(shuttleRotation);
-    const rightAttachY = attachY - wireSpread * Math.sin(shuttleRotation);
-
-    // Wire endpoints on medal
-    const medalTopY = medalY - 12;
-
-    // Left wire
-    this.peaceMedalGraphics.lineBetween(leftAttachX, leftAttachY, medalX - 4, medalTopY);
-    // Right wire
-    this.peaceMedalGraphics.lineBetween(rightAttachX, rightAttachY, medalX + 4, medalTopY);
-
-    // Draw ribbon (always vertical in world space, slight tilt with swing)
-    this.peaceMedalGraphics.fillStyle(0x0000AA, 1);
-    const ribbonTilt = this.medalAngle * 0.3; // Ribbon tilts slightly with swing
-    const ribbonWidth = 8;
-    const ribbonHeight = 16;
-    const rx = medalX;
-    const ry = medalY - 6;
-
-    // Draw ribbon as polygon
-    this.peaceMedalGraphics.beginPath();
-    this.peaceMedalGraphics.moveTo(
-      rx - ribbonWidth / 2 * Math.cos(ribbonTilt),
-      ry - ribbonHeight - ribbonWidth / 2 * Math.sin(ribbonTilt)
-    );
-    this.peaceMedalGraphics.lineTo(
-      rx + ribbonWidth / 2 * Math.cos(ribbonTilt),
-      ry - ribbonHeight + ribbonWidth / 2 * Math.sin(ribbonTilt)
-    );
-    this.peaceMedalGraphics.lineTo(
-      rx + ribbonWidth / 2 * Math.cos(ribbonTilt),
-      ry + ribbonWidth / 2 * Math.sin(ribbonTilt)
-    );
-    this.peaceMedalGraphics.lineTo(
-      rx - ribbonWidth / 2 * Math.cos(ribbonTilt),
-      ry - ribbonWidth / 2 * Math.sin(ribbonTilt)
-    );
-    this.peaceMedalGraphics.closePath();
-    this.peaceMedalGraphics.fillPath();
-
-    // Draw medal (gold circle)
-    this.peaceMedalGraphics.fillStyle(0xFFD700, 1);
-    this.peaceMedalGraphics.fillCircle(medalX, medalY, 14);
-    this.peaceMedalGraphics.lineStyle(3, 0xB8860B, 1);
-    this.peaceMedalGraphics.strokeCircle(medalX, medalY, 14);
-
-    // Inner ring
-    this.peaceMedalGraphics.lineStyle(1, 0xDAA520, 1);
-    this.peaceMedalGraphics.strokeCircle(medalX, medalY, 10);
-
-    // Peace dove in center (simplified)
-    this.peaceMedalGraphics.fillStyle(0xFFFFFF, 1);
-    // Dove body
-    this.peaceMedalGraphics.fillEllipse(medalX, medalY, 8, 5);
-    // Dove wing
-    this.peaceMedalGraphics.fillTriangle(
-      medalX - 2, medalY,
-      medalX + 4, medalY - 4,
-      medalX + 4, medalY + 1
-    );
-    // Dove head
-    this.peaceMedalGraphics.fillCircle(medalX - 4, medalY - 1, 2);
-  }
-
-  private checkGreenlandIcePickup(): void {
-    // Don't pick up if already have ice OR if carrying Peace Medal OR in dogfight mode
-    if (!this.greenlandIce) {
-      return;
-    }
-    if (this.hasGreenlandIce) {
-      return;
-    }
-    if (this.hasPeaceMedal) {
-      return;
-    }
-    if (this.gameMode === 'dogfight') {
-      return; // No iceberg pickup in dogfight mode
-    }
-    if (this.greenlandIce.isDestroyed) {
-      return;
-    }
-
-    // Use main shuttle directly - shuttles array may have inactive entries
-    const shuttle = this.shuttle;
-    if (!shuttle || !shuttle.active) return;
-
-    // Check distance to the iceberg center (not just top)
-    // Ice bobs around y = GAME_HEIGHT * 0.75 = 540
-    // Sign is ~70px above water, ice peak is ~42px above water
-    const dist = Phaser.Math.Distance.Between(
-      shuttle.x, shuttle.y,
-      this.greenlandIce.x, this.greenlandIce.y - 40  // Check against ice peak area
-    );
-
-    // Pickup range: 140px - generous range to make pickup easier
-    if (dist < 140) {
-      this.pickupGreenlandIce(shuttle);
-    }
-  }
-
-  private pickupGreenlandIce(shuttle: Shuttle): void {
-    this.hasGreenlandIce = true;
-    this.iceCarrier = shuttle;
-    this.iceAngle = 0;
-    this.iceAngularVelocity = 0;
-    this.lastIceVelX = 0;
-    this.lastIceVelY = 0;
-
-    // Make shuttle heavier (more than medal: 8 → 10)
-    shuttle.setMass(10);
-
-    // Hide the floating ice
-    this.greenlandIce?.attach();
-
-    // Create hanging ice graphics
-    this.greenlandIceGraphics = this.add.graphics();
-    this.greenlandIceGraphics.setDepth(50);
-
-    // Show pickup message
-    const pickupText = this.add.text(shuttle.x, shuttle.y - 80, 'GREENLAND ACQUIRED!', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
-      color: '#87CEEB',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 3,
-    });
-    pickupText.setOrigin(0.5, 0.5);
-    pickupText.setDepth(100);
-
-    this.tweens.add({
-      targets: pickupText,
-      y: pickupText.y - 50,
-      alpha: 0,
-      duration: 2000,
-      onComplete: () => pickupText.destroy(),
-    });
-  }
-
-  private updateGreenlandIcePhysics(): void {
-    if (!this.hasGreenlandIce || !this.iceCarrier) return;
-
-    const carrier = this.iceCarrier;
-    const velocity = carrier.getVelocity();
-    const shuttleRotation = carrier.rotation;
-
-    // Calculate shuttle acceleration (change in velocity per frame)
-    const accelX = velocity.x - this.lastIceVelX;
-    const accelY = velocity.y - this.lastIceVelY;
-
-    this.lastIceVelX = velocity.x;
-    this.lastIceVelY = velocity.y;
-
-    // Pendulum physics constants (heavier than medal)
-    const wireLength = 55; // Longer than medal's 45
-    const gravity = 0.5;
-    const damping = 0.95; // More damping than medal's 0.97 (heavier = swings less)
-
-    // EFFECTIVE GRAVITY: real gravity minus shuttle acceleration
-    const effectiveGravityX = -accelX;
-    const effectiveGravityY = gravity - accelY;
-
-    // Calculate effective gravity magnitude and direction
-    const effGravMagnitude = Math.sqrt(effectiveGravityX * effectiveGravityX + effectiveGravityY * effectiveGravityY);
-    const effGravAngle = Math.atan2(effectiveGravityX, effectiveGravityY);
-
-    // Ice's world angle = shuttle rotation + local ice angle
-    const iceWorldAngle = shuttleRotation + this.iceAngle;
-
-    // Angle between ice and effective "down" direction
-    const angleFromEffectiveDown = iceWorldAngle - effGravAngle;
-
-    // Restoring torque
-    const restoreFactor = effGravMagnitude / wireLength;
-    const gravityTorque = -restoreFactor * Math.sin(angleFromEffectiveDown);
-
-    // Shuttle rotation imparts momentum to ice through the wire
-    const shuttleAngularVel = (carrier.body as MatterJS.BodyType).angularVelocity;
-    const rotationTorque = -shuttleAngularVel * 0.6; // Less responsive than medal (heavier)
-
-    // Update angular velocity
-    this.iceAngularVelocity += gravityTorque + rotationTorque;
-    this.iceAngularVelocity *= damping;
-    this.iceAngle += this.iceAngularVelocity;
-
-    // Soft clamp - bounce back at extreme angles (smaller max than medal due to weight)
-    const maxAngle = Math.PI * 0.5;
-    if (Math.abs(this.iceAngle) > maxAngle) {
-      this.iceAngle = Math.sign(this.iceAngle) * maxAngle;
-      this.iceAngularVelocity *= -0.2;
-    }
-  }
-
-  private updateGreenlandIceGraphics(): void {
-    if (!this.hasGreenlandIce || !this.iceCarrier) return;
-
-    // Update physics first
-    this.updateGreenlandIcePhysics();
-
-    // Reuse graphics object - just clear it each frame
-    if (!this.greenlandIceGraphics) {
-      this.greenlandIceGraphics = this.add.graphics();
-      this.greenlandIceGraphics.setDepth(100);
-    }
-    this.greenlandIceGraphics.clear();
-
-    const carrier = this.iceCarrier;
-    const shuttleX = carrier.x;
-    const shuttleY = carrier.y;
-    const shuttleRotation = carrier.rotation;
-
-    // Attachment point at bottom of shuttle
-    const attachOffsetY = 18;
-    const attachX = shuttleX + Math.sin(shuttleRotation) * attachOffsetY;
-    const attachY = shuttleY + Math.cos(shuttleRotation) * attachOffsetY;
-
-    // Wire length for ice (longer than medal)
-    const wireLength = 55;
-
-    // Ice position: hanging from attachment point at the pendulum angle
-    const iceX = attachX + Math.sin(this.iceAngle) * wireLength;
-    const iceY = attachY + Math.cos(this.iceAngle) * wireLength;
-
-    // Draw wires (two wires from shuttle bottom to ice top)
-    this.greenlandIceGraphics.lineStyle(2, 0x555555, 1);
-
-    // Wire attachment points on shuttle
-    const wireSpread = 8;
-    const leftAttachX = attachX - wireSpread * Math.cos(shuttleRotation);
-    const leftAttachY = attachY + wireSpread * Math.sin(shuttleRotation);
-    const rightAttachX = attachX + wireSpread * Math.cos(shuttleRotation);
-    const rightAttachY = attachY - wireSpread * Math.sin(shuttleRotation);
-
-    // Wire endpoints on ice (scaled 1.5x)
-    const s = 1.5;
-    const iceTopY = iceY - 45;  // 30 * 1.5
-
-    // Left wire
-    this.greenlandIceGraphics.lineBetween(leftAttachX, leftAttachY, iceX - 15, iceTopY);
-    // Right wire
-    this.greenlandIceGraphics.lineBetween(rightAttachX, rightAttachY, iceX + 15, iceTopY);
-
-    // Draw ice block (rotates slightly with swing)
-    const iceTilt = this.iceAngle * 0.4;
-
-    // Ice colors
-    const iceLight = 0xE0FFFF;
-    const iceMid = 0xAFEEEE;
-    const iceDark = 0x87CEEB;
-
-    // Main ice block shape
-    this.greenlandIceGraphics.fillStyle(iceMid, 1);
-    this.greenlandIceGraphics.beginPath();
-
-    // Create rotated ice block polygon (scaled 1.5x to match floating ice)
-    const points = [
-      { x: -25 * s, y: -20 * s },  // Top left
-      { x: -20 * s, y: -30 * s },  // Upper left peak
-      { x: 0, y: -35 * s },        // Top center peak
-      { x: 15 * s, y: -25 * s },   // Upper right
-      { x: 22 * s, y: -15 * s },   // Right upper
-      { x: 20 * s, y: 10 * s },    // Right lower
-      { x: -5 * s, y: 15 * s },    // Bottom center
-      { x: -22 * s, y: 8 * s },    // Left lower
-    ];
-
-    // Transform points for rotation and position
-    const cos = Math.cos(iceTilt);
-    const sin = Math.sin(iceTilt);
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const rx = p.x * cos - p.y * sin + iceX;
-      const ry = p.x * sin + p.y * cos + iceY;
-      if (i === 0) {
-        this.greenlandIceGraphics.moveTo(rx, ry);
-      } else {
-        this.greenlandIceGraphics.lineTo(rx, ry);
-      }
-    }
-    this.greenlandIceGraphics.closePath();
-    this.greenlandIceGraphics.fillPath();
-
-    // Ice highlights
-    this.greenlandIceGraphics.fillStyle(iceLight, 0.8);
-    const highlightPoints = [
-      { x: -18 * s, y: -22 * s },
-      { x: -5 * s, y: -30 * s },
-      { x: 5 * s, y: -25 * s },
-      { x: -5 * s, y: -18 * s },
-    ];
-    this.greenlandIceGraphics.beginPath();
-    for (let i = 0; i < highlightPoints.length; i++) {
-      const p = highlightPoints[i];
-      const rx = p.x * cos - p.y * sin + iceX;
-      const ry = p.x * sin + p.y * cos + iceY;
-      if (i === 0) {
-        this.greenlandIceGraphics.moveTo(rx, ry);
-      } else {
-        this.greenlandIceGraphics.lineTo(rx, ry);
-      }
-    }
-    this.greenlandIceGraphics.closePath();
-    this.greenlandIceGraphics.fillPath();
-
-    // White shine spots
-    this.greenlandIceGraphics.fillStyle(0xFFFFFF, 0.7);
-    const shineX1 = -10 * s * cos - (-20 * s) * sin + iceX;
-    const shineY1 = -10 * s * sin + (-20 * s) * cos + iceY;
-    this.greenlandIceGraphics.fillCircle(shineX1, shineY1, 4);
   }
 
   private handleProjectileHit(playerNum: number = 1): void {
@@ -4035,28 +3527,18 @@ export class GameScene extends Phaser.Scene {
     // Update Greenland ice
     const shuttle = this.shuttle;
 
-    if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.hasGreenlandIce) {
+    if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.carriedItemManager.getHasGreenlandIce()) {
       this.greenlandIce.update(this.terrain.getWaveOffset());
 
-      // Direct pickup check here to ensure it runs
+      // Check if shuttle can pick up ice
       if (shuttle && shuttle.active) {
-        const xDist = Math.abs(shuttle.x - this.greenlandIce.x);
-        if (xDist < 500) {
-          const dist = Phaser.Math.Distance.Between(
-            shuttle.x, shuttle.y,
-            this.greenlandIce.x, this.greenlandIce.y - 40
-          );
-
-          if (dist < 20 && !this.hasPeaceMedal) {
-            this.pickupGreenlandIce(shuttle);
-          }
-        }
+        this.carriedItemManager.checkGreenlandIcePickup(shuttle, this.greenlandIce);
       }
     }
 
     // Update attached Greenland ice graphics
-    if (this.hasGreenlandIce) {
-      this.updateGreenlandIceGraphics();
+    if (this.carriedItemManager.getHasGreenlandIce()) {
+      this.carriedItemManager.updateGreenlandIceGraphics();
     }
 
     // Clear lastTradedPad when shuttle leaves the pad
@@ -4197,7 +3679,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     // Update peace medal graphics if carrying
-    this.updatePeaceMedalGraphics();
+    this.carriedItemManager.updatePeaceMedalGraphics();
 
     // Update power-up effects
     this.updatePowerUps();
