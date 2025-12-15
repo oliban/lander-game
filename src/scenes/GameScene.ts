@@ -32,6 +32,7 @@ import { ProjectileCollisionManager } from '../managers/ProjectileCollisionManag
 import { SittingDuckManager } from '../managers/SittingDuckManager';
 import { CollisionManager } from '../managers/CollisionManager';
 import { LandingPadManager } from '../managers/LandingPadManager';
+import { CannonManager } from '../managers/CannonManager';
 import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
@@ -133,6 +134,7 @@ export class GameScene extends Phaser.Scene {
   private sittingDuckManager!: SittingDuckManager;
   private collisionManager!: CollisionManager;
   private landingPadManager!: LandingPadManager;
+  private cannonManager!: CannonManager;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -555,6 +557,15 @@ export class GameScene extends Phaser.Scene {
     this.landingPadManager = new LandingPadManager(this, {
       getLandingPads: () => this.landingPads,
       getWindStrength: () => this.weatherManager.getWindStrength(),
+    });
+
+    // Initialize cannon manager
+    this.cannonManager = new CannonManager(this, {
+      getCannons: () => this.cannons,
+      getShuttles: () => this.shuttles,
+      getCamera: () => this.cameras.main,
+      getWindStrength: () => this.weatherManager.getWindStrength(),
+      isCannonsBribed: () => this.powerUpManager.isCannonsBribed(),
     });
 
     // Start UI scene
@@ -2392,52 +2403,8 @@ export class GameScene extends Phaser.Scene {
     // Update power-up effects
     this.powerUpManager.update();
 
-    // Update cannons
-    const activeShuttlesForCannons = this.shuttles.filter(s => s.active);
-    for (const cannon of this.cannons) {
-      const cameraLeft = this.cameras.main.scrollX - 200;
-      const cameraRight = this.cameras.main.scrollX + GAME_WIDTH + 200;
-      const isOnScreen = cannon.x >= cameraLeft && cannon.x <= cameraRight;
-      const hasProjectiles = cannon.getProjectiles().length > 0;
-
-      // Only set target and allow firing if cannon is on-screen, active, AND not bribed
-      // Bribed cannons stand down completely - they won't fire new projectiles
-      if (isOnScreen && cannon.isActive() && !this.powerUpManager.isCannonsBribed() && activeShuttlesForCannons.length > 0) {
-        // Target the nearest shuttle
-        let nearestTarget = activeShuttlesForCannons[0];
-        let nearestDist = Math.hypot(cannon.x - nearestTarget.x, cannon.y - nearestTarget.y);
-        for (const s of activeShuttlesForCannons) {
-          const dist = Math.hypot(cannon.x - s.x, cannon.y - s.y);
-          if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestTarget = s;
-          }
-        }
-        cannon.setTarget({ x: nearestTarget.x, y: nearestTarget.y });
-      } else if (this.powerUpManager.isCannonsBribed()) {
-        // Clear target so cannons stop aiming/firing
-        cannon.setTarget(null as any);
-      }
-
-      // ALWAYS update cannons that have projectiles in flight, even if off-screen
-      // This ensures projectiles keep moving after player scrolls away from cannon
-      if (isOnScreen || hasProjectiles) {
-        cannon.update(time, this.weatherManager.getWindStrength());
-
-        // Check projectile collisions with all shuttles
-        for (const projectile of cannon.getProjectiles()) {
-          for (const shuttle of activeShuttlesForCannons) {
-            const dx = projectile.x - shuttle.x;
-            const dy = projectile.y - shuttle.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            if (dist < 25) {
-              this.handleProjectileHitOnShuttle(projectile.getSpriteKey(), shuttle);
-            }
-          }
-        }
-      }
-    }
+    // Update cannons (targeting, firing, projectile collisions)
+    this.cannonManager.update(time);
 
     // Check projectile collisions (projectile-projectile and projectile-building)
     this.projectileCollisionManager.update();
