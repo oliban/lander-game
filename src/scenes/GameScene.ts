@@ -4,7 +4,7 @@ import { Terrain } from '../objects/Terrain';
 import { LandingPad } from '../objects/LandingPad';
 import { Cannon } from '../objects/Cannon';
 import { Collectible, spawnCollectibles, CollectibleType } from '../objects/Collectible';
-import { CountryDecoration, getCountryAssetPrefix } from '../objects/CountryDecoration';
+import { CountryDecoration } from '../objects/CountryDecoration';
 import { MedalHouse } from '../objects/MedalHouse';
 import { Bomb } from '../objects/Bomb';
 import { FisherBoat } from '../objects/FisherBoat';
@@ -34,6 +34,7 @@ import { SittingDuckManager } from '../managers/SittingDuckManager';
 import { CollisionManager } from '../managers/CollisionManager';
 import { LandingPadManager } from '../managers/LandingPadManager';
 import { CannonManager } from '../managers/CannonManager';
+import { DecorationManager } from '../managers/DecorationManager';
 import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
@@ -133,6 +134,7 @@ export class GameScene extends Phaser.Scene {
   private collisionManager!: CollisionManager;
   private landingPadManager!: LandingPadManager;
   private cannonManager!: CannonManager;
+  private decorationManager!: DecorationManager;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -363,7 +365,14 @@ export class GameScene extends Phaser.Scene {
     this.createCannons();
 
     // Create country decorations (buildings and landmarks) - skips areas near cannons
-    this.createDecorations();
+    this.decorationManager = new DecorationManager(this, {
+      getFlatAreas: () => this.terrain.getFlatAreas(),
+      getHeightAt: (x: number) => this.terrain.getHeightAt(x),
+      getCannonPositions: () => this.cannons.map(c => ({ x: c.x, y: c.y })),
+    });
+    this.decorationManager.createDecorations();
+    this.decorations = this.decorationManager.getDecorations();
+    this.medalHouse = this.decorationManager.getMedalHouse();
 
     // Initialize projectile collision manager (projectile-projectile and projectile-building)
     this.projectileCollisionManager = new ProjectileCollisionManager(this, {
@@ -836,111 +845,6 @@ export class GameScene extends Phaser.Scene {
         const cannon = new Cannon(this, x, y, country.name);
         this.cannons.push(cannon);
       }
-    }
-  }
-
-  private createDecorations(): void {
-    // Get flat areas from terrain
-    const flatAreas = this.terrain.getFlatAreas();
-
-    // Track used images to prevent duplicates: Set of "country_type_index" strings
-    const usedImages = new Set<string>();
-
-    for (const area of flatAreas) {
-      // Determine which country this flat area is in
-      let countryName = 'USA';
-      for (let i = COUNTRIES.length - 1; i >= 0; i--) {
-        if (area.x >= COUNTRIES[i].startX) {
-          countryName = COUNTRIES[i].name;
-          break;
-        }
-      }
-
-      // Get the asset prefix for this country
-      const assetPrefix = getCountryAssetPrefix(countryName);
-      if (!assetPrefix) continue; // Skip Atlantic Ocean
-
-      // Random chance to place a decoration (80%)
-      if (Math.random() > 0.8) continue;
-
-      // Skip if too close to any cannon (within 80 pixels - check 2D distance)
-      const decorationY = this.terrain.getHeightAt(area.x);
-      const tooCloseToCannon = this.cannons.some((cannon) => {
-        const dx = cannon.x - area.x;
-        const dy = cannon.y - decorationY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < 80;
-      });
-      if (tooCloseToCannon) continue;
-
-      // Choose building (70%) or landmark (30%)
-      const isLandmark = Math.random() < 0.3;
-      const typeStr = isLandmark ? 'landmark' : 'building';
-
-      // Find an unused image index for this country/type combo
-      // Try up to 16 times to find an unused one
-      let index = -1;
-      const availableIndices = [];
-      for (let i = 0; i < 16; i++) {
-        // Skip Washington building indices 12 (Union Station) and 13 (Kennedy Center)
-        if (assetPrefix === 'Washington' && typeStr === 'building' && (i === 12 || i === 13)) continue;
-        const key = `${assetPrefix}_${typeStr}_${i}`;
-        if (!usedImages.has(key)) {
-          availableIndices.push(i);
-        }
-      }
-
-      // Track final type used
-      let finalIsLandmark = isLandmark;
-
-      // If no available images of this type, try the other type
-      if (availableIndices.length === 0) {
-        finalIsLandmark = !isLandmark;
-        const altTypeStr = isLandmark ? 'building' : 'landmark';
-        for (let i = 0; i < 16; i++) {
-          const key = `${assetPrefix}_${altTypeStr}_${i}`;
-          if (!usedImages.has(key)) {
-            availableIndices.push(i);
-          }
-        }
-        if (availableIndices.length > 0) {
-          index = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-          const key = `${assetPrefix}_${altTypeStr}_${index}`;
-          usedImages.add(key);
-        }
-      } else {
-        // Pick a random available index
-        index = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-        const key = `${assetPrefix}_${typeStr}_${index}`;
-        usedImages.add(key);
-      }
-
-      // Skip if no available images
-      if (index === -1) continue;
-
-      // Get actual terrain height at this position (more accurate than stored area.y)
-      const terrainY = this.terrain.getHeightAt(area.x);
-
-      // Create the decoration
-      const decoration = new CountryDecoration(
-        this,
-        area.x,
-        terrainY,
-        assetPrefix,
-        index,
-        finalIsLandmark
-      );
-
-      this.decorations.push(decoration);
-    }
-
-    // Medal house (FIFA Kennedy Center) - special building spawned near Washington DC
-    const washingtonPad = LANDING_PADS.find(p => p.isWashington);
-    if (washingtonPad) {
-      const medalHouseX = washingtonPad.x - 120;
-      const medalHouseY = this.terrain.getHeightAt(medalHouseX);
-      this.medalHouse = new MedalHouse(this, medalHouseX, medalHouseY);
-      this.decorations.push(this.medalHouse);
     }
   }
 
@@ -2788,32 +2692,52 @@ export class GameScene extends Phaser.Scene {
       const shortName = itemData?.name || type;
       soldParts.push(`${count} ${shortName}`);
     }
-    const soldStr = soldParts.join(', ');
+    const soldStr = soldParts.join('\n');
 
-    // Show trade message with fuel gained and items sold
-    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL\nSold: ${soldStr}`, playerNum);
+    // Show trade message with fuel gained and items sold (one item per line)
+    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL`, playerNum, soldStr);
   }
 
-  private showAutoTradeMessage(shuttle: Shuttle, message: string, playerNum: number): void {
-    const color = playerNum === 2 ? '#66CCFF' : '#FFD700';
-    const isMultiline = message.includes('\n');
-    const tradeText = this.add.text(shuttle.x, shuttle.y - 60, message, {
+  private showAutoTradeMessage(shuttle: Shuttle, message: string, playerNum: number, soldItems?: string): void {
+    const baseY = shuttle.y - 60;
+    const textStyle = {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: isMultiline ? '14px' : '18px',
-      color: color,
+      fontSize: '14px',
       fontStyle: 'bold',
       stroke: '#000000',
       strokeThickness: 3,
       align: 'center',
-    });
-    tradeText.setOrigin(0.5, 0.5);
+    };
+
+    // Create container for all text elements
+    const container = this.add.container(shuttle.x, baseY);
+
+    // Fuel text (green) or status message (gold/blue)
+    const isStatusMessage = !soldItems && (message === 'TANK FULL!' || message === 'NO CARGO' || message === 'NO TRADE');
+    const fuelColor = isStatusMessage ? (playerNum === 2 ? '#66CCFF' : '#FFD700') : '#00FF00';
+    const fuelText = this.add.text(0, 0, message, {
+      ...textStyle,
+      color: fuelColor,
+    } as Phaser.Types.GameObjects.Text.TextStyle);
+    fuelText.setOrigin(0.5, 0.5);
+    container.add(fuelText);
+
+    // Sold items text (red) - only if provided
+    if (soldItems) {
+      const soldText = this.add.text(0, fuelText.height + 5, soldItems, {
+        ...textStyle,
+        color: '#FF6666',
+      } as Phaser.Types.GameObjects.Text.TextStyle);
+      soldText.setOrigin(0.5, 0);
+      container.add(soldText);
+    }
 
     this.tweens.add({
-      targets: tradeText,
-      y: tradeText.y - 40,
+      targets: container,
+      y: container.y - 40,
       alpha: 0,
-      duration: 1500,
-      onComplete: () => tradeText.destroy(),
+      duration: 3000,
+      onComplete: () => container.destroy(),
     });
   }
 }
