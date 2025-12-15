@@ -29,6 +29,7 @@ import { DogfightManager } from '../managers/DogfightManager';
 import { EntityManager } from '../managers/EntityManager';
 import { BiplaneManager } from '../managers/BiplaneManager';
 import { ProjectileCollisionManager } from '../managers/ProjectileCollisionManager';
+import { SittingDuckManager } from '../managers/SittingDuckManager';
 import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
@@ -77,10 +78,6 @@ export class GameScene extends Phaser.Scene {
 
   // Power-up manager (bribe cannons, speed boost)
   private powerUpManager!: PowerUpManager;
-
-  // Sitting duck detection
-  private sittingDuckStartTime: number = 0;
-  private isSittingDuck: boolean = false;
 
   // Prevent splash sounds during initial load
   private gameInitialized: boolean = false;
@@ -131,6 +128,7 @@ export class GameScene extends Phaser.Scene {
   private dogfightManager!: DogfightManager;
   private entityManager!: EntityManager;
   private projectileCollisionManager!: ProjectileCollisionManager;
+  private sittingDuckManager!: SittingDuckManager;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -372,6 +370,17 @@ export class GameScene extends Phaser.Scene {
       getDecorations: () => this.decorations,
     });
 
+    // Initialize sitting duck manager (detects stranded shuttle)
+    this.sittingDuckManager = new SittingDuckManager(this, {
+      getShuttle: () => this.shuttle,
+      getFuelSystem: () => this.fuelSystem,
+      getTerrain: () => this.terrain,
+      getLandingPads: () => this.landingPads,
+      getTimeNow: () => this.time.now,
+      getGameState: () => this.gameState,
+      onSittingDuckTriggered: (message) => this.handleSittingDuckGameOver(message),
+    });
+
     // Reset score and destroyed buildings
     this.destructionScore = 0;
     this.destroyedBuildings = [];
@@ -414,10 +423,6 @@ export class GameScene extends Phaser.Scene {
       restartScene: (data) => this.scene.restart(data),
       startMenuScene: () => this.scene.start('MenuScene'),
     });
-
-    // Reset other state
-    this.sittingDuckStartTime = 0;
-    this.isSittingDuck = false;
 
     // Create landing pads
     this.createLandingPads();
@@ -2278,52 +2283,11 @@ export class GameScene extends Phaser.Scene {
     return Date.now() - this.gameStartTime;
   }
 
-  private checkSittingDuck(): void {
-    // Check if shuttle is on the ground with no fuel
-    if (!this.fuelSystem.isEmpty()) {
-      this.isSittingDuck = false;
-      this.sittingDuckStartTime = 0;
-      return;
-    }
-
-    // Check if shuttle is stationary (on ground)
-    const velocity = this.shuttle.getVelocity();
-    const isStationary = velocity.total < 0.5;
-
-    // Check if shuttle is near terrain (not floating in air)
-    const terrainY = this.terrain.getHeightAt(this.shuttle.x);
-    const shuttleBottom = this.shuttle.y + 18;
-    const isOnGround = Math.abs(terrainY - shuttleBottom) < 20;
-
-    // Check if NOT on a landing pad
-    const onLandingPad = this.landingPads.some(pad => {
-      const horizontalDist = Math.abs(this.shuttle.x - pad.x);
-      return horizontalDist < pad.width / 2 && Math.abs(pad.y - shuttleBottom) < 20;
-    });
-
-    if (isStationary && isOnGround && !onLandingPad) {
-      if (!this.isSittingDuck) {
-        // Start the sitting duck timer
-        this.isSittingDuck = true;
-        this.sittingDuckStartTime = this.time.now;
-      } else {
-        // Check if 2 seconds have passed
-        const sittingTime = this.time.now - this.sittingDuckStartTime;
-        if (sittingTime >= 2000) {
-          this.triggerSittingDuckGameOver();
-        }
-      }
-    } else {
-      this.isSittingDuck = false;
-      this.sittingDuckStartTime = 0;
-    }
-  }
-
-  private triggerSittingDuckGameOver(): void {
+  private handleSittingDuckGameOver(message: string): void {
     if (this.gameState !== 'playing') return;
 
     const vel = this.shuttle.body?.velocity || { x: 0, y: 0 };
-    console.log(`[DEATH] P1 died: "Sitting duck" | Cause: duck | Position: (${this.shuttle.x.toFixed(0)}, ${this.shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${this.fuelSystem.getFuel().toFixed(1)}`);
+    console.log(`[DEATH] P1 died: "${message}" | Cause: duck | Position: (${this.shuttle.x.toFixed(0)}, ${this.shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${this.fuelSystem.getFuel().toFixed(1)}`);
 
     this.gameState = 'crashed';
     this.shuttle.stopRocketSound();
@@ -2333,19 +2297,6 @@ export class GameScene extends Phaser.Scene {
 
     // Spawn tombstone at crash location
     this.tombstoneManager.spawnTombstone(this.shuttle.x, this.shuttle.y, 'duck');
-
-    // Taunting messages - all duck-themed!
-    const tauntMessages = [
-      "You're a sitting duck! Quack quack!",
-      "SITTING DUCK! The cannons thank you!",
-      "Quack! Sitting duck spotted! Quack!",
-      "A sitting duck! How embarrassing!",
-      "🦆 SITTING DUCK ALERT! 🦆",
-      "Duck, duck... BOOM! You were a sitting duck!",
-      "Sitting duck! Even the ducks are laughing!",
-      "What a sitting duck! Tremendous failure!",
-    ];
-    const message = tauntMessages[Math.floor(Math.random() * tauntMessages.length)];
 
     this.shuttle.explode();
 
@@ -2684,7 +2635,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Check for sitting duck (out of fuel on ground)
-    this.checkSittingDuck();
+    this.sittingDuckManager.update();
 
     // Check if fell off the bottom
     if (this.shuttle.y > GAME_HEIGHT + 100) {
