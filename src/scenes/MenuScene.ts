@@ -4,6 +4,7 @@ import { getAchievementSystem } from '../systems/AchievementSystem';
 import { getCollectionSystem } from '../systems/CollectionSystem';
 import { TIER_COLORS } from '../data/achievements';
 import { COLLECTIBLE_TYPES } from '../constants';
+import { createGreenButton } from '../ui/UIButton';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -191,9 +192,9 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // Start button - below all panels with enough space
-    const startButton = this.createButton(GAME_WIDTH / 2, panelY + panelH + 45, 'START MISSION', () => {
+    const startButton = createGreenButton(this, GAME_WIDTH / 2, panelY + panelH + 45, 'START MISSION', () => {
       this.startGame(1);
-    });
+    }).getContainer();
 
     // Pulsing animation on start button
     this.tweens.add({
@@ -430,45 +431,4 @@ export class MenuScene extends Phaser.Scene {
     graphics.fillCircle(x + 5 * scale, y - 5 * scale, 15 * scale);
   }
 
-  private createButton(x: number, y: number, label: string, callback: () => void): Phaser.GameObjects.Container {
-    const container = this.add.container(x, y);
-
-    const bg = this.add.graphics();
-    bg.fillStyle(0x4CAF50, 1);
-    bg.fillRoundedRect(-120, -25, 240, 50, 12);
-    bg.lineStyle(3, 0x2E7D32);
-    bg.strokeRoundedRect(-120, -25, 240, 50, 12);
-
-    const text = this.add.text(0, 0, label, {
-      fontSize: '24px',
-      color: '#FFFFFF',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5, 0.5);
-
-    container.add([bg, text]);
-
-    container.setInteractive(new Phaser.Geom.Rectangle(-120, -25, 240, 50), Phaser.Geom.Rectangle.Contains);
-
-    container.on('pointerover', () => {
-      bg.clear();
-      bg.fillStyle(0x66BB6A, 1);
-      bg.fillRoundedRect(-120, -25, 240, 50, 12);
-      bg.lineStyle(3, 0x2E7D32);
-      bg.strokeRoundedRect(-120, -25, 240, 50, 12);
-    });
-
-    container.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(0x4CAF50, 1);
-      bg.fillRoundedRect(-120, -25, 240, 50, 12);
-      bg.lineStyle(3, 0x2E7D32);
-      bg.strokeRoundedRect(-120, -25, 240, 50, 12);
-    });
-
-    container.on('pointerdown', callback);
-
-    return container;
-  }
 }

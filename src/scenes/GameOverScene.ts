@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS, COLLECTIBLE_TYPES } from '../constants';
 import { InventoryItem } from '../systems/InventorySystem';
-import { darkenColor, lightenColor } from '../utils/ColorUtils';
+import { createColoredButton } from '../ui/UIButton';
 
 interface DestroyedBuilding {
   name: string;
@@ -562,13 +562,13 @@ export class GameOverScene extends Phaser.Scene {
       this.createNameEntryUI(GAME_WIDTH / 2, buttonY - 20, finalScore);
     } else {
       // Buttons
-      this.createButton(GAME_WIDTH / 2 - 120, buttonY, 'PLAY AGAIN', 0x4CAF50, () => {
+      createColoredButton(this, GAME_WIDTH / 2 - 120, buttonY, 'PLAY AGAIN', 0x4CAF50, () => {
         this.scene.start('GameScene');
-      });
+      }, 'medium');
 
-      this.createButton(GAME_WIDTH / 2 + 120, buttonY, 'MAIN MENU', 0x607D8B, () => {
+      createColoredButton(this, GAME_WIDTH / 2 + 120, buttonY, 'MAIN MENU', 0x607D8B, () => {
         this.scene.start('MenuScene');
-      });
+      }, 'medium');
 
       // Enter key hint
       this.add.text(GAME_WIDTH / 2, buttonY + 55, 'Press ENTER to play again', {
@@ -725,13 +725,13 @@ export class GameOverScene extends Phaser.Scene {
       this.createLeaderboard(GAME_WIDTH / 2, 250, score);
 
       // Buttons below leaderboard
-      this.createButton(GAME_WIDTH / 2 - 110, 480, 'TRY AGAIN', 0xFF9800, () => {
+      createColoredButton(this, GAME_WIDTH / 2 - 110, 480, 'TRY AGAIN', 0xFF9800, () => {
         this.scene.start('GameScene');
-      });
+      }, 'medium');
 
-      this.createButton(GAME_WIDTH / 2 + 110, 480, 'MAIN MENU', 0x607D8B, () => {
+      createColoredButton(this, GAME_WIDTH / 2 + 110, 480, 'MAIN MENU', 0x607D8B, () => {
         this.scene.start('MenuScene');
-      });
+      }, 'medium');
 
       // Enter key hint
       const enterHint = this.add.text(GAME_WIDTH / 2, 540, 'Press ENTER to try again', {
@@ -779,57 +779,6 @@ export class GameOverScene extends Phaser.Scene {
         });
       });
     }
-  }
-
-  private createButton(
-    x: number,
-    y: number,
-    label: string,
-    color: number,
-    callback: () => void
-  ): Phaser.GameObjects.Container {
-    const container = this.add.container(x, y);
-
-    // Cartoon style button with solid fill
-    const darkerColor = darkenColor(color, 0.7);
-
-    const bg = this.add.graphics();
-    bg.fillStyle(color, 1);
-    bg.fillRoundedRect(-100, -22, 200, 44, 12);
-    bg.lineStyle(3, darkerColor);
-    bg.strokeRoundedRect(-100, -22, 200, 44, 12);
-
-    const text = this.add.text(0, 0, label, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5, 0.5);
-
-    container.add([bg, text]);
-
-    container.setInteractive(new Phaser.Geom.Rectangle(-100, -22, 200, 44), Phaser.Geom.Rectangle.Contains);
-
-    container.on('pointerover', () => {
-      bg.clear();
-      bg.fillStyle(lightenColor(color, 1.2), 1);
-      bg.fillRoundedRect(-100, -22, 200, 44, 12);
-      bg.lineStyle(3, darkerColor);
-      bg.strokeRoundedRect(-100, -22, 200, 44, 12);
-    });
-
-    container.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(color, 1);
-      bg.fillRoundedRect(-100, -22, 200, 44, 12);
-      bg.lineStyle(3, darkerColor);
-      bg.strokeRoundedRect(-100, -22, 200, 44, 12);
-    });
-
-    container.on('pointerdown', callback);
-
-    return container;
   }
 
   private createNameEntryUI(x: number, y: number, score: number): void {
