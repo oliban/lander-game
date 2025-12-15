@@ -21,6 +21,7 @@ import { MusicManager } from '../systems/MusicManager';
 import { WeatherManager } from '../managers/WeatherManager';
 import { ScorchMarkManager } from '../managers/ScorchMarkManager';
 import { TombstoneManager } from '../managers/TombstoneManager';
+import { BombManager } from '../managers/BombManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -92,18 +93,18 @@ export class GameScene extends Phaser.Scene {
   // Prevent splash sounds during initial load
   private gameInitialized: boolean = false;
 
-  // Bomb system
-  private bombs: Bomb[] = [];
-  private bombCooldown: boolean = false;
-  private bombCooldown2: boolean = false;
-  private destructionScore: number = 0;
-  private destroyedBuildings: { name: string; points: number; textureKey: string; country: string }[] = [];
+  // Bomb system (managed by BombManager)
+  private bombManager!: BombManager;
 
-  // Player vs player kill tracking (2-player mode)
+  // Score/kill tracking (updated by BombManager via callbacks)
   private p1Kills: number = 0;
   private p2Kills: number = 0;
-  private killAlreadyTracked: boolean = false; // Prevents double-counting bomb kills
-  private lastDeadPlayerIndex: number = -1; // Track which player died most recently
+  private destructionScore: number = 0;
+  private destroyedBuildings: { name: string; points: number; textureKey?: string; country?: string }[] = [];
+  private killAlreadyTracked: boolean = false;
+
+  // Track which player died most recently
+  private lastDeadPlayerIndex: number = -1;
   private dogfightPadIndex: number = -1; // Random starting pad for dogfight mode
 
   // Death messages for 2-player mode
@@ -213,7 +214,6 @@ export class GameScene extends Phaser.Scene {
     this.collectibles = [];
     this.decorations = [];
     this.medalHouse = null;
-    this.bombs = [];
     this.oilTowers = [];
     this.debrisSprites = [];
     this.fpsMin = 60;
@@ -292,6 +292,45 @@ export class GameScene extends Phaser.Scene {
     });
     this.scorchMarkManager.initialize();
 
+    // Initialize bomb manager
+    this.bombManager = new BombManager(this, {
+      playSound: (key: string, config?: { volume?: number }) => this.sound.play(key, config),
+      playSoundIfNotPlaying: (key: string) => this.playSoundIfNotPlaying(key),
+      shakeCamera: (duration: number, intensity: number) => this.cameras.main.shake(duration, intensity),
+      getTerrainHeightAt: (x: number) => this.terrain.getHeightAt(x),
+      applyExplosionShockwave: (x: number, y: number) => this.applyExplosionShockwave(x, y),
+      showDestructionPoints: (x: number, y: number, points: number, name: string) =>
+        this.showDestructionPoints(x, y, points, name),
+      scorchMarkManager: this.scorchMarkManager,
+      onBuildingDestroyed: () => this.achievementSystem.onBuildingDestroyed(),
+      onPlayerKill: (killerPlayer: number) => this.achievementSystem.onPlayerKill(killerPlayer),
+      onKillScored: (killerPlayer: number) => {
+        if (killerPlayer === 1) {
+          this.p1Kills++;
+        } else {
+          this.p2Kills++;
+        }
+        return { p1Kills: this.p1Kills, p2Kills: this.p2Kills };
+      },
+      setKillAlreadyTracked: (value: boolean) => { this.killAlreadyTracked = value; },
+      addDestructionScore: (points: number) => {
+        this.destructionScore += points;
+        this.events.emit('destructionScore', this.destructionScore);
+      },
+      addDestroyedBuilding: (building) => { this.destroyedBuildings.push(building); },
+      emitPlayerKill: (killer: number, victim: number, p1Kills: number, p2Kills: number) => {
+        this.events.emit('playerKill', { killer, victim, p1Kills, p2Kills });
+      },
+      handleShuttleCrash: (playerNum: number, message: string, cause: string) =>
+        this.handleShuttleCrash(playerNum, message, cause),
+      getGameMode: () => this.gameMode,
+      getPlayerCount: () => this.playerCount,
+      showDogfightWinner: () => this.showDogfightWinner(),
+      getKillCounts: () => ({ p1Kills: this.p1Kills, p2Kills: this.p2Kills }),
+      addSunkenFood: (foodData) => this.sunkenFood.push(foodData),
+    });
+    this.bombManager.initialize();
+
     // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
     this.fisherBoat = new FisherBoat(this, 3500);
     // 15% chance the boat has a "fish" package
@@ -359,7 +398,6 @@ export class GameScene extends Phaser.Scene {
     this.lastShuttleVelY = 0;
     this.sittingDuckStartTime = 0;
     this.isSittingDuck = false;
-    this.bombCooldown = false;
 
     // Create landing pads
     this.createLandingPads();
@@ -763,7 +801,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Add currently falling bombs that are in Atlantic Ocean and underwater
-    for (const bomb of this.bombs) {
+    for (const bomb of this.bombManager.getBombs()) {
       // Check bomb exists and hasn't been destroyed (body might be null after explosion)
       if (bomb && bomb.active && bomb.body && bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
         targets.push({ x: bomb.x, y: bomb.y });
@@ -2772,40 +2810,6 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.flash(300, 220, 20, 60);
   }
 
-  private dropBomb(shuttle: Shuttle, inventory: InventorySystem, playerNum: number = 1): void {
-    // Find a droppable food item in inventory
-    let foodType: string | null = null;
-
-    for (const type of BOMB_DROPPABLE_TYPES) {
-      const count = inventory.getCount(type as any);
-      if (count > 0) {
-        foodType = type;
-        break;
-      }
-    }
-
-    if (!foodType) {
-      // No food to drop
-      return;
-    }
-
-    // Play random bomb quote (only if not already playing)
-    const bombQuoteNum = Math.floor(Math.random() * 8) + 1;
-    this.playSoundIfNotPlaying(`bomb${bombQuoteNum}`);
-
-    // Consume 1 from inventory
-    inventory.remove(foodType as any, 1);
-
-    // Create bomb at shuttle position, tracking which player dropped it
-    const bomb = new Bomb(this, shuttle.x, shuttle.y + 20, foodType, playerNum);
-
-    // Give it the shuttle's velocity plus some downward motion
-    const shuttleVel = shuttle.getVelocity();
-    bomb.setVelocity(shuttleVel.x * 0.5, shuttleVel.y + 2);
-
-    this.bombs.push(bomb);
-  }
-
   // Play a sound only if it's not already playing (prevents overlap of same sound)
   private playSoundIfNotPlaying(key: string): void {
     // Check if this sound is already playing
@@ -2881,596 +2885,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private updateBombs(): void {
-    // Check bomb collisions with buildings, cannons, and terrain
-    for (let i = this.bombs.length - 1; i >= 0; i--) {
-      const bomb = this.bombs[i];
-
-      if (!bomb || bomb.hasExploded || !bomb.active) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      const bombX = bomb.x;
-      const bombY = bomb.y;
-      let bombDestroyed = false;
-
-      // Check collision with OTHER player's shuttle (2-player mode only)
-      if (this.playerCount === 2) {
-        const targetShuttle = bomb.droppedByPlayer === 1 ? this.shuttle2 : this.shuttle;
-        if (targetShuttle && targetShuttle.active && !targetShuttle.isDebugMode()) {
-          const dx = bombX - targetShuttle.x;
-          const dy = bombY - targetShuttle.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const hitRadius = 25; // Shuttle is roughly 32x40, so 25px radius is good
-
-          if (dist < hitRadius) {
-            // Direct hit on enemy shuttle!
-            bomb.explode(this);
-            this.bombs.splice(i, 1);
-            bombDestroyed = true;
-
-            // Track the kill
-            const killerPlayer = bomb.droppedByPlayer;
-            const victimPlayer = killerPlayer === 1 ? 2 : 1;
-            if (killerPlayer === 1) {
-              this.p1Kills++;
-            } else {
-              this.p2Kills++;
-            }
-
-            // Track kill achievement
-            this.achievementSystem.onPlayerKill(killerPlayer);
-
-            // Emit event for UI to update kill tally
-            this.events.emit('playerKill', { killer: killerPlayer, victim: victimPlayer, p1Kills: this.p1Kills, p2Kills: this.p2Kills });
-
-            // Play gotcha sound after 1 second (killer's sound)
-            this.time.delayedCall(1000, () => {
-              const gotchaSound = killerPlayer === 1 ? 'p1_gotcha' : 'p2_gotcha';
-              this.sound.play(gotchaSound);
-            });
-
-            // In dogfight mode, check for winner
-            if (this.gameMode === 'dogfight') {
-              if (this.p1Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN || this.p2Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN) {
-                // We have a winner! Show victory screen
-                targetShuttle.explode();
-                this.showDogfightWinner();
-                return; // Exit update loop
-              }
-            }
-
-            // Kill the target shuttle with friendly fire cause
-            const causeEmoji = victimPlayer === 1 ? 'p1_bombed' : 'p2_bombed';
-            this.killAlreadyTracked = true; // Prevent double-counting in checkGameOverAfterCrash
-            this.handleShuttleCrash(victimPlayer, `Bombed by P${killerPlayer}!`, causeEmoji);
-          }
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with buildings FIRST (before terrain, since buildings sit on terrain)
-      for (let j = this.decorations.length - 1; j >= 0; j--) {
-        const decoration = this.decorations[j];
-        if (decoration.isDestroyed || !decoration.visible) continue;
-
-        // Check if bomb is within horizontal range first (optimization)
-        if (Math.abs(bombX - decoration.x) > 150) continue;
-
-        const bounds = decoration.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit a building! Use decoration.explode() for visual (fixes drift issue)
-          this.cameras.main.shake(200, 0.01);
-          bomb.hasExploded = true;
-          bomb.destroy();
-
-          // Play explosion SFX (can overlap) and bomb hit quote (delayed 1.5s, no overlap)
-          const explosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
-          const bombHitNum = Math.floor(Math.random() * 5) + 1;
-          this.time.delayedCall(1500, () => {
-            this.playSoundIfNotPlaying(`bombhit${bombHitNum}`);
-          });
-
-          // Apply shockwave to shuttle (use decoration position, not bomb position)
-          this.applyExplosionShockwave(decoration.x, decoration.y);
-
-          // Get building info and destroy it (this creates the explosion visual)
-          const { name, points, textureKey, country } = decoration.explode();
-          this.destructionScore += points;
-          this.destroyedBuildings.push({ name, points, textureKey, country });
-
-          // Track building destruction achievement
-          this.achievementSystem.onBuildingDestroyed();
-
-          // Clear any scorch marks that were on the destroyed building
-          this.scorchMarkManager.clearScorchMarksInArea(bounds);
-
-          // Play special sound for FIFA Kennedy Center
-          if (decoration instanceof MedalHouse) {
-            this.time.delayedCall(500, () => {
-              this.sound.play('sorry_johnny');
-            });
-          }
-
-          // Show points popup
-          this.showDestructionPoints(decoration.x, decoration.y - 50, points, name);
-
-          // Remove decoration from array
-          this.decorations.splice(j, 1);
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-          break;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with cannons
-      for (let j = this.cannons.length - 1; j >= 0; j--) {
-        const cannon = this.cannons[j];
-
-        // Skip already destroyed cannons
-        if (!cannon.isActive()) continue;
-
-        const bounds = cannon.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit a cannon!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-          cannon.explode();
-
-          // Play explosion SFX (can overlap) and bomb hit quote (no overlap)
-          const cannonExplosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${cannonExplosionNum}`, { volume: 0.5 });
-          const cannonHitNum = Math.floor(Math.random() * 5) + 1;
-          this.playSoundIfNotPlaying(`bombhit${cannonHitNum}`);
-
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Show points popup
-          this.destructionScore += 200;
-          this.showDestructionPoints(cannon.x, cannon.y - 30, 200, 'Cannon');
-
-          // Track cannon destruction achievement
-          this.cannonsDestroyedThisGame++;
-          this.achievementSystem.onCannonDestroyed();
-
-          // Don't remove cannon from array yet - let its projectiles finish
-          // The cannon.explode() already hides it and stops firing
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-          break;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with fisherboat
-      if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
-        const bounds = this.fisherBoat.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit the fisherboat!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-
-          // Play explosion sound
-          const explosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
-
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Get boat info and destroy it
-          const { name, points } = this.fisherBoat.explode();
-          this.destructionScore += points;
-
-          // Track fisherboat destruction achievement
-          this.achievementSystem.onFisherBoatDestroyed();
-
-          // Show special destruction message
-          this.showFisherBoatDestroyed(this.fisherBoat.x, this.fisherBoat.y - 50, points);
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with sharks
-      for (let j = this.sharks.length - 1; j >= 0; j--) {
-        const shark = this.sharks[j];
-        if (shark.isDestroyed) continue;
-
-        const bounds = shark.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit a shark!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-
-          // Play underwater explosion sound (quieter)
-          const explosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${explosionNum}`, { volume: 0.3 });
-
-          // Apply shockwave to shuttle (reduced underwater)
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Get shark info and destroy it
-          const { name, points, wasDead } = shark.explode();
-          this.destructionScore += points;
-
-          // Track shark destruction achievement
-          this.achievementSystem.onSharkKill();
-
-          // Show destruction message
-          this.showDestructionPoints(
-            shark.x,
-            shark.y - 30,
-            points,
-            wasDead ? 'Dead Shark' : 'Shark'
-          );
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-          break;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with Greenland ice
-      if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.hasGreenlandIce) {
-        const bounds = this.greenlandIce.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit the ice!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-
-          // Play explosion sound
-          const explosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${explosionNum}`, { volume: 0.4 });
-
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Destroy the ice
-          this.greenlandIce.explode();
-          this.greenlandIce.isDestroyed = true;
-
-          // Award points
-          this.destructionScore += 500;
-          this.events.emit('destructionScore', this.destructionScore);
-
-          // Trigger achievement
-          this.achievementSystem.onGreenlandDestroyed();
-
-          // Show destruction message
-          this.showDestructionPoints(
-            this.greenlandIce.x,
-            this.greenlandIce.y - 50,
-            500,
-            'Greenland'
-          );
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with golf cart
-      if (this.golfCart && !this.golfCart.isDestroyed) {
-        const bounds = this.golfCart.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit the golf cart!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Get cart info and destroy it
-          const { name, points, filePositions } = this.golfCart.explode();
-          this.destructionScore += points;
-
-          // Track golf cart destruction achievement
-          this.achievementSystem.onGolfCartDestroyed();
-
-          // Show special destruction message
-          this.showGolfCartDestroyed(this.golfCart.x, this.golfCart.y - 50, points);
-
-          // Spawn Epstein Files
-          this.spawnEpsteinFiles(filePositions);
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with oil towers
-      for (let j = this.oilTowers.length - 1; j >= 0; j--) {
-        const oilTower = this.oilTowers[j];
-        if (oilTower.isDestroyed) continue;
-
-        const bounds = oilTower.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit an oil tower!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-
-          // Play explosion SFX (no bomb hit quote for oil towers)
-          const explosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
-
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Destroy the tower (no points awarded)
-          oilTower.explode();
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-          break;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with biplane
-      if (this.biplane && !this.biplane.isDestroyed) {
-        const bounds = this.biplane.getCollisionBounds();
-
-        if (
-          bombX >= bounds.x &&
-          bombX <= bounds.x + bounds.width &&
-          bombY >= bounds.y &&
-          bombY <= bounds.y + bounds.height
-        ) {
-          // Hit the biplane!
-          const explosionX = bombX;
-          const explosionY = bombY;
-          bomb.explode(this);
-
-          // Play explosion sound
-          const explosionNum = Math.floor(Math.random() * 3) + 1;
-          this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
-
-          // Apply shockwave to shuttle
-          this.applyExplosionShockwave(explosionX, explosionY);
-
-          // Get plane info and destroy it
-          const { name, points, bannerPosition, propagandaType, message, accentColor } = this.biplane.explode();
-          this.destructionScore += points;
-
-          // Track biplane destruction achievement
-          this.achievementSystem.onBiplaneDestroyed();
-
-          // Show special destruction message
-          this.showBiplaneDestroyed(this.biplane.x, this.biplane.y, points, this.biplane.country);
-
-          // Spawn collectible propaganda banner
-          this.spawnPropagandaBanner(bannerPosition.x, bannerPosition.y, propagandaType, message, accentColor);
-
-          this.bombs.splice(i, 1);
-          bombDestroyed = true;
-        }
-      }
-
-      if (bombDestroyed) continue;
-
-      // Check collision with terrain (LAST, after checking buildings and cannons)
-      const terrainY = this.terrain.getHeightAt(bombX);
-      if (bombY >= terrainY - 5) {
-        // Check if over water (Atlantic Ocean)
-        const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-        const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
-        const isOverWater = bombX >= atlanticStart && bombX < atlanticEnd;
-
-        if (isOverWater) {
-          // Bomb sinks in water instead of exploding
-          this.sinkBombInWater(bomb, terrainY);
-          this.bombs.splice(i, 1);
-          continue;
-        }
-
-        // Normal terrain - explode
-        const explosionX = bombX;
-        const explosionY = terrainY;
-        bomb.explode(this);
-
-        // Create bomb crater scorch mark
-        this.scorchMarkManager.createBombCrater(explosionX, explosionY);
-
-        // Play explosion sound at 40% volume for ground hits
-        const groundExplosionNum = Math.floor(Math.random() * 3) + 1;
-        this.sound.play(`explosion${groundExplosionNum}`, { volume: 0.4 });
-
-        // Apply shockwave to shuttle
-        this.applyExplosionShockwave(explosionX, explosionY);
-
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Remove bombs that fall off screen
-      if (bombY > GAME_HEIGHT + 200) {
-        bomb.destroy();
-        this.bombs.splice(i, 1);
-      }
-    }
-  }
-
-  private sinkBombInWater(bomb: Bomb, waterLevel: number): boolean {
-    const bombX = bomb.x;
-
-    // Check if any shark can intercept and eat this bomb
-    for (const shark of this.sharks) {
-      if (shark.isDestroyed || !shark.canEatBomb()) continue;
-
-      const eatingBounds = shark.getEatingBounds();
-      // Check if bomb is within horizontal range and shark is below bomb
-      if (
-        bombX >= eatingBounds.x &&
-        bombX <= eatingBounds.x + eatingBounds.width
-      ) {
-        // Shark eats the bomb!
-        shark.eatBomb();
-        bomb.destroy();
-        return true; // Bomb was eaten
-      }
-    }
-
-    // Map food types to sprite keys
-    const spriteMap: { [key: string]: string } = {
-      'BURGER': 'burger',
-      'HAMBERDER': 'hamberder',
-      'DIET_COKE': 'dietcoke',
-      'TRUMP_STEAK': 'trumpsteak',
-      'VODKA': 'vodka',
-    };
-    const spriteKey = spriteMap[bomb.foodType] || 'burger';
-
-    // Small splash effect
-    for (let i = 0; i < 8; i++) {
-      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.6;
-      const speed = 2 + Math.random() * 4;
-      const droplet = this.add.graphics();
-      droplet.fillStyle(0x4169E1, 0.7);
-      droplet.fillCircle(0, 0, 2 + Math.random() * 3);
-      droplet.setPosition(bombX + (Math.random() - 0.5) * 20, waterLevel);
-      droplet.setDepth(101);
-
-      this.tweens.add({
-        targets: droplet,
-        x: droplet.x + Math.cos(angle) * speed * 10,
-        y: droplet.y + Math.sin(angle) * speed * 12 + 30,
-        alpha: 0,
-        duration: 400 + Math.random() * 200,
-        ease: 'Quad.easeOut',
-        onComplete: () => droplet.destroy(),
-      });
-    }
-
-    // Small ripple
-    const ripple = this.add.graphics();
-    ripple.lineStyle(2, 0x87CEEB, 0.6);
-    ripple.strokeCircle(bombX, waterLevel, 5);
-    ripple.setDepth(99);
-
-    this.tweens.add({
-      targets: ripple,
-      scaleX: 3,
-      scaleY: 0.4,
-      alpha: 0,
-      duration: 600,
-      ease: 'Quad.easeOut',
-      onComplete: () => ripple.destroy(),
-    });
-
-    // Create a sinking visual using the actual food sprite
-    const sinkingFood = this.add.sprite(bombX, waterLevel, spriteKey);
-    sinkingFood.setScale(0.06); // Same scale as bomb
-    sinkingFood.setDepth(50);
-
-    // Track the food for shark attraction
-    const finalY = waterLevel + 120;
-    const foodData = { x: bombX, y: finalY, sprite: sinkingFood };
-
-    // Sink slowly to the bottom and stay there
-    this.tweens.add({
-      targets: sinkingFood,
-      y: finalY, // Sink to bottom
-      alpha: 0.5,
-      angle: sinkingFood.angle + 30, // Slight rotation as it sinks
-      duration: 2000,
-      ease: 'Quad.easeOut',
-      onComplete: () => {
-        // Add to sunken food array when it reaches bottom
-        this.sunkenFood.push(foodData);
-      },
-    });
-
-    // Small bubbles as it sinks
-    for (let i = 0; i < 5; i++) {
-      this.time.delayedCall(200 + i * 200, () => {
-        const bubble = this.add.graphics();
-        bubble.fillStyle(0xADD8E6, 0.5);
-        bubble.fillCircle(0, 0, 2);
-        bubble.setPosition(bombX + (Math.random() - 0.5) * 10, waterLevel + 30 + i * 15);
-        bubble.setDepth(98);
-
-        this.tweens.add({
-          targets: bubble,
-          y: bubble.y - 40,
-          alpha: 0,
-          duration: 400,
-          ease: 'Quad.easeOut',
-          onComplete: () => bubble.destroy(),
-        });
-      });
-    }
-
-    // Destroy the original bomb object
-    bomb.destroy();
-    return false; // Bomb sank normally (wasn't eaten)
-  }
 
   private showDestructionPoints(x: number, y: number, points: number, name: string): void {
     // Show building name
@@ -4028,7 +3442,7 @@ export class GameScene extends Phaser.Scene {
     message: string;
     score: number;
     debugModeUsed: boolean;
-    destroyedBuildings: { name: string; points: number; textureKey: string; country: string }[];
+    destroyedBuildings: { name: string; points: number; textureKey?: string; country?: string }[];
     noShake?: boolean;
   }): void {
     // Fade out music during game over transition
@@ -4758,23 +4172,29 @@ export class GameScene extends Phaser.Scene {
     // Handle bomb drop (arrow down for P1, S for P2)
     const p1Bomb = this.cursors.down.isDown && this.shuttle && this.shuttle.active;
     const p2Bomb = this.p2BombKey && this.shuttle2 && this.shuttle2.active && this.p2BombKey.isDown;
-    if (p1Bomb && !this.bombCooldown) {
-      this.dropBomb(this.shuttle, this.inventorySystem, 1);
-      this.bombCooldown = true;
-      this.time.delayedCall(300, () => {
-        this.bombCooldown = false;
-      });
+    if (p1Bomb && this.bombManager.canDropBomb(1)) {
+      this.bombManager.dropBomb(this.shuttle, this.inventorySystem, 1);
+      this.bombManager.startCooldown(1);
     }
-    if (p2Bomb && !this.bombCooldown2) {
-      this.dropBomb(this.shuttle2!, this.inventorySystem2!, 2);
-      this.bombCooldown2 = true;
-      this.time.delayedCall(300, () => {
-        this.bombCooldown2 = false;
-      });
+    if (p2Bomb && this.bombManager.canDropBomb(2)) {
+      this.bombManager.dropBomb(this.shuttle2!, this.inventorySystem2!, 2);
+      this.bombManager.startCooldown(2);
     }
 
     // Update bombs
-    this.updateBombs();
+    this.bombManager.update(
+      this.shuttle,
+      this.shuttle2,
+      this.decorations,
+      this.cannons,
+      this.landingPads,
+      this.biplane ? [this.biplane] : [],
+      this.golfCart,
+      this.fisherBoat,
+      this.oilTowers,
+      this.greenlandIce,
+      this.sharks
+    );
 
     // Update peace medal graphics if carrying
     this.updatePeaceMedalGraphics();
@@ -4955,7 +4375,7 @@ export class GameScene extends Phaser.Scene {
         `Graphics: ${graphicsCount}\n` +
         `Children: ${totalChildren}\n` +
         `Tweens: ${tweenCount}\n` +
-        `Bombs: ${this.bombs.length}`
+        `Bombs: ${this.bombManager.getBombCount()}`
       );
     }
 
