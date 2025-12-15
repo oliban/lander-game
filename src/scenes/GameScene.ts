@@ -733,13 +733,13 @@ export class GameScene extends Phaser.Scene {
     this.speedTrailEmitter = this.add.particles(0, 0, 'smoke', {
       speed: { min: 10, max: 40 },
       angle: { min: 0, max: 360 }, // Updated dynamically based on velocity
-      scale: { start: 0.15, end: 0.6 },
-      alpha: { start: 0.5, end: 0 },
+      scale: { start: 0.3, end: 0.8 }, // Moderate size
+      alpha: { start: 0.7, end: 0 }, // More opaque
       lifespan: { min: 400, max: 700 },
       blendMode: Phaser.BlendModes.NORMAL,
       frequency: -1, // Manual emission only
       rotate: { min: 0, max: 360 },
-      maxParticles: 100, // Safety limit to prevent memory issues
+      maxParticles: 200, // Safety limit to prevent memory issues
     });
     this.speedTrailEmitter.setDepth(200);
 
@@ -901,7 +901,7 @@ export class GameScene extends Phaser.Scene {
       const threshold = 8;
       const notThrusting = !shuttle.getIsThrusting();
       if (speed > threshold && notThrusting) {
-        // Calculate trail angle - opposite to velocity direction (where smoke goes)
+        // Calculate trail angle - opposite to velocity direction (where smoke drifts)
         const trailAngle = Math.atan2(-vy, -vx) * (180 / Math.PI);
 
         // Only update the angle dynamically (other config set at init)
@@ -911,14 +911,14 @@ export class GameScene extends Phaser.Scene {
         const intensity = Math.min((speed - threshold) / 15, 1);
         const particleCount = 3 + Math.floor(intensity * 6);
 
-        // Emit from behind the ship
-        const behindAngle = Math.atan2(vy, vx); // Direction ship came from
-        const behindOffset = 12;
+        // Emit from the back of the ship (based on ship rotation, not velocity)
+        const backAngle = shuttle.rotation + Math.PI / 2; // Back of ship (opposite of nose)
+        const backOffset = 18; // Distance from center to back
 
         for (let i = 0; i < particleCount; i++) {
-          // Scatter emission points behind the ship
-          const spreadAngle = behindAngle + (Math.random() - 0.5) * 0.8;
-          const dist = behindOffset + Math.random() * 5;
+          // Scatter emission points at the back of the ship
+          const spreadAngle = backAngle + (Math.random() - 0.5) * 0.5;
+          const dist = backOffset + Math.random() * 4;
           const emitX = shuttle.x + Math.cos(spreadAngle) * dist;
           const emitY = shuttle.y + Math.sin(spreadAngle) * dist;
           this.speedTrailEmitter.emitParticleAt(emitX, emitY, 1);
@@ -2408,6 +2408,13 @@ export class GameScene extends Phaser.Scene {
     // Update altitude overlay (sky darkens at high altitude)
     this.updateAltitudeOverlay();
 
+    // Update shuttle input state first (so isThrusting is current for smoke trails)
+    for (const shuttle of this.shuttles) {
+      if (shuttle.active) {
+        shuttle.update();
+      }
+    }
+
     // Update speed lines (motion blur when falling fast)
     this.updateSpeedLines();
 
@@ -2479,12 +2486,7 @@ export class GameScene extends Phaser.Scene {
     // Update Propaganda Banners (check for pickup)
     this.propagandaManager.update();
 
-    // Update all shuttles
-    for (const shuttle of this.shuttles) {
-      if (shuttle.active) {
-        shuttle.update(); // Controls are handled internally now
-      }
-    }
+    // Note: Shuttle update moved earlier (before updateSpeedLines) for correct isThrusting state
 
     // Update camera for 2-player mode (follow midpoint between active shuttles)
     if (this.playerCount === 2) {
