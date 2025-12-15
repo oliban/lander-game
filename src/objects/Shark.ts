@@ -2,23 +2,26 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT } from '../constants';
 import { lerpColor } from '../utils/ColorUtils';
 import { createBubbles, createSmokePuffs } from '../utils/ParticleUtils';
+import { DestructibleObject } from '../core/base';
 
 export type SharkState = 'alive' | 'coughing' | 'dead';
 
-export class Shark extends Phaser.GameObjects.Container {
-  public isDestroyed: boolean = false;
+interface SharkExplosionResult {
+  name: string;
+  points: number;
+  wasDead: boolean;
+}
+
+export class Shark extends DestructibleObject {
   public state: SharkState = 'alive';
-  public readonly pointValue: number = 500;
   public readonly sharkName: string = 'Atlantic Shark';
+  public baseY: number;
 
   private graphics: Phaser.GameObjects.Graphics;
-  private baseY: number;
   private patrolMinX: number;
   private patrolMaxX: number;
-  private direction: number = 1; // 1 = right, -1 = left
+  private direction: number = 1;
   private speed: number = 1.5;
-  private collisionWidth: number = 80;
-  private collisionHeight: number = 30;
 
   // Animation state
   private tailAngle: number = 0;
@@ -38,8 +41,15 @@ export class Shark extends Phaser.GameObjects.Container {
 
   constructor(scene: Phaser.Scene, x: number, patrolMinX: number, patrolMaxX: number) {
     const waterSurface = GAME_HEIGHT * 0.75;
-    const depthUnderwater = 80 + Math.random() * 40; // 80-120px below surface
-    super(scene, x, waterSurface + depthUnderwater);
+    const depthUnderwater = 80 + Math.random() * 40;
+
+    super(scene, x, waterSurface + depthUnderwater, {
+      collisionWidth: 80,
+      collisionHeight: 30,
+      boundsAlignment: 'center',
+      pointValue: 500,
+      name: 'Atlantic Shark',
+    });
 
     this.waterSurface = waterSurface;
     this.baseY = waterSurface + depthUnderwater;
@@ -48,21 +58,18 @@ export class Shark extends Phaser.GameObjects.Container {
     this.direction = Math.random() > 0.5 ? 1 : -1;
 
     this.graphics = scene.add.graphics();
-    this.graphics.setDepth(48); // Below water surface effects
+    this.graphics.setDepth(48);
 
     this.drawShark();
-    scene.add.existing(this);
   }
 
   private calculateDepthTint(): number {
-    const maxDepth = 150; // pixels below surface for full tint
+    const maxDepth = 150;
     const depth = this.y - this.waterSurface;
     return Math.min(1, Math.max(0, depth / maxDepth));
   }
 
-
   private drawShark(): void {
-    // Reuse graphics object - just clear it each frame
     if (!this.graphics) {
       this.graphics = this.scene.add.graphics();
       this.graphics.setDepth(20);
@@ -73,11 +80,9 @@ export class Shark extends Phaser.GameObjects.Container {
 
     const isFlipped = this.direction === -1;
 
-    // Calculate depth-based tinting
     const depthTint = this.state === 'dead' ? 0 : this.calculateDepthTint();
-    const alpha = 1 - depthTint * 0.4; // Fade to 60% at max depth
+    const alpha = 1 - depthTint * 0.4;
 
-    // Body colors with depth tinting
     const bodyColorShallow = this.state === 'dead' ? 0x6a7a8a : 0x4a6080;
     const bodyColorDeep = 0x3a4a5a;
     const bellyColorShallow = 0xc8d8e8;
@@ -87,56 +92,46 @@ export class Shark extends Phaser.GameObjects.Container {
     const bellyColor = lerpColor(bellyColorShallow, bellyColorDeep, depthTint);
     const finColor = lerpColor(0x3a5070, 0x2a3a4a, depthTint);
 
-    // Apply scale flip for direction (all drawing is done facing right)
     this.graphics.setScale(isFlipped ? -1 : 1, 1);
 
     const tailSwing = Math.sin(this.tailAngle) * 8;
 
-    // === TAIL FIN (simple solid boomerang - no inner curves) ===
+    // TAIL FIN
     this.graphics.fillStyle(finColor, alpha);
     this.graphics.beginPath();
-    // Simple path: base top -> upper tip -> base center -> lower tip -> base bottom
-    this.graphics.moveTo(-26, -3);                          // Top of base
-    this.graphics.lineTo(-50 + tailSwing, -16);             // Upper tip
-    this.graphics.lineTo(-30 + tailSwing * 0.2, 0);         // Center of base (the notch)
-    this.graphics.lineTo(-48 + tailSwing, 13);              // Lower tip
-    this.graphics.lineTo(-26, 3);                           // Bottom of base
+    this.graphics.moveTo(-26, -3);
+    this.graphics.lineTo(-50 + tailSwing, -16);
+    this.graphics.lineTo(-30 + tailSwing * 0.2, 0);
+    this.graphics.lineTo(-48 + tailSwing, 13);
+    this.graphics.lineTo(-26, 3);
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // === MAIN BODY (single unified shape) ===
+    // MAIN BODY
     this.graphics.fillStyle(bodyColor, alpha);
     this.graphics.beginPath();
-    // Start at tail
     this.graphics.moveTo(-32, 0);
-    // Top edge - tail to back
     this.graphics.lineTo(-25, -5);
     this.graphics.lineTo(-15, -8);
-    // Dorsal fin notch
     this.graphics.lineTo(-8, -9);
     this.graphics.lineTo(-5, -9);
-    // Back to head
     this.graphics.lineTo(5, -8);
     this.graphics.lineTo(18, -6);
     this.graphics.lineTo(28, -4);
-    // Snout
     this.graphics.lineTo(38, -1);
     this.graphics.lineTo(42, 0);
-    // Bottom of snout
     this.graphics.lineTo(38, 2);
     this.graphics.lineTo(28, 5);
-    // Belly
     this.graphics.lineTo(15, 8);
     this.graphics.lineTo(0, 9);
     this.graphics.lineTo(-12, 7);
     this.graphics.lineTo(-22, 5);
-    // Back to tail
     this.graphics.lineTo(-28, 2);
     this.graphics.lineTo(-32, 0);
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // === BELLY HIGHLIGHT ===
+    // BELLY HIGHLIGHT
     this.graphics.fillStyle(bellyColor, alpha);
     this.graphics.beginPath();
     this.graphics.moveTo(-20, 3);
@@ -153,7 +148,7 @@ export class Shark extends Phaser.GameObjects.Container {
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // === DORSAL FIN ===
+    // DORSAL FIN
     this.graphics.fillStyle(finColor, alpha);
     this.graphics.beginPath();
     this.graphics.moveTo(-8, -9);
@@ -166,7 +161,7 @@ export class Shark extends Phaser.GameObjects.Container {
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // === PECTORAL FIN ===
+    // PECTORAL FIN
     this.graphics.beginPath();
     this.graphics.moveTo(8, 7);
     this.graphics.lineTo(4, 12);
@@ -177,8 +172,7 @@ export class Shark extends Phaser.GameObjects.Container {
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // === SMALL REAR FINS ===
-    // Anal fin
+    // SMALL REAR FINS
     this.graphics.beginPath();
     this.graphics.moveTo(-16, 6);
     this.graphics.lineTo(-18, 10);
@@ -187,7 +181,6 @@ export class Shark extends Phaser.GameObjects.Container {
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // Second dorsal (small)
     this.graphics.beginPath();
     this.graphics.moveTo(-18, -7);
     this.graphics.lineTo(-16, -11);
@@ -195,7 +188,7 @@ export class Shark extends Phaser.GameObjects.Container {
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // === EYE ===
+    // EYE
     if (this.state === 'dead') {
       this.graphics.lineStyle(2, 0xff0000, alpha);
       this.graphics.beginPath();
@@ -205,14 +198,13 @@ export class Shark extends Phaser.GameObjects.Container {
       this.graphics.lineTo(26, 0);
       this.graphics.strokePath();
     } else {
-      // Eye
       this.graphics.fillStyle(0x000000, alpha);
       this.graphics.fillCircle(28, -2, 2.5);
       this.graphics.fillStyle(0xffffff, alpha * 0.7);
       this.graphics.fillCircle(29, -3, 1);
     }
 
-    // === GILL SLITS ===
+    // GILL SLITS
     const gillColor = lerpColor(0x2a4060, 0x1a2a3a, depthTint);
     this.graphics.lineStyle(1.5, gillColor, alpha * 0.6);
     for (let i = 0; i < 3; i++) {
@@ -232,27 +224,20 @@ export class Shark extends Phaser.GameObjects.Container {
   ): void {
     if (this.isDestroyed) return;
 
-    // Update pollution state
     this.updatePollutionState(pollutionLevel);
 
-    // Tail animation (faster when alive, slower when coughing/dead)
     const tailSpeed = this.state === 'alive' ? 0.15 : 0.05;
     this.tailAngle += tailSpeed;
 
     if (this.state === 'dead') {
-      // Float to surface
       this.floatToSurface();
     } else {
-      // Check for nearby food and set target
       this.findNearestFood(foodTargets);
 
-      // Movement: either toward food or patrol
-      const moveSpeed =
-        this.state === 'coughing' ? this.speed * 0.5 : this.speed;
-      const chaseSpeed = moveSpeed * 1.3; // Faster when chasing food
+      const moveSpeed = this.state === 'coughing' ? this.speed * 0.5 : this.speed;
+      const chaseSpeed = moveSpeed * 1.3;
 
       if (this.targetFood) {
-        // Swim toward food
         const dx = this.targetFood.x - this.x;
         const dy = this.targetFood.y - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -260,26 +245,21 @@ export class Shark extends Phaser.GameObjects.Container {
         if (dist > 5) {
           this.direction = dx > 0 ? 1 : -1;
           this.x += (dx / dist) * chaseSpeed;
-          this.y += (dy / dist) * chaseSpeed * 0.5; // Slower vertical movement
+          this.y += (dy / dist) * chaseSpeed * 0.5;
         }
       } else {
-        // Normal patrol
         this.x += moveSpeed * this.direction;
 
-        // Turn around at patrol bounds
         if (this.x <= this.patrolMinX) {
           this.direction = 1;
         } else if (this.x >= this.patrolMaxX) {
           this.direction = -1;
         }
 
-        // Gentle vertical wave motion
-        const verticalOffset =
-          Math.sin(waveOffset * 0.5 + this.x * 0.01) * 5;
+        const verticalOffset = Math.sin(waveOffset * 0.5 + this.x * 0.01) * 5;
         this.y = this.baseY + verticalOffset;
       }
 
-      // Coughing effects
       if (this.state === 'coughing') {
         this.coughTimer++;
         if (this.coughTimer % 60 === 0) {
@@ -288,8 +268,6 @@ export class Shark extends Phaser.GameObjects.Container {
       }
     }
 
-    // Redraw shark (position and rotation applied in drawShark)
-    // Skip expensive redraw when shark is off-screen
     if (!skipGraphics) {
       this.drawShark();
     }
@@ -313,19 +291,15 @@ export class Shark extends Phaser.GameObjects.Container {
   }
 
   private floatToSurface(): void {
-    const targetY = this.waterSurface + 5; // Just below surface, belly up
+    const targetY = this.waterSurface + 5;
 
     this.floatProgress = Math.min(1, this.floatProgress + 0.01);
     this.y = Phaser.Math.Linear(this.baseY, targetY, this.floatProgress);
-
-    // Slowly flip upside down
     this.rotation = Phaser.Math.Linear(0, Math.PI, this.floatProgress);
 
-    // Gentle bob at surface when fully floated
     if (this.floatProgress >= 1) {
       this.y = targetY + Math.sin(Date.now() * 0.002) * 3;
 
-      // Track time at surface
       if (!this.reachedSurface) {
         this.reachedSurface = true;
         this.surfaceTimer = 0;
@@ -333,10 +307,8 @@ export class Shark extends Phaser.GameObjects.Container {
 
       this.surfaceTimer++;
 
-      // After 10 seconds (600 frames at 60fps), start emitting fumes
       if (this.surfaceTimer > 600) {
         this.fumeTimer++;
-        // Spawn fumes every 10 frames
         if (this.fumeTimer % 10 === 0) {
           this.spawnFumes();
         }
@@ -389,7 +361,6 @@ export class Shark extends Phaser.GameObjects.Container {
   }
 
   eatBomb(): void {
-    // Visual effect - gulp animation
     const gulp = this.scene.add.graphics();
     gulp.fillStyle(0xffff00, 0.5);
     gulp.fillCircle(0, 0, 15);
@@ -405,7 +376,6 @@ export class Shark extends Phaser.GameObjects.Container {
       onComplete: () => gulp.destroy(),
     });
 
-    // Burp bubbles after a delay
     this.scene.time.delayedCall(400, () => {
       if (!this.isDestroyed) {
         this.spawnBurpBubbles();
@@ -428,17 +398,7 @@ export class Shark extends Phaser.GameObjects.Container {
     });
   }
 
-  getCollisionBounds(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: this.x - this.collisionWidth / 2,
-      y: this.y - this.collisionHeight / 2,
-      width: this.collisionWidth,
-      height: this.collisionHeight,
-    };
-  }
-
   getEatingBounds(): { x: number; y: number; width: number; height: number } {
-    // Larger detection area for eating
     return {
       x: this.x - 60,
       y: this.y - 30,
@@ -447,20 +407,28 @@ export class Shark extends Phaser.GameObjects.Container {
     };
   }
 
-  explode(): { name: string; points: number; wasDead: boolean } {
-    if (this.isDestroyed)
+  explode(): SharkExplosionResult {
+    if (this.isDestroyed) {
       return { name: this.sharkName, points: 0, wasDead: this.state === 'dead' };
+    }
 
     const wasDead = this.state === 'dead';
     this.isDestroyed = true;
 
+    this.onExplode();
+    this.graphics.setVisible(false);
+
+    return { name: this.sharkName, points: this.pointValue, wasDead };
+  }
+
+  protected onExplode(): void {
     const scene = this.scene;
     const x = this.x;
     const y = this.y;
 
-    // Blood splash effect (underwater)
+    // Blood splash effect
     const splash = scene.add.graphics();
-    splash.fillStyle(0x8b0000, 0.7); // Dark red
+    splash.fillStyle(0x8b0000, 0.7);
     splash.fillCircle(0, 0, 30);
     splash.setPosition(x, y);
     splash.setDepth(49);
@@ -481,7 +449,6 @@ export class Shark extends Phaser.GameObjects.Container {
       const debris = scene.add.graphics();
       debris.fillStyle(debrisColors[i % debrisColors.length], 1);
 
-      // Fin-shaped debris
       if (i % 2 === 0) {
         debris.beginPath();
         debris.moveTo(0, -8);
@@ -529,11 +496,6 @@ export class Shark extends Phaser.GameObjects.Container {
         onComplete: () => bubble.destroy(),
       });
     }
-
-    // Hide the shark
-    this.graphics.setVisible(false);
-
-    return { name: this.sharkName, points: this.pointValue, wasDead };
   }
 
   destroy(fromScene?: boolean): void {
