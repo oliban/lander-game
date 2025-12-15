@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
+import { createExplosion } from '../utils/ExplosionUtils';
 
 // Building and landmark names for each country
 // Index corresponds to image number (0-15)
@@ -231,22 +232,15 @@ export class CountryDecoration extends Phaser.GameObjects.Sprite {
     const buildingHeight = this.displayHeight;
 
     // ============ PHASE 1: BOMB EXPLODES ============
-    // Explosion flash at center
-    const flash = scene.add.graphics();
-    flash.setPosition(x, centerY);
-    flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(0, 0, 40);
-    flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(0, 0, 25);
-    flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(0, 0, 10);
-    flash.setDepth(100);
-
-    scene.tweens.add({
-      targets: flash,
-      alpha: 0,
+    // Explosion flash at center using ExplosionUtils
+    createExplosion(scene, x, centerY, {
+      flashColors: [0xFF6600, 0xFFFF00, 0xFFFFFF],
+      flashSizes: [40, 25, 10],
       duration: 300,
-      onComplete: () => flash.destroy(),
+      includeFlash: true,
+      includeDebris: false,
+      includeSmoke: false,
+      shakeCamera: false,
     });
 
 

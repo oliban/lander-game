@@ -370,6 +370,10 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     return this.debugModeUsed;
   }
 
+  isDebugMode(): boolean {
+    return this.debugMode;
+  }
+
   getIsThrusting(): boolean {
     return this.isThrusting;
   }

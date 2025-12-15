@@ -1120,12 +1120,76 @@ export class GameScene extends Phaser.Scene {
       this.rainEmitter.start();
     }
 
+    // Spawn splashes in water area based on rain intensity
+    this.spawnRainSplashes();
+
     // Update and draw splashes (kept for visual effect on water)
     this.updateRainSplashes();
   }
 
+  private spawnRainSplashes(): void {
+    // Get water bounds (Atlantic Ocean)
+    const cameraX = this.cameras.main.scrollX;
+    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
+
+    // Only spawn if camera is viewing the ocean
+    const cameraRight = cameraX + GAME_WIDTH;
+    if (cameraRight < atlanticStart || cameraX > atlanticEnd) return;
+
+    // Water surface Y in world coords
+    const waterWorldY = this.terrain ? this.terrain.getHeightAt(atlanticStart + 500) : 500;
+
+    // No splashes when no rain
+    if (this.rainIntensity === 'none') return;
+
+    // Splash parameters vary by intensity
+    const splashParams = {
+      light: { maxSplashes: 25, particleCount: [2, 3], spread: 5, velocityMin: 1.5, velocityRange: 2, spawnRate: 2 },
+      medium: { maxSplashes: 40, particleCount: [3, 4], spread: 7, velocityMin: 2, velocityRange: 3, spawnRate: 4 },
+      heavy: { maxSplashes: 60, particleCount: [4, 6], spread: 10, velocityMin: 2.5, velocityRange: 4, spawnRate: 8 }
+    }[this.rainIntensity];
+
+    // Spawn new splashes randomly in visible water area
+    const visibleWaterStart = Math.max(atlanticStart, cameraX);
+    const visibleWaterEnd = Math.min(atlanticEnd, cameraRight);
+    const visibleWaterWidth = visibleWaterEnd - visibleWaterStart;
+
+    if (visibleWaterWidth <= 0) return;
+
+    // Spawn rate splashes per frame (limited by max)
+    for (let s = 0; s < splashParams.spawnRate; s++) {
+      if (this.rainSplashes.length >= splashParams.maxSplashes) break;
+
+      // Random X position in visible water
+      const splashX = visibleWaterStart + Math.random() * visibleWaterWidth;
+
+      // Create particles that shoot upward
+      const numParticles = splashParams.particleCount[0] + Math.floor(Math.random() * (splashParams.particleCount[1] - splashParams.particleCount[0] + 1));
+      const particles: { dx: number; dy: number; vy: number }[] = [];
+      for (let p = 0; p < numParticles; p++) {
+        particles.push({
+          dx: (Math.random() - 0.5) * splashParams.spread,
+          dy: 0,
+          vy: -(splashParams.velocityMin + Math.random() * splashParams.velocityRange)
+        });
+      }
+      this.rainSplashes.push({
+        x: splashX,
+        y: waterWorldY,
+        particles,
+        age: 0
+      });
+    }
+  }
+
   private updateRainSplashes(): void {
-    if (this.rainSplashes.length === 0 || !this.rainGraphics) return;
+    if (!this.rainGraphics) return;
+
+    // Clear previous frame's drawings
+    this.rainGraphics.clear();
+
+    if (this.rainSplashes.length === 0) return;
 
     const cameraX = this.cameras.main.scrollX;
     const cameraY = this.cameras.main.scrollY;
@@ -1478,6 +1542,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleElectricalDeath(shuttle: Shuttle): void {
     if (this.gameState !== 'playing') return;
+    if (shuttle.isDebugMode()) return; // Invulnerable in debug mode
 
     const playerNum = shuttle === this.shuttle2 ? 2 : 1;
     const vel = shuttle.body?.velocity || { x: 0, y: 0 };
@@ -1932,6 +1997,9 @@ export class GameScene extends Phaser.Scene {
     const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
     if (!shuttle || !shuttle.active) return;
 
+    // Invulnerable in debug mode
+    if (shuttle.isDebugMode()) return;
+
     // Get the actual terrain height at shuttle position
     const terrainHeight = this.terrain.getHeightAt(shuttle.x);
     const shuttleBottom = shuttle.y + 18; // Shuttle's bottom edge
@@ -2054,6 +2122,7 @@ export class GameScene extends Phaser.Scene {
 
     const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
     if (!shuttle || !shuttle.active) return;
+    if (shuttle.isDebugMode()) return; // Invulnerable in debug mode
 
     const velocity = shuttle.getVelocity();
     const WALL_CRASH_VELOCITY = 6.0; // Crash threshold for wall impact
@@ -2378,7 +2447,7 @@ export class GameScene extends Phaser.Scene {
 
     const landingResult = shuttle.checkLandingSafety();
 
-    if (!landingResult.safe) {
+    if (!landingResult.safe && !shuttle.isDebugMode()) {
       const vel = shuttle.body?.velocity || { x: 0, y: 0 };
       const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
       console.log(`[DEATH] P${playerNum} died: "Crash landing! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'} | Pad: ${pad.name}`);
@@ -3379,6 +3448,7 @@ export class GameScene extends Phaser.Scene {
   private handleProjectileHitOnShuttle(projectileSpriteKey: string | undefined, shuttle: Shuttle): void {
     if (this.gameState !== 'playing') return;
     if (!shuttle.active) return; // Already dead
+    if (shuttle.isDebugMode()) return; // Invulnerable in debug mode
     // Note: Bribed cannons stand down and don't fire, but existing projectiles can still hit!
 
     const playerIndex = shuttle.getPlayerIndex(); // 0-based
@@ -3801,7 +3871,7 @@ export class GameScene extends Phaser.Scene {
       // Check collision with OTHER player's shuttle (2-player mode only)
       if (this.playerCount === 2) {
         const targetShuttle = bomb.droppedByPlayer === 1 ? this.shuttle2 : this.shuttle;
-        if (targetShuttle && targetShuttle.active) {
+        if (targetShuttle && targetShuttle.active && !targetShuttle.isDebugMode()) {
           const dx = bombX - targetShuttle.x;
           const dy = bombY - targetShuttle.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -5921,6 +5991,11 @@ export class GameScene extends Phaser.Scene {
     // Update wind system
     this.updateWind(time);
     this.updateWindDebris();
+
+    // Update landing pad flags with wind
+    for (const pad of this.landingPads) {
+      pad.updateWind(this.windStrength);
+    }
 
     // Apply wind force to shuttles (only when airborne)
     const WIND_FORCE = 0.0015; // About 25% of THRUST_POWER (0.006)

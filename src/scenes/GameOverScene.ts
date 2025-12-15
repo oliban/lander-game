@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS, COLLECTIBLE_TYPES } from '../constants';
 import { InventoryItem } from '../systems/InventorySystem';
+import { darkenColor, lightenColor } from '../utils/ColorUtils';
 
 interface DestroyedBuilding {
   name: string;
@@ -790,7 +791,7 @@ export class GameOverScene extends Phaser.Scene {
     const container = this.add.container(x, y);
 
     // Cartoon style button with solid fill
-    const darkerColor = this.darkenColor(color, 0.7);
+    const darkerColor = darkenColor(color, 0.7);
 
     const bg = this.add.graphics();
     bg.fillStyle(color, 1);
@@ -812,7 +813,7 @@ export class GameOverScene extends Phaser.Scene {
 
     container.on('pointerover', () => {
       bg.clear();
-      bg.fillStyle(this.lightenColor(color, 1.2), 1);
+      bg.fillStyle(lightenColor(color, 1.2), 1);
       bg.fillRoundedRect(-100, -22, 200, 44, 12);
       bg.lineStyle(3, darkerColor);
       bg.strokeRoundedRect(-100, -22, 200, 44, 12);
@@ -829,20 +830,6 @@ export class GameOverScene extends Phaser.Scene {
     container.on('pointerdown', callback);
 
     return container;
-  }
-
-  private darkenColor(color: number, factor: number): number {
-    const r = Math.floor(((color >> 16) & 0xFF) * factor);
-    const g = Math.floor(((color >> 8) & 0xFF) * factor);
-    const b = Math.floor((color & 0xFF) * factor);
-    return (r << 16) | (g << 8) | b;
-  }
-
-  private lightenColor(color: number, factor: number): number {
-    const r = Math.min(255, Math.floor(((color >> 16) & 0xFF) * factor));
-    const g = Math.min(255, Math.floor(((color >> 8) & 0xFF) * factor));
-    const b = Math.min(255, Math.floor((color & 0xFF) * factor));
-    return (r << 16) | (g << 8) | b;
   }
 
   private createNameEntryUI(x: number, y: number, score: number): void {

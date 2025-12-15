@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TERRAIN_SEGMENT_WIDTH, TERRAIN_ROUGHNESS, GAME_HEIGHT, COLORS, COUNTRIES, LANDING_PADS, WORLD_START_X } from '../constants';
+import { darkenColor, lightenColor } from '../utils/ColorUtils';
 
 export interface TerrainVertex {
   x: number;
@@ -354,8 +355,8 @@ export class Terrain {
       if (isOcean) continue;
 
       // Draw underground dirt/rock layers
-      const dirtColor = this.darkenColor(country.color, 0.5);
-      const rockColor = this.darkenColor(country.color, 0.35);
+      const dirtColor = darkenColor(country.color, 0.5);
+      const rockColor = darkenColor(country.color, 0.35);
 
       // For Switzerland, use alpine meadow green for the base fill
       const isSwiss = country.name === 'Switzerland';
@@ -407,8 +408,8 @@ export class Terrain {
       this.graphics.fillPath();
 
       // Draw grass tufts on top
-      const grassColor = this.lightenColor(country.color, 1.3);
-      const darkGrassColor = this.darkenColor(country.color, 0.8);
+      const grassColor = lightenColor(country.color, 1.3);
+      const darkGrassColor = darkenColor(country.color, 0.8);
 
       for (let i = 0; i < countryVertices.length - 1; i += 2) {
         const v = countryVertices[i];
@@ -435,19 +436,19 @@ export class Terrain {
         const seed = Math.cos(v.x * 0.05) * 10000;
 
         // Small rocks
-        this.graphics.fillStyle(this.darkenColor(dirtColor, 0.7), 0.8);
+        this.graphics.fillStyle(darkenColor(dirtColor, 0.7), 0.8);
         const rockX = v.x + (seed % 20) - 10;
         const rockY = v.y + 20 + (seed % 10);
         const rockSize = 3 + (seed % 4);
         this.graphics.fillCircle(rockX, rockY, rockSize);
 
         // Highlight on rock
-        this.graphics.fillStyle(this.lightenColor(dirtColor, 1.2), 0.5);
+        this.graphics.fillStyle(lightenColor(dirtColor, 1.2), 0.5);
         this.graphics.fillCircle(rockX - 1, rockY - 1, rockSize * 0.5);
       }
 
       // Draw darker outline on terrain edge
-      this.graphics.lineStyle(2, this.darkenColor(country.color, 0.5), 1);
+      this.graphics.lineStyle(2, darkenColor(country.color, 0.5), 1);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
       for (let i = 1; i < countryVertices.length; i++) {
@@ -456,7 +457,7 @@ export class Terrain {
       this.graphics.strokePath();
 
       // Draw lighter highlight just below the edge
-      this.graphics.lineStyle(3, this.lightenColor(country.color, 1.15), 0.7);
+      this.graphics.lineStyle(3, lightenColor(country.color, 1.15), 0.7);
       this.graphics.beginPath();
       this.graphics.moveTo(countryVertices[0].x, countryVertices[0].y + 3);
       for (let i = 1; i < countryVertices.length; i++) {
@@ -610,19 +611,19 @@ export class Terrain {
       this.graphics.fillRect(x, height, stepWidth + 1, GAME_HEIGHT - height + 50);
 
       // Also blend the dirt layer
-      const dirtColor = this.darkenColor(toColor, 0.5);
+      const dirtColor = darkenColor(toColor, 0.5);
       this.graphics.fillStyle(dirtColor, alpha * 0.5);
       this.graphics.fillRect(x, height + 25, stepWidth + 1, GAME_HEIGHT - height + 25);
     }
   }
 
   private drawBush(x: number, y: number, baseColor: number, seed: number): void {
-    const bushColor = this.darkenColor(baseColor, 0.75);
-    const highlightColor = this.lightenColor(baseColor, 1.1);
+    const bushColor = darkenColor(baseColor, 0.75);
+    const highlightColor = lightenColor(baseColor, 1.1);
     const size = 8 + (seed % 6);
 
     // Bush shadow
-    this.graphics.fillStyle(this.darkenColor(bushColor, 0.6), 0.5);
+    this.graphics.fillStyle(darkenColor(bushColor, 0.6), 0.5);
     this.graphics.fillEllipse(x + 2, y + 2, size * 1.2, size * 0.7);
 
     // Main bush body (multiple overlapping circles)
@@ -638,8 +639,8 @@ export class Terrain {
 
   private drawSmallTree(x: number, y: number, baseColor: number, seed: number): void {
     const trunkColor = 0x8B4513; // Saddle brown
-    const leafColor = this.darkenColor(baseColor, 0.7);
-    const highlightColor = this.lightenColor(baseColor, 1.2);
+    const leafColor = darkenColor(baseColor, 0.7);
+    const highlightColor = lightenColor(baseColor, 1.2);
     const height = 20 + (seed % 15);
 
     // Tree shadow
@@ -664,20 +665,6 @@ export class Terrain {
     // Foliage highlights
     this.graphics.fillStyle(highlightColor, 0.5);
     this.graphics.fillCircle(x - height * 0.1, y - height * 0.7, height * 0.15);
-  }
-
-  private darkenColor(color: number, factor: number): number {
-    const r = Math.floor(((color >> 16) & 0xFF) * factor);
-    const g = Math.floor(((color >> 8) & 0xFF) * factor);
-    const b = Math.floor((color & 0xFF) * factor);
-    return (r << 16) | (g << 8) | b;
-  }
-
-  private lightenColor(color: number, factor: number): number {
-    const r = Math.min(255, Math.floor(((color >> 16) & 0xFF) * factor));
-    const g = Math.min(255, Math.floor(((color >> 8) & 0xFF) * factor));
-    const b = Math.min(255, Math.floor((color & 0xFF) * factor));
-    return (r << 16) | (g << 8) | b;
   }
 
   getVertices(): TerrainVertex[] {

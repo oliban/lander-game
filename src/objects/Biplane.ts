@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { COUNTRIES, GAME_HEIGHT, GAME_WIDTH } from '../constants';
+import { createExplosion } from '../utils/ExplosionUtils';
 
 // Country-specific colors matching their flags
 const BIPLANE_COLORS: Record<string, { primary: number; secondary: number; accent: number }> = {
@@ -541,28 +542,22 @@ export class Biplane extends Phaser.GameObjects.Container {
     const x = this.x;
     const y = this.y;
 
-    // Big explosion flash
-    const flash = scene.add.graphics();
-    flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(0, 0, 45);
-    flash.fillStyle(0xFFAA00, 1);
-    flash.fillCircle(0, 0, 30);
-    flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(0, 0, 18);
-    flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(0, 0, 8);
-    flash.setPosition(x, y);
-    flash.setDepth(100);
-
-    scene.tweens.add({
-      targets: flash,
-      alpha: 0,
-      scale: 2.5,
+    // Create explosion effect using utility - configured to match original biplane explosion
+    // Note: Flash doesn't scale (utility limitation), debris are simple rectangles (not custom shapes),
+    // and smoke is single-tone (not dual-tone). Object-specific debris kept for visual accuracy.
+    createExplosion(scene, x, y, {
+      // Flash config (matches original colors but doesn't scale)
+      flashColors: [0xFF6600, 0xFFAA00, 0xFFFF00, 0xFFFFFF],
+      flashSizes: [45, 30, 18, 8],
       duration: 350,
-      onComplete: () => flash.destroy(),
+      depth: 100,
+      // Disable default debris and smoke, use custom below
+      includeDebris: false,
+      includeSmoke: false,
+      shakeCamera: false,
     });
 
-    // Flying debris (plane parts in country colors)
+    // Flying debris (plane parts in country colors) - object-specific shapes
     const debrisColors = [this.colors.primary, this.colors.secondary, this.colors.accent, 0x8B4513, 0x333333, 0xDEB887];
     for (let i = 0; i < 20; i++) {
       const angle = (i / 20) * Math.PI * 2;
@@ -570,7 +565,7 @@ export class Biplane extends Phaser.GameObjects.Container {
       const color = debrisColors[i % debrisColors.length];
       debris.fillStyle(color, 1);
 
-      // Random debris shapes
+      // Random debris shapes (wings, struts, fuselage, wheels, propeller blades)
       const shapeType = i % 6;
       if (shapeType === 0) {
         debris.fillRect(-10, -2, 20, 4); // Wing piece
@@ -607,7 +602,7 @@ export class Biplane extends Phaser.GameObjects.Container {
       });
     }
 
-    // Smoke puffs
+    // Smoke puffs with dual-tone effect and horizontal drift - object-specific visual effect
     for (let i = 0; i < 12; i++) {
       const smoke = scene.add.graphics();
       const smokeSize = 10 + Math.random() * 18;

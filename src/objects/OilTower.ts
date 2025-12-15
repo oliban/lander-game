@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { createExplosion } from '../utils/ExplosionUtils';
 
 export class OilTower {
   private scene: Phaser.Scene;
@@ -93,41 +94,21 @@ export class OilTower {
     const x = this.x;
     const y = this.y - 25;
 
-    // Explosion flash
-    const flash = this.scene.add.graphics();
-    flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(x, y, 30);
-    flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(x, y, 18);
-    flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(x, y, 8);
-
-    this.scene.tweens.add({
-      targets: flash,
-      alpha: 0,
-      scale: 2,
+    // Standard explosion flash and debris
+    createExplosion(this.scene, x, y, {
+      flashColors: [0xFF6600, 0xFFFF00, 0xFFFFFF],
+      flashSizes: [30, 18, 8],
       duration: 400,
-      onComplete: () => flash.destroy(),
+      debrisColors: [0x444444],
+      debrisCount: 6,
+      debrisWidth: 4,
+      debrisHeight: 4,
+      minDistance: 40,
+      maxDistance: 40,
+      gravity: 20,
+      includeSmoke: false,
+      shakeCamera: false,
     });
-
-    // Flying debris
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2;
-      const debris = this.scene.add.graphics();
-      debris.fillStyle(0x444444, 1);
-      debris.fillRect(-2, -2, 4, 4);
-      debris.setPosition(x, y);
-
-      this.scene.tweens.add({
-        targets: debris,
-        x: x + Math.cos(angle) * 40,
-        y: y + Math.sin(angle) * 40 + 20,
-        angle: Math.random() * 360,
-        alpha: 0,
-        duration: 400,
-        onComplete: () => debris.destroy(),
-      });
-    }
 
     // Create violent oil explosion splatter - chaotic, messy, realistic
     const spillX = this.x;
