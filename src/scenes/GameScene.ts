@@ -2690,7 +2690,7 @@ export class GameScene extends Phaser.Scene {
     for (const [type, count] of itemsToSell) {
       const itemData = COLLECTIBLE_TYPES[type];
       const shortName = itemData?.name || type;
-      soldParts.push(`${count} ${shortName}`);
+      soldParts.push(`-${count} ${shortName}`);
     }
     const soldStr = soldParts.join('\n');
 
