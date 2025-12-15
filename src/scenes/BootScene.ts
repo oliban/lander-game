@@ -123,6 +123,7 @@ export class BootScene extends Phaser.Scene {
     this.load.audio('water_bubbles', 'assets/audio/water-bubbles.mp3');
     this.load.audio('covfefe', 'assets/audio/covfefe.mp3');
     this.load.audio('rocket', 'assets/audio/rocket.mp3');
+    this.load.audio('ice_break', 'assets/audio/ice_break.mp3');
 
     // Collectible pickup sounds
     this.load.audio('pickup_burger', 'assets/audio/pickup_burger.mp3');
