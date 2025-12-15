@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { COLORS } from '../constants';
+import { FlagRenderer } from '../utils/FlagRenderer';
 
 export class LandingPad {
   private padScene: Phaser.Scene;
@@ -7,6 +8,7 @@ export class LandingPad {
   private flagGraphics: Phaser.GameObjects.Graphics;
   private matterBody: MatterJS.BodyType;
   private peaceMedalGraphics: Phaser.GameObjects.Graphics | null = null;
+  private windStrength: number = 0;
 
   public x: number;
   public y: number;
@@ -142,131 +144,46 @@ export class LandingPad {
     const halfWidth = this.width / 2;
 
     // Position flag to the LEFT of the landing pad to avoid conflicts
-    // This also looks better and avoids oil tower overlap
-    const flagX = this.x - halfWidth - 30; // To the left of the left pole
-    const flagY = this.y - 50; // Flag top position
+    const poleX = this.x - halfWidth - 30; // Flagpole position
+    const poleY = this.y - 50; // Flag top position
     const poleHeight = 60;
     const flagWidth = 24;
     const flagHeight = 16;
 
     // Flagpole
     this.flagGraphics.lineStyle(3, 0x666666, 1);
-    this.flagGraphics.lineBetween(flagX, flagY + poleHeight, flagX, flagY);
+    this.flagGraphics.lineBetween(poleX, poleY + poleHeight, poleX, poleY);
 
     // Pole top ball
     this.flagGraphics.fillStyle(0x888888, 1);
-    this.flagGraphics.fillCircle(flagX, flagY, 3);
+    this.flagGraphics.fillCircle(poleX, poleY, 3);
 
-    // Flag position (attached at top of pole, extends to the left)
-    const fy = flagY + 5;
+    // Flag position (attached at top of pole)
+    const fy = poleY + 5;
 
-    // Helper to draw horizontal stripe (flag extends LEFT from pole)
-    const drawStripe = (color: number, yOffset: number, stripeHeight: number) => {
-      this.flagGraphics.fillStyle(color, 1);
-      this.flagGraphics.fillRect(flagX - flagWidth, fy + yOffset, flagWidth, stripeHeight);
-    };
-
-    // Helper to draw vertical stripe (flag extends LEFT from pole)
-    const drawVerticalStripe = (color: number, xOffset: number, stripeWidth: number) => {
-      this.flagGraphics.fillStyle(color, 1);
-      this.flagGraphics.fillRect(flagX - flagWidth + xOffset, fy, stripeWidth, flagHeight);
-    };
-
-    // Flag left edge (flag extends left from pole)
-    const fx = flagX - flagWidth;
-
-    switch (this.country) {
-      case 'Washington DC':
-      case 'USA':
-        // US Flag simplified - blue field with red/white stripes
-        drawStripe(0xB22234, 0, flagHeight); // Red background
-        // White stripes
-        for (let i = 0; i < 7; i += 2) {
-          drawStripe(0xFFFFFF, i * (flagHeight / 13) * 2, flagHeight / 13);
-        }
-        // Blue canton (top-left of flag, which is now the far left)
-        this.flagGraphics.fillStyle(0x3C3B6E, 1);
-        this.flagGraphics.fillRect(fx, fy, flagWidth * 0.4, flagHeight * 0.5);
-        break;
-
-      case 'Atlantic Ocean':
-        // International maritime flag - blue with white
-        drawStripe(0x003399, 0, flagHeight);
-        break;
-
-      case 'United Kingdom':
-        // Union Jack
-        drawStripe(0x012169, 0, flagHeight); // Blue background
-        // White diagonals
-        this.flagGraphics.lineStyle(3, 0xFFFFFF, 1);
-        this.flagGraphics.lineBetween(fx, fy, fx + flagWidth, fy + flagHeight);
-        this.flagGraphics.lineBetween(fx, fy + flagHeight, fx + flagWidth, fy);
-        // Red diagonals
-        this.flagGraphics.lineStyle(1.5, 0xC8102E, 1);
-        this.flagGraphics.lineBetween(fx, fy, fx + flagWidth, fy + flagHeight);
-        this.flagGraphics.lineBetween(fx, fy + flagHeight, fx + flagWidth, fy);
-        // White cross
-        this.flagGraphics.lineStyle(4, 0xFFFFFF, 1);
-        this.flagGraphics.lineBetween(fx + flagWidth / 2, fy, fx + flagWidth / 2, fy + flagHeight);
-        this.flagGraphics.lineBetween(fx, fy + flagHeight / 2, fx + flagWidth, fy + flagHeight / 2);
-        // Red cross
-        this.flagGraphics.lineStyle(2, 0xC8102E, 1);
-        this.flagGraphics.lineBetween(fx + flagWidth / 2, fy, fx + flagWidth / 2, fy + flagHeight);
-        this.flagGraphics.lineBetween(fx, fy + flagHeight / 2, fx + flagWidth, fy + flagHeight / 2);
-        break;
-
-      case 'France':
-        // French tricolor (vertical)
-        const fw3 = flagWidth / 3;
-        drawVerticalStripe(0x002395, 0, fw3); // Blue
-        drawVerticalStripe(0xFFFFFF, fw3, fw3); // White
-        drawVerticalStripe(0xED2939, fw3 * 2, fw3); // Red
-        break;
-
-      case 'Switzerland':
-        // Swiss flag - red with white cross
-        drawStripe(0xDA291C, 0, flagHeight); // Red background
-        // White cross using lines (centered in flag)
-        const swCenterX = fx + flagWidth / 2;
-        const swCenterY = fy + flagHeight / 2;
-        this.flagGraphics.lineStyle(4, 0xFFFFFF, 1);
-        // Vertical bar
-        this.flagGraphics.lineBetween(swCenterX, fy + 2, swCenterX, fy + flagHeight - 2);
-        // Horizontal bar
-        this.flagGraphics.lineBetween(fx + 4, swCenterY, fx + flagWidth - 4, swCenterY);
-        break;
-
-      case 'Germany':
-        // German flag (horizontal)
-        const fh3 = flagHeight / 3;
-        drawStripe(0x000000, 0, fh3); // Black
-        drawStripe(0xDD0000, fh3, fh3); // Red
-        drawStripe(0xFFCC00, fh3 * 2, fh3); // Gold
-        break;
-
-      case 'Poland':
-        // Polish flag (horizontal)
-        drawStripe(0xFFFFFF, 0, flagHeight / 2); // White
-        drawStripe(0xDC143C, flagHeight / 2, flagHeight / 2); // Red
-        break;
-
-      case 'Russia':
-        // Russian flag (horizontal)
-        const rfh = flagHeight / 3;
-        drawStripe(0xFFFFFF, 0, rfh); // White
-        drawStripe(0x0039A6, rfh, rfh); // Blue
-        drawStripe(0xD52B1E, rfh * 2, rfh); // Red
-        break;
-
-      default:
-        // Generic gray flag
-        drawStripe(0x888888, 0, flagHeight);
-        break;
+    // Handle special cases that aren't in FlagRenderer
+    if (this.country === 'Atlantic Ocean') {
+      // International maritime flag - blue (static, no wind effect for ocean)
+      const fx = poleX - flagWidth;
+      this.flagGraphics.fillStyle(0x003399, 1);
+      this.flagGraphics.fillRect(fx, fy, flagWidth, flagHeight);
+      this.flagGraphics.lineStyle(1, 0x333333, 0.5);
+      this.flagGraphics.strokeRect(fx, fy, flagWidth, flagHeight);
+    } else {
+      // Use FlagRenderer for wind-affected country flags
+      FlagRenderer.drawWindFlag(this.flagGraphics, this.country, poleX, fy, flagWidth, flagHeight, this.windStrength);
     }
+  }
 
-    // Flag border
-    this.flagGraphics.lineStyle(1, 0x333333, 0.5);
-    this.flagGraphics.strokeRect(fx, fy, flagWidth, flagHeight);
+  /**
+   * Update wind strength and redraw flag if changed significantly
+   */
+  updateWind(windStrength: number): void {
+    if (Math.abs(windStrength - this.windStrength) > 0.05) {
+      this.windStrength = windStrength;
+      this.flagGraphics.clear();
+      this.drawCountryFlag();
+    }
   }
 
   private drawPalace(): void {

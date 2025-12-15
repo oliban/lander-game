@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT } from '../constants';
+import { lerpColor } from '../utils/ColorUtils';
+import { createBubbles, createSmokePuffs } from '../utils/ParticleUtils';
 
 export type SharkState = 'alive' | 'coughing' | 'dead';
 
@@ -58,21 +60,6 @@ export class Shark extends Phaser.GameObjects.Container {
     return Math.min(1, Math.max(0, depth / maxDepth));
   }
 
-  private lerpColor(color1: number, color2: number, t: number): number {
-    const r1 = (color1 >> 16) & 0xff;
-    const g1 = (color1 >> 8) & 0xff;
-    const b1 = color1 & 0xff;
-
-    const r2 = (color2 >> 16) & 0xff;
-    const g2 = (color2 >> 8) & 0xff;
-    const b2 = color2 & 0xff;
-
-    const r = Math.round(r1 + (r2 - r1) * t);
-    const g = Math.round(g1 + (g2 - g1) * t);
-    const b = Math.round(b1 + (b2 - b1) * t);
-
-    return (r << 16) | (g << 8) | b;
-  }
 
   private drawShark(): void {
     // Reuse graphics object - just clear it each frame
@@ -96,9 +83,9 @@ export class Shark extends Phaser.GameObjects.Container {
     const bellyColorShallow = 0xc8d8e8;
     const bellyColorDeep = 0x607080;
 
-    const bodyColor = this.lerpColor(bodyColorShallow, bodyColorDeep, depthTint);
-    const bellyColor = this.lerpColor(bellyColorShallow, bellyColorDeep, depthTint);
-    const finColor = this.lerpColor(0x3a5070, 0x2a3a4a, depthTint);
+    const bodyColor = lerpColor(bodyColorShallow, bodyColorDeep, depthTint);
+    const bellyColor = lerpColor(bellyColorShallow, bellyColorDeep, depthTint);
+    const finColor = lerpColor(0x3a5070, 0x2a3a4a, depthTint);
 
     // Apply scale flip for direction (all drawing is done facing right)
     this.graphics.setScale(isFlipped ? -1 : 1, 1);
@@ -226,7 +213,7 @@ export class Shark extends Phaser.GameObjects.Container {
     }
 
     // === GILL SLITS ===
-    const gillColor = this.lerpColor(0x2a4060, 0x1a2a3a, depthTint);
+    const gillColor = lerpColor(0x2a4060, 0x1a2a3a, depthTint);
     this.graphics.lineStyle(1.5, gillColor, alpha * 0.6);
     for (let i = 0; i < 3; i++) {
       const gx = 14 + i * 4;
@@ -358,38 +345,13 @@ export class Shark extends Phaser.GameObjects.Container {
   }
 
   private spawnFumes(): void {
-    // Create 2-4 fume particles per spawn
-    const fumeCount = 2 + Math.floor(Math.random() * 3);
-
-    for (let i = 0; i < fumeCount; i++) {
-      const fume = this.scene.add.graphics();
-
-      // Green/yellow toxic fumes
-      const fumeColors = [0x90a040, 0xa0b030, 0x80a020, 0xb0c040];
-      const color = fumeColors[Math.floor(Math.random() * fumeColors.length)];
-
-      fume.fillStyle(color, 0.6);
-      const size = 4 + Math.random() * 6;
-      fume.fillCircle(0, 0, size);
-
-      // Spawn from the shark body (belly is up since it's flipped)
-      const offsetX = (Math.random() - 0.5) * 50;
-      fume.setPosition(this.x + offsetX, this.y - 5);
-      fume.setDepth(52); // Above water
-
-      // Float up and dissipate
-      this.scene.tweens.add({
-        targets: fume,
-        y: fume.y - 30 - Math.random() * 40,
-        x: fume.x + (Math.random() - 0.5) * 30,
-        alpha: 0,
-        scaleX: 1.5 + Math.random(),
-        scaleY: 1.5 + Math.random(),
-        duration: 1500 + Math.random() * 1000,
-        ease: 'Quad.easeOut',
-        onComplete: () => fume.destroy(),
-      });
-    }
+    createSmokePuffs(this.scene, this.x, this.y - 5, {
+      colors: [0x90a040, 0xa0b030, 0x80a020, 0xb0c040],
+      minCount: 2,
+      maxCountVariation: 3,
+      spawnSpreadX: 50,
+      depth: 52
+    });
   }
 
   private findNearestFood(foodTargets: { x: number; y: number }[]): void {
@@ -412,25 +374,14 @@ export class Shark extends Phaser.GameObjects.Container {
   }
 
   private spawnCoughBubbles(): void {
-    for (let i = 0; i < 5; i++) {
-      const bubble = this.scene.add.graphics();
-      bubble.fillStyle(0xadd8e6, 0.6);
-      bubble.fillCircle(0, 0, 2 + Math.random() * 3);
-
-      const mouthX = this.x + 35 * this.direction;
-      bubble.setPosition(mouthX, this.y);
-      bubble.setDepth(49);
-
-      this.scene.tweens.add({
-        targets: bubble,
-        y: bubble.y - 40 - Math.random() * 20,
-        x: bubble.x + (Math.random() - 0.5) * 20,
-        alpha: 0,
-        duration: 800 + Math.random() * 400,
-        ease: 'Quad.easeOut',
-        onComplete: () => bubble.destroy(),
-      });
-    }
+    const mouthX = this.x + 35 * this.direction;
+    createBubbles(this.scene, mouthX, this.y, {
+      color: 0xadd8e6,
+      count: 5,
+      minRadius: 2,
+      maxRadius: 5,
+      depth: 49
+    });
   }
 
   canEatBomb(): boolean {
@@ -463,25 +414,18 @@ export class Shark extends Phaser.GameObjects.Container {
   }
 
   private spawnBurpBubbles(): void {
-    for (let i = 0; i < 8; i++) {
-      const bubble = this.scene.add.graphics();
-      bubble.fillStyle(0x90ee90, 0.7); // Light green - food digestion
-      bubble.fillCircle(0, 0, 3 + Math.random() * 4);
-
-      const mouthX = this.x + 35 * this.direction;
-      bubble.setPosition(mouthX, this.y);
-      bubble.setDepth(49);
-
-      this.scene.tweens.add({
-        targets: bubble,
-        y: bubble.y - 60,
-        x: bubble.x + (Math.random() - 0.5) * 30,
-        alpha: 0,
-        duration: 1000 + Math.random() * 500,
-        ease: 'Quad.easeOut',
-        onComplete: () => bubble.destroy(),
-      });
-    }
+    const mouthX = this.x + 35 * this.direction;
+    createBubbles(this.scene, mouthX, this.y, {
+      color: 0x90ee90,
+      count: 8,
+      minRadius: 3,
+      maxRadius: 7,
+      alpha: 0.7,
+      depth: 49,
+      minRiseDistance: 60,
+      maxHorizontalDrift: 30,
+      minDuration: 1000
+    });
   }
 
   getCollisionBounds(): { x: number; y: number; width: number; height: number } {

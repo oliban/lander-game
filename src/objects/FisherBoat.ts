@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT } from '../constants';
+import { createExplosion } from '../utils/ExplosionUtils';
 
 export class FisherBoat extends Phaser.GameObjects.Container {
   public isDestroyed: boolean = false;
@@ -264,75 +265,56 @@ export class FisherBoat extends Phaser.GameObjects.Container {
     const x = this.x;
     const y = this.y - 20;
 
-    // Big explosion flash
-    const flash = scene.add.graphics();
-    flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(0, 0, 50);
-    flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(0, 0, 35);
-    flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(0, 0, 15);
-    flash.setPosition(x, y);
-    flash.setDepth(100);
+    // Create explosion using utility (matching original visual effect)
+    createExplosion(scene, x, y, {
+      // Flash configuration - matching original colors and scale behavior
+      flashColors: [0xFF6600, 0xFFFF00, 0xFFFFFF],
+      flashSizes: [50, 35, 15],
+      duration: 500, // Original had scale: 2.5, duration: 500
 
-    scene.tweens.add({
-      targets: flash,
-      alpha: 0,
-      scale: 2.5,
-      duration: 500,
-      onComplete: () => flash.destroy(),
+      // Debris configuration - wood pieces
+      debrisColors: [0x8B4513, 0xCD853F, 0xDEB887, 0x696969],
+      debrisCount: 12,
+      debrisWidth: 8,
+      debrisHeight: 4,
+      minDistance: 50,
+      maxDistance: 90,
+      gravity: 40,
+
+      shakeCamera: false, // No camera shake for fisher boat
     });
 
-    // Flying debris (wood pieces)
-    const debrisColors = [0x8B4513, 0xCD853F, 0xDEB887, 0x696969];
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const debris = scene.add.graphics();
-      debris.fillStyle(debrisColors[i % debrisColors.length], 1);
-
-      // Random debris shapes
-      if (i % 3 === 0) {
-        debris.fillRect(-4, -2, 8, 4); // Plank
-      } else if (i % 3 === 1) {
-        debris.fillRect(-2, -4, 4, 8); // Vertical plank
-      } else {
-        debris.fillCircle(0, 0, 3); // Round debris
-      }
-
-      debris.setPosition(x, y);
-      debris.setDepth(101);
-
-      const distance = 50 + Math.random() * 40;
-      scene.tweens.add({
-        targets: debris,
-        x: x + Math.cos(angle) * distance,
-        y: y + Math.sin(angle) * distance + 40, // Arc down
-        angle: Math.random() * 720 - 360,
-        alpha: 0,
-        duration: 600 + Math.random() * 200,
-        ease: 'Quad.easeOut',
-        onComplete: () => debris.destroy(),
-      });
-    }
-
-    // Water splash effect
-    for (let i = 0; i < 10; i++) {
-      const splashAngle = -Math.PI / 2 + (Math.random() - 0.5) * 0.8;
-      const splashSpeed = 3 + Math.random() * 5;
+    // Water splash effect (boat-specific)
+    const waterY = this.y + 10; // Near water surface where boat is
+    for (let i = 0; i < 15; i++) {
       const droplet = scene.add.graphics();
-      droplet.fillStyle(0x4169E1, 0.8);
-      droplet.fillCircle(0, 0, 3 + Math.random() * 4);
-      droplet.setPosition(x + (Math.random() - 0.5) * 40, this.baseY);
+      droplet.fillStyle(0x4169E1, 0.9);
+      droplet.fillCircle(0, 0, 4 + Math.random() * 5);
+      const startX = x + (Math.random() - 0.5) * 60;
+      droplet.setPosition(startX, waterY);
       droplet.setDepth(99);
+
+      // Splash upward then fall with gravity
+      const velocityX = (Math.random() - 0.5) * 80;
+      const velocityY = -80 - Math.random() * 60; // Strong upward velocity
 
       scene.tweens.add({
         targets: droplet,
-        x: droplet.x + Math.cos(splashAngle) * splashSpeed * 15,
-        y: droplet.y + Math.sin(splashAngle) * splashSpeed * 20 + 50,
-        alpha: 0,
-        duration: 500 + Math.random() * 300,
+        x: startX + velocityX,
+        y: waterY + velocityY * 0.5, // Rise up
+        duration: 250,
         ease: 'Quad.easeOut',
-        onComplete: () => droplet.destroy(),
+        onComplete: () => {
+          // Fall back down
+          scene.tweens.add({
+            targets: droplet,
+            y: waterY + 30,
+            alpha: 0,
+            duration: 350,
+            ease: 'Quad.easeIn',
+            onComplete: () => droplet.destroy(),
+          });
+        },
       });
     }
 

@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { CANNON_FIRE_RATE, PROJECTILE_SPEED } from '../constants';
+import { createExplosion } from '../utils/ExplosionUtils';
+import { FlagRenderer } from '../utils/FlagRenderer';
 
 // Country-specific projectile sprite keys
 // Map countries to arrays of possible projectile sprites (randomly selected when firing)
@@ -116,16 +118,6 @@ export class Cannon extends Phaser.GameObjects.Container {
     const baseWidth = 24;
     const flagHeight = 16;
 
-    // Wind direction determines which way flag extends
-    // Positive wind = East = flag goes right, Negative wind = West = flag goes left
-    const windDir = this.windStrength >= 0 ? 1 : -1;
-    const windMag = Math.abs(this.windStrength);
-    const windEffect = windMag * 12; // How much the flag waves
-
-    // Flag extends in wind direction from the pole
-    const flagStartX = poleX; // Flag attaches at pole
-    const flagEndX = poleX + (baseWidth + windEffect * 0.5) * windDir;
-
     // Flagpole
     this.flag.lineStyle(3, 0x666666);
     this.flag.lineBetween(poleX, -poleHeight, poleX, 5);
@@ -137,112 +129,8 @@ export class Cannon extends Phaser.GameObjects.Container {
     // Flag Y position (top of flag)
     const fy = -poleHeight + 5;
 
-    // Helper to draw a wind-affected horizontal stripe
-    const drawWindStripe = (color: number, yOffset: number, stripeHeight: number) => {
-      this.flag.fillStyle(color, 1);
-      // Wave effect increases toward the free end
-      const topWave = windEffect * 0.15 * (1 - yOffset / flagHeight * 0.3);
-      const bottomWave = windEffect * 0.15 * (1 - (yOffset + stripeHeight) / flagHeight * 0.3);
-      this.flag.beginPath();
-      this.flag.moveTo(flagStartX, fy + yOffset);
-      this.flag.lineTo(flagEndX, fy + yOffset + topWave * windDir);
-      this.flag.lineTo(flagEndX, fy + yOffset + stripeHeight + bottomWave * windDir);
-      this.flag.lineTo(flagStartX, fy + yOffset + stripeHeight);
-      this.flag.closePath();
-      this.flag.fillPath();
-    };
-
-    // Helper to draw vertical stripe with wind (for France)
-    const drawVerticalStripe = (color: number, stripeIndex: number, numStripes: number) => {
-      this.flag.fillStyle(color, 1);
-      const stripeWidth = Math.abs(flagEndX - flagStartX) / numStripes;
-      const x1 = flagStartX + stripeIndex * stripeWidth * windDir;
-      const x2 = flagStartX + (stripeIndex + 1) * stripeWidth * windDir;
-      const waveAtX1 = windEffect * 0.15 * (stripeIndex / numStripes);
-      const waveAtX2 = windEffect * 0.15 * ((stripeIndex + 1) / numStripes);
-      this.flag.beginPath();
-      this.flag.moveTo(x1, fy + waveAtX1 * windDir);
-      this.flag.lineTo(x2, fy + waveAtX2 * windDir);
-      this.flag.lineTo(x2, fy + flagHeight + waveAtX2 * windDir);
-      this.flag.lineTo(x1, fy + flagHeight + waveAtX1 * windDir);
-      this.flag.closePath();
-      this.flag.fillPath();
-    };
-
-    switch (this.country) {
-      case 'United Kingdom':
-        // Union Jack - blue background with diagonal and straight crosses
-        drawWindStripe(0x012169, 0, flagHeight); // Blue background
-        const ukWaveY = windEffect * 0.15 * windDir;
-        // White diagonals
-        this.flag.lineStyle(3, 0xFFFFFF);
-        this.flag.lineBetween(flagStartX, fy, flagEndX, fy + flagHeight + ukWaveY);
-        this.flag.lineBetween(flagStartX, fy + flagHeight, flagEndX, fy + ukWaveY);
-        // Red diagonals (thinner, on top)
-        this.flag.lineStyle(1.5, 0xC8102E);
-        this.flag.lineBetween(flagStartX, fy, flagEndX, fy + flagHeight + ukWaveY);
-        this.flag.lineBetween(flagStartX, fy + flagHeight, flagEndX, fy + ukWaveY);
-        // White cross
-        const ukMidX = (flagStartX + flagEndX) / 2;
-        const ukMidY = fy + flagHeight / 2 + ukWaveY * 0.5;
-        this.flag.lineStyle(4, 0xFFFFFF);
-        this.flag.lineBetween(ukMidX, fy + ukWaveY * 0.3, ukMidX, fy + flagHeight + ukWaveY * 0.7);
-        this.flag.lineBetween(flagStartX, ukMidY - ukWaveY * 0.2, flagEndX, ukMidY + ukWaveY * 0.3);
-        // Red cross (thinner, on top)
-        this.flag.lineStyle(2, 0xC8102E);
-        this.flag.lineBetween(ukMidX, fy + ukWaveY * 0.3, ukMidX, fy + flagHeight + ukWaveY * 0.7);
-        this.flag.lineBetween(flagStartX, ukMidY - ukWaveY * 0.2, flagEndX, ukMidY + ukWaveY * 0.3);
-        break;
-
-      case 'France':
-        // French tricolor (vertical stripes) - Blue, White, Red from pole outward
-        drawVerticalStripe(0x002395, 0, 3); // Blue
-        drawVerticalStripe(0xFFFFFF, 1, 3); // White
-        drawVerticalStripe(0xED2939, 2, 3); // Red
-        break;
-
-      case 'Switzerland':
-        // Swiss flag - red background with white cross
-        drawWindStripe(0xDA291C, 0, flagHeight); // Red background
-        const swWaveY = windEffect * 0.15 * windDir;
-        // Calculate center accounting for wind direction
-        const swMinX = Math.min(flagStartX, flagEndX);
-        const swMaxX = Math.max(flagStartX, flagEndX);
-        const swMidX = (swMinX + swMaxX) / 2;
-        const swMidY = fy + flagHeight / 2 + swWaveY * 0.5;
-        // White cross (thick)
-        this.flag.lineStyle(5, 0xFFFFFF);
-        this.flag.lineBetween(swMidX, fy + 2 + swWaveY * 0.2, swMidX, fy + flagHeight - 2 + swWaveY * 0.8);
-        this.flag.lineBetween(swMinX + 4, swMidY, swMaxX - 4, swMidY + swWaveY * 0.3);
-        break;
-
-      case 'Germany':
-        // German flag (horizontal stripes)
-        const fh3 = flagHeight / 3;
-        drawWindStripe(0x000000, 0, fh3); // Black
-        drawWindStripe(0xDD0000, fh3, fh3); // Red
-        drawWindStripe(0xFFCC00, fh3 * 2, fh3); // Gold
-        break;
-
-      case 'Poland':
-        // Polish flag (horizontal stripes)
-        drawWindStripe(0xFFFFFF, 0, flagHeight / 2); // White
-        drawWindStripe(0xDC143C, flagHeight / 2, flagHeight / 2); // Red
-        break;
-
-      case 'Russia':
-        // Russian flag (horizontal stripes)
-        const rfh = flagHeight / 3;
-        drawWindStripe(0xFFFFFF, 0, rfh); // White
-        drawWindStripe(0x0039A6, rfh, rfh); // Blue
-        drawWindStripe(0xD52B1E, rfh * 2, rfh); // Red
-        break;
-
-      default:
-        // Generic flag (gray)
-        drawWindStripe(0x888888, 0, flagHeight);
-        break;
-    }
+    // Use FlagRenderer to draw wind-affected flag
+    FlagRenderer.drawWindFlag(this.flag, this.country, poleX, fy, baseWidth, flagHeight, this.windStrength);
   }
 
   setTarget(target: { x: number; y: number }): void {
@@ -363,64 +251,31 @@ export class Cannon extends Phaser.GameObjects.Container {
     const x = this.x;
     const y = this.y - 5;
 
-    // Large explosion flash
-    const flash = scene.add.graphics();
-    flash.fillStyle(0xFF4400, 0.8);
-    flash.fillCircle(x, y, 45);
-    flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(x, y, 35);
-    flash.fillStyle(0xFFAA00, 1);
-    flash.fillCircle(x, y, 25);
-    flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(x, y, 15);
-    flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(x, y, 8);
-
-    scene.tweens.add({
-      targets: flash,
-      alpha: 0,
-      scale: 2.5,
+    // Use ExplosionUtils with custom config matching original visual appearance
+    createExplosion(scene, x, y, {
+      // Large explosion flash with 5 concentric circles
+      flashColors: [0xFF4400, 0xFF6600, 0xFFAA00, 0xFFFF00, 0xFFFFFF],
+      flashSizes: [45, 35, 25, 15, 8],
       duration: 400,
-      onComplete: () => flash.destroy(),
+      // Flying metal debris (turret parts) in turret colors
+      debrisColors: [0x3D4A3D, 0x2F2F2F, 0x8B7355, 0x4A5A4A],
+      debrisCount: 8,
+      debrisWidth: 10,
+      debrisHeight: 6,
+      minDistance: 60,
+      maxDistance: 90,
+      gravity: 30,
+      // Smoke clouds
+      includeSmoke: true,
+      puffCount: 4,
+      smokeColor: 0x444444,
+      smokeAlpha: 0.6,
+      minSize: 15,
+      maxSize: 25,
+      riseDistance: 40,
+      // No camera shake for cannons
+      shakeCamera: false,
     });
-
-    // Flying metal debris (turret parts)
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
-      const debris = scene.add.graphics();
-      // Mix of turret colors
-      const colors = [0x3D4A3D, 0x2F2F2F, 0x8B7355, 0x4A5A4A];
-      debris.fillStyle(colors[i % colors.length], 1);
-      debris.fillRect(-5, -3, 10, 6);
-      debris.setPosition(x, y);
-
-      scene.tweens.add({
-        targets: debris,
-        x: x + Math.cos(angle) * (60 + Math.random() * 30),
-        y: y + Math.sin(angle) * (40 + Math.random() * 20) + 30,
-        angle: Math.random() * 720,
-        alpha: 0,
-        duration: 500 + Math.random() * 200,
-        onComplete: () => debris.destroy(),
-      });
-    }
-
-    // Smoke clouds
-    for (let i = 0; i < 4; i++) {
-      const smoke = scene.add.graphics();
-      smoke.fillStyle(0x444444, 0.6);
-      smoke.fillCircle(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 20, 15 + Math.random() * 10);
-
-      scene.tweens.add({
-        targets: smoke,
-        y: smoke.y - 40,
-        alpha: 0,
-        scale: 2,
-        duration: 800,
-        delay: i * 50,
-        onComplete: () => smoke.destroy(),
-      });
-    }
   }
 
   destroy(): void {

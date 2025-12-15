@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Terrain } from './Terrain';
+import { createExplosionFlash } from '../utils/ExplosionUtils';
 
 export class GolfCart extends Phaser.GameObjects.Container {
   public isDestroyed: boolean = false;
@@ -469,22 +470,11 @@ export class GolfCart extends Phaser.GameObjects.Container {
     const y = this.y - 15;
 
     // Big explosion flash
-    const flash = scene.add.graphics();
-    flash.fillStyle(0xFF6600, 1);
-    flash.fillCircle(0, 0, 45);
-    flash.fillStyle(0xFFFF00, 1);
-    flash.fillCircle(0, 0, 30);
-    flash.fillStyle(0xFFFFFF, 1);
-    flash.fillCircle(0, 0, 12);
-    flash.setPosition(x, y);
-    flash.setDepth(100);
-
-    scene.tweens.add({
-      targets: flash,
-      alpha: 0,
-      scale: 2,
+    createExplosionFlash(scene, x, y, {
+      flashColors: [0xFF6600, 0xFFFF00, 0xFFFFFF],
+      flashSizes: [45, 30, 12],
       duration: 400,
-      onComplete: () => flash.destroy(),
+      depth: 100,
     });
 
     // Flying debris (cart parts, golf clubs, etc.)
