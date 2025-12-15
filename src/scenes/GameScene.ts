@@ -31,6 +31,7 @@ import { BiplaneManager } from '../managers/BiplaneManager';
 import { ProjectileCollisionManager } from '../managers/ProjectileCollisionManager';
 import { SittingDuckManager } from '../managers/SittingDuckManager';
 import { CollisionManager } from '../managers/CollisionManager';
+import { LandingPadManager } from '../managers/LandingPadManager';
 import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
@@ -131,6 +132,7 @@ export class GameScene extends Phaser.Scene {
   private projectileCollisionManager!: ProjectileCollisionManager;
   private sittingDuckManager!: SittingDuckManager;
   private collisionManager!: CollisionManager;
+  private landingPadManager!: LandingPadManager;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -548,6 +550,12 @@ export class GameScene extends Phaser.Scene {
       onTombstoneTerrainCollision: (body) => this.tombstoneManager.resetJuggle(body),
     });
     this.collisionManager.initialize();
+
+    // Initialize landing pad manager
+    this.landingPadManager = new LandingPadManager(this, {
+      getLandingPads: () => this.landingPads,
+      getWindStrength: () => this.weatherManager.getWindStrength(),
+    });
 
     // Start UI scene
     this.scene.launch('UIScene', {
@@ -2262,9 +2270,7 @@ export class GameScene extends Phaser.Scene {
     const windStrength = this.weatherManager.getWindStrength();
 
     // Update landing pad flags with wind
-    for (const pad of this.landingPads) {
-      pad.updateWind(windStrength);
-    }
+    this.landingPadManager.update();
 
     // Apply wind force to shuttles (only when airborne)
     const WIND_FORCE = 0.0015; // About 25% of THRUST_POWER (0.006)
