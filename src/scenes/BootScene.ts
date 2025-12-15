@@ -166,6 +166,9 @@ export class BootScene extends Phaser.Scene {
       this.load.audio(`music_${track}`, `assets/audio/music_${track}.mp3`);
     }
 
+    // Victory fanfare
+    this.load.audio('fanfare', 'assets/audio/fanfare.mp3');
+
     // Medal house images
     for (let i = 0; i < 2; i++) {
       this.load.image(`medal_house_${i}`, `assets/images/medal_house/FIFA_buildings_${i}.png`);

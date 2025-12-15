@@ -2434,8 +2434,8 @@ export class GameScene extends Phaser.Scene {
     shuttle.setAngularVelocity(0);
     shuttle.setRotation(0);
 
-    if (pad.isFinalDestination) {
-      // Victory!
+    if (pad.isFinalDestination && this.gameMode !== 'dogfight') {
+      // Victory! (disabled in dogfight mode - only kills count)
       const elapsedTime = this.getElapsedTime();
       const inventory = this.inventorySystem.getAllItems();
 
@@ -6433,6 +6433,10 @@ export class GameScene extends Phaser.Scene {
 
     // Freeze gameplay
     this.gameState = 'victory';
+
+    // Fade out country music and play victory fanfare
+    this.musicManager.fadeOutAndStop(1500);
+    this.sound.play('fanfare', { volume: 0.8 });
 
     // Dark overlay
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7)

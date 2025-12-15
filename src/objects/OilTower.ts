@@ -43,10 +43,6 @@ export class OilTower {
     this.graphics.lineBetween(towerX - 10, baseY - 15, towerX + 10, baseY - 15);
     this.graphics.lineBetween(towerX - 6, baseY - 30, towerX + 6, baseY - 30);
 
-    // Top cap
-    this.graphics.fillStyle(0x333333, 1);
-    this.graphics.fillCircle(towerX, baseY - 50, 5);
-
     // Base platform
     this.graphics.fillStyle(0x666666, 1);
     this.graphics.fillRect(towerX - 18, baseY - 3, 36, 6);
