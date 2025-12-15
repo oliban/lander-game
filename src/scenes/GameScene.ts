@@ -388,8 +388,8 @@ export class GameScene extends Phaser.Scene {
 
     // Initialize power-up manager
     this.powerUpManager = new PowerUpManager(this, {
-      getShuttle: () => this.shuttle,
-      getShuttle2: () => this.shuttle2,
+      getShuttle: () => this.players[0]?.shuttle ?? null,
+      getShuttle2: () => this.players[1]?.shuttle ?? null,
       getTimeNow: () => this.time.now,
       flashCamera: (duration, r, g, b) => this.cameras.main.flash(duration, r, g, b),
     });
@@ -543,8 +543,8 @@ export class GameScene extends Phaser.Scene {
 
     // Set up collision detection
     this.collisionManager = new CollisionManager(this, {
-      getShuttle1BodyId: () => this.shuttle?.body ? (this.shuttle.body as MatterJS.BodyType).id : -1,
-      getShuttle2BodyId: () => this.shuttle2?.body ? (this.shuttle2.body as MatterJS.BodyType).id : -1,
+      getShuttle1BodyId: () => this.players[0]?.shuttle?.body ? (this.players[0].shuttle.body as MatterJS.BodyType).id : -1,
+      getShuttle2BodyId: () => this.players[1]?.shuttle?.body ? (this.players[1].shuttle.body as MatterJS.BodyType).id : -1,
       onTerrainCollision: (playerNum) => this.handleTerrainCollision(playerNum),
       onLandingPadCollision: (pad, playerNum) => this.handleLandingPadCollision(pad, playerNum),
       onBoatDeckCollision: (playerNum) => this.handleBoatDeckCollision(playerNum),
@@ -716,7 +716,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameState !== 'playing') return;
     if (shuttle.isDebugMode()) return; // Invulnerable in debug mode
 
-    const playerNum = shuttle === this.shuttle2 ? 2 : 1;
+    const playerNum = shuttle.getPlayerIndex() + 1; // Convert 0-based to 1-based
     const vel = shuttle.body?.velocity || { x: 0, y: 0 };
     console.log(`[DEATH] P${playerNum} died: "Struck by lightning!" | Cause: lightning | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)})`);
 
