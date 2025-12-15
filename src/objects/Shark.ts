@@ -31,6 +31,10 @@ export class Shark extends DestructibleObject {
   // Food attraction
   private targetFood: { x: number; y: number } | null = null;
 
+  // Food eaten counter - dies after eating too much
+  private foodEaten: number = 0;
+  private readonly FATAL_FOOD_COUNT = 5;
+
   // Dead shark fumes
   private reachedSurface: boolean = false;
   private surfaceTimer: number = 0;
@@ -361,6 +365,9 @@ export class Shark extends DestructibleObject {
   }
 
   eatBomb(): void {
+    // Track food eaten
+    this.foodEaten++;
+
     const gulp = this.scene.add.graphics();
     gulp.fillStyle(0xffff00, 0.5);
     gulp.fillCircle(0, 0, 15);
@@ -379,8 +386,21 @@ export class Shark extends DestructibleObject {
     this.scene.time.delayedCall(400, () => {
       if (!this.isDestroyed) {
         this.spawnBurpBubbles();
+
+        // Check if shark ate too much and dies
+        if (this.foodEaten >= this.FATAL_FOOD_COUNT && this.state !== 'dead') {
+          this.dieFromOvereating();
+        }
       }
     });
+  }
+
+  /**
+   * Shark dies from eating too much food
+   */
+  private dieFromOvereating(): void {
+    this.state = 'dead';
+    this.floatProgress = 0;
   }
 
   private spawnBurpBubbles(): void {

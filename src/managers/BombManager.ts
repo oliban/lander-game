@@ -272,6 +272,13 @@ export class BombManager {
         continue;
       }
 
+      // Check collision with sharks
+      bombDestroyed = this.checkSharkCollisions(bomb, bombX, bombY, sharks);
+      if (bombDestroyed) {
+        this.bombs.splice(i, 1);
+        continue;
+      }
+
       // Check collision with terrain
       const terrainY = this.callbacks.getTerrainHeightAt(bombX);
       if (bombY >= terrainY - 5) {
@@ -601,6 +608,44 @@ export class BombManager {
       this.callbacks.applyExplosionShockwave(bombX, bombY);
 
       return true;
+    }
+    return false;
+  }
+
+  private checkSharkCollisions(
+    bomb: Bomb,
+    bombX: number,
+    bombY: number,
+    sharks: Shark[]
+  ): boolean {
+    for (const shark of sharks) {
+      if (shark.isDestroyed) continue;
+
+      const bounds = shark.getCollisionBounds();
+
+      if (
+        bombX >= bounds.x &&
+        bombX <= bounds.x + bounds.width &&
+        bombY >= bounds.y &&
+        bombY <= bounds.y + bounds.height
+      ) {
+        bomb.explode(this.scene);
+
+        const { name, points } = shark.explode();
+
+        // Award points for bombing shark (500 points whether alive or dead)
+        const awardPoints = points > 0 ? points : 500;
+        this.callbacks.addDestructionScore(awardPoints);
+        this.callbacks.addDestroyedBuilding({ name, points: awardPoints });
+        this.callbacks.showDestructionPoints(shark.x, shark.y - 30, awardPoints, name);
+
+        const explosionNum = Math.floor(Math.random() * 3) + 1;
+        this.callbacks.playSound(`explosion${explosionNum}`, { volume: 0.4 });
+
+        this.callbacks.applyExplosionShockwave(bombX, bombY);
+
+        return true;
+      }
     }
     return false;
   }
