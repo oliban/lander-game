@@ -23,6 +23,11 @@ import { ScorchMarkManager } from '../managers/ScorchMarkManager';
 import { TombstoneManager } from '../managers/TombstoneManager';
 import { BombManager } from '../managers/BombManager';
 import { CarriedItemManager } from '../managers/CarriedItemManager';
+import { PowerUpManager } from '../managers/PowerUpManager';
+import { PropagandaManager } from '../managers/PropagandaManager';
+import { EpsteinFilesManager } from '../managers/EpsteinFilesManager';
+import { DogfightManager } from '../managers/DogfightManager';
+import { EntityManager } from '../managers/EntityManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -68,15 +73,8 @@ export class GameScene extends Phaser.Scene {
   private invulnerable: boolean = true; // Brief invulnerability at start
   private gameStartTime: number = 0; // Track when game started for timer
 
-  // Power-up states
-  private cannonsBribed: boolean = false;
-  private bribeEndTime: number = 0;
-  private hasSpeedBoost: boolean = false;
-  private speedBoostEndTime: number = 0;
-  private speedBoostPlayer: number = 1; // Which player has the speed boost
-  private bribeGraphics: Phaser.GameObjects.Graphics | null = null;
-  private speedBoostTrail: Phaser.GameObjects.Graphics | null = null;
-  private tieSegments: { x: number; y: number }[] = []; // For floppy tie physics
+  // Power-up manager (bribe cannons, speed boost)
+  private powerUpManager!: PowerUpManager;
 
   // Sitting duck detection
   private sittingDuckStartTime: number = 0;
@@ -123,13 +121,15 @@ export class GameScene extends Phaser.Scene {
 
   // Golf cart in USA
   private golfCart: GolfCart | null = null;
-  private epsteinFiles: Phaser.GameObjects.Container[] = [];
+  private epsteinFilesManager!: EpsteinFilesManager;
 
   // Propaganda biplane
   private biplane: Biplane | null = null;
-  private propagandaBanners: Phaser.GameObjects.Container[] = [];
   private biplaneTargetCountry: string | null = null; // Country where biplane will spawn when player enters
   private biplaneSpawned: boolean = false;
+  private propagandaManager!: PropagandaManager;
+  private dogfightManager!: DogfightManager;
+  private entityManager!: EntityManager;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -313,9 +313,12 @@ export class GameScene extends Phaser.Scene {
         this.handleShuttleCrash(playerNum, message, cause),
       getGameMode: () => this.gameMode,
       getPlayerCount: () => this.playerCount,
-      showDogfightWinner: () => this.showDogfightWinner(),
+      showDogfightWinner: () => this.dogfightManager.showWinner(this.p1Kills, this.p2Kills),
       getKillCounts: () => ({ p1Kills: this.p1Kills, p2Kills: this.p2Kills }),
       addSunkenFood: (foodData) => this.sunkenFood.push(foodData),
+      spawnEpsteinFiles: (positions) => this.epsteinFilesManager?.spawnFiles(positions),
+      spawnPropagandaBanner: (x, y, propagandaType, message, accentColor) =>
+        this.propagandaManager?.spawnBanner(x, y, propagandaType, message, accentColor),
     });
     this.bombManager.initialize();
 
@@ -325,23 +328,26 @@ export class GameScene extends Phaser.Scene {
     });
     this.carriedItemManager.initialize();
 
-    // Create fisherboat in Atlantic Ocean (center of Atlantic at x ~3500)
-    this.fisherBoat = new FisherBoat(this, 3500);
-    // 15% chance the boat has a "fish" package
-    this.fisherBoat.hasFishPackage = Math.random() < 0.15;
+    // Initialize entity manager (sharks, fisher boat, golf cart, greenland ice)
+    this.entityManager = new EntityManager(this, {
+      getShuttles: () => this.shuttles,
+      getSunkenFood: () => this.sunkenFood,
+      getBombs: () => this.bombManager.getBombs(),
+      removeSunkenFood: (index: number) => this.sunkenFood.splice(index, 1),
+      getWaveOffset: () => this.terrain.getWaveOffset(),
+      getWaterPollutionLevel: () => this.scorchMarkManager.getWaterPollutionLevel(),
+      getCameraBounds: () => ({
+        left: this.cameras.main.scrollX - 400,
+        right: this.cameras.main.scrollX + GAME_WIDTH + 400,
+      }),
+    });
+    this.entityManager.initialize(this.gameMode);
 
-    // Create sharks in Atlantic Ocean
-    this.spawnSharks();
-
-    // Create Greenland ice block in Atlantic Ocean (not in dogfight mode)
-    if (this.gameMode !== 'dogfight') {
-      this.spawnGreenlandIce();
-    }
-
-    // Create golf cart in USA section (patrols x: 800-1200) - 1/3 chance to spawn
-    if (Math.random() < 0.33) {
-      this.golfCart = new GolfCart(this, 1000, 800, 1200);
-    }
+    // Set local references to entities (for backward compatibility)
+    this.fisherBoat = this.entityManager.getFisherBoat();
+    this.sharks = this.entityManager.getSharks();
+    this.golfCart = this.entityManager.getGolfCart();
+    this.greenlandIce = this.entityManager.getGreenlandIce();
 
     // Pick biplane type: 30% chance for info plane, 70% for country propaganda
     if (Math.random() < 0.3) {
@@ -362,14 +368,44 @@ export class GameScene extends Phaser.Scene {
     this.destructionScore = 0;
     this.destroyedBuildings = [];
 
-    // Reset power-up states (Phaser may reuse scene instances)
-    this.cannonsBribed = false;
-    this.bribeEndTime = 0;
-    this.hasSpeedBoost = false;
-    this.speedBoostEndTime = 0;
-    this.speedBoostPlayer = 1;
-    this.bribeGraphics = null;
-    this.speedBoostTrail = null;
+    // Initialize power-up manager
+    this.powerUpManager = new PowerUpManager(this, {
+      getShuttle: () => this.shuttle,
+      getShuttle2: () => this.shuttle2,
+      getTimeNow: () => this.time.now,
+      flashCamera: (duration, r, g, b) => this.cameras.main.flash(duration, r, g, b),
+    });
+    this.powerUpManager.initialize();
+
+    // Initialize propaganda manager (handles dropped banners from biplanes)
+    this.propagandaManager = new PropagandaManager(this, {
+      getShuttle: () => this.shuttle,
+      getTerrainHeightAt: (x) => this.terrain.getHeightAt(x),
+      getInventorySystem: () => this.inventorySystem,
+      playBoingSound: () => this.playBoingSound(),
+    });
+    this.propagandaManager.initialize();
+
+    // Initialize Epstein files manager (handles files dropped from golf cart)
+    this.epsteinFilesManager = new EpsteinFilesManager(this, {
+      getShuttle: () => this.shuttle,
+      getTerrainHeightAt: (x) => this.terrain.getHeightAt(x),
+      getInventorySystem: () => this.inventorySystem,
+      playBoingSound: () => this.playBoingSound(),
+    });
+    this.epsteinFilesManager.initialize();
+
+    // Initialize dogfight manager (handles dogfight mode specific logic)
+    this.dogfightManager = new DogfightManager(this, {
+      getShuttles: () => this.shuttles,
+      getLandingPads: () => this.landingPads,
+      getMusicManager: () => this.musicManager,
+      playSound: (key, config) => this.sound.play(key, config),
+      setGameState: (state) => { this.gameState = state as GameState; },
+      stopUIScene: () => this.scene.stop('UIScene'),
+      restartScene: (data) => this.scene.restart(data),
+      startMenuScene: () => this.scene.start('MenuScene'),
+    });
 
     // Reset other state
     this.sittingDuckStartTime = 0;
@@ -722,89 +758,6 @@ export class GameScene extends Phaser.Scene {
         const towerX = padData.x + padData.width / 2 + 35;
         const oilTower = new OilTower(this, towerX, terrainY, countryName);
         this.oilTowers.push(oilTower);
-      }
-    }
-  }
-
-  private spawnSharks(): void {
-    const atlanticStart = 2000;
-    const atlanticEnd = 5000;
-    const sharkCount = 2 + Math.floor(Math.random() * 2); // 2-3 sharks
-
-    // Divide Atlantic into zones to spread sharks out
-    const zoneWidth = (atlanticEnd - atlanticStart) / sharkCount;
-
-    for (let i = 0; i < sharkCount; i++) {
-      const zoneStart = atlanticStart + i * zoneWidth;
-      const zoneEnd = zoneStart + zoneWidth;
-
-      // Spawn in center of zone with some randomness
-      const x = zoneStart + zoneWidth * 0.5 + (Math.random() - 0.5) * zoneWidth * 0.3;
-
-      // Patrol within zone (with some overlap allowed)
-      const patrolMinX = zoneStart + 50;
-      const patrolMaxX = zoneEnd - 50;
-
-      const shark = new Shark(this, x, patrolMinX, patrolMaxX);
-      this.sharks.push(shark);
-    }
-  }
-
-  private spawnGreenlandIce(): void {
-    // Positions to avoid:
-    // - Fisher boat at x=3500 (avoid 3400-3600)
-    // - Mid-Atlantic Platform at x=4300 (avoid 4200-4400)
-    // Valid spawn zones: 2800-3400 or 3600-4100
-    const zones = [
-      { min: 2800, max: 3400 },  // Before fisher boat
-      { min: 3600, max: 4100 },  // After fisher boat, before oil platform
-    ];
-    const zone = zones[Math.floor(Math.random() * zones.length)];
-    const x = zone.min + Math.random() * (zone.max - zone.min);
-    this.greenlandIce = new GreenlandIce(this, x);
-  }
-
-  private getFoodTargetsInOcean(): { x: number; y: number }[] {
-    const targets: { x: number; y: number }[] = [];
-    const waterSurface = GAME_HEIGHT * 0.75;
-
-    // Add sunken food positions
-    for (const food of this.sunkenFood) {
-      // Check food exists and has valid sprite
-      if (food && food.sprite && food.sprite.active && food.x !== undefined && food.y !== undefined) {
-        targets.push({ x: food.x, y: food.y });
-      }
-    }
-
-    // Add currently falling bombs that are in Atlantic Ocean and underwater
-    for (const bomb of this.bombManager.getBombs()) {
-      // Check bomb exists and hasn't been destroyed (body might be null after explosion)
-      if (bomb && bomb.active && bomb.body && bomb.x >= 2000 && bomb.x <= 5000 && bomb.y > waterSurface) {
-        targets.push({ x: bomb.x, y: bomb.y });
-      }
-    }
-
-    return targets;
-  }
-
-  private checkSharkEatsSunkenFood(shark: Shark): void {
-    if (!shark.canEatBomb()) return;
-
-    const eatingBounds = shark.getEatingBounds();
-
-    for (let i = this.sunkenFood.length - 1; i >= 0; i--) {
-      const food = this.sunkenFood[i];
-      if (
-        food.x >= eatingBounds.x &&
-        food.x <= eatingBounds.x + eatingBounds.width &&
-        food.y >= eatingBounds.y &&
-        food.y <= eatingBounds.y + eatingBounds.height
-      ) {
-        // Shark eats the food!
-        shark.eatBomb();
-        food.sprite.destroy();
-        this.sunkenFood.splice(i, 1);
-        break; // Only eat one at a time
       }
     }
   }
@@ -1652,106 +1605,31 @@ export class GameScene extends Phaser.Scene {
         shuttle.setMass(5); // Reset to normal mass (no medal)
       }
 
-      // In debug mode, show trading dialogue. Otherwise auto-trade
-      if (shuttle.wasDebugModeUsed()) {
-        this.scene.pause();
-        this.scene.launch('TradingScene', {
-          inventorySystem: this.inventorySystem,
-          fuelSystem: this.fuelSystem,
-          padName: pad.name,
-          landingQuality: landingResult.quality,
-          onScoreChange: (delta: number) => {
-            this.destructionScore += delta;
-            this.events.emit('destructionScore', this.destructionScore);
-          },
-          onComplete: () => {
-            this.scene.resume();
-            this.gameState = 'playing';
-          },
-        });
-      } else {
-        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
-        this.gameState = 'playing';
-      }
+      // Auto-trade
+      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+      const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+      const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+      this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+      this.gameState = 'playing';
     } else if (pad.isWashington && !this.carriedItemManager.getHasPeaceMedal() && this.gameMode !== 'dogfight') {
       // Pick up the Peace Medal at Washington! (not in dogfight mode)
       pad.hidePeaceMedal();
       this.carriedItemManager.pickupPeaceMedal(shuttle);
 
-      // In debug mode, show trading dialogue. Otherwise auto-trade (like 2-player mode)
-      if (shuttle.wasDebugModeUsed()) {
-        // Open trading scene at Washington too (debug mode)
-        this.scene.pause();
-        this.scene.launch('TradingScene', {
-          inventorySystem: this.inventorySystem,
-          fuelSystem: this.fuelSystem,
-          padName: pad.name,
-          landingQuality: landingResult.quality,
-          onScoreChange: (delta: number) => {
-            this.destructionScore += delta;
-            this.events.emit('destructionScore', this.destructionScore);
-          },
-          onComplete: () => {
-            this.scene.resume();
-            this.gameState = 'playing';
-          },
-        });
-      } else {
-        // Auto-trade without pausing (normal single-player and 2-player)
-        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
-        this.gameState = 'playing';
-      }
+      // Auto-trade
+      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+      const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+      const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+      this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+      this.gameState = 'playing';
     } else {
-      // In debug mode, show trading dialogue. Otherwise auto-trade (like 2-player mode)
-      if (shuttle.wasDebugModeUsed()) {
-        // Open trading scene (debug mode)
-        this.scene.pause();
-        this.scene.launch('TradingScene', {
-          inventorySystem: this.inventorySystem,
-          fuelSystem: this.fuelSystem,
-          padName: pad.name,
-          landingQuality: landingResult.quality,
-          onScoreChange: (delta: number) => {
-            this.destructionScore += delta;
-            this.events.emit('destructionScore', this.destructionScore);
-          },
-          onComplete: () => {
-            this.scene.resume();
-            this.gameState = 'playing';
-          },
-        });
-      } else {
-        // Auto-trade without pausing (normal single-player and 2-player)
-        const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-        const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-        const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-        this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
-        this.gameState = 'playing';
-      }
+      // Auto-trade
+      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+      const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
+      const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
+      this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+      this.gameState = 'playing';
     }
-  }
-
-  private checkBoatProximity(): void {
-    if (!this.fisherBoat || this.fisherBoat.isDestroyed) return;
-
-    // Check if any shuttle is close to the boat (within 150px horizontally and 100px vertically)
-    let shuttleNearby = false;
-    for (const shuttle of this.shuttles) {
-      if (!shuttle.active) continue;
-      const horizDist = Math.abs(shuttle.x - this.fisherBoat.x);
-      const vertDist = Math.abs(shuttle.y - this.fisherBoat.y);
-      if (horizDist < 150 && vertDist < 100) {
-        shuttleNearby = true;
-        break;
-      }
-    }
-    this.fisherBoat.shuttleNearby = shuttleNearby;
   }
 
   private handleBoatDeckCollision(playerNum: number = 1): void {
@@ -1969,12 +1847,12 @@ export class GameScene extends Phaser.Scene {
       // If both dead, no kill awarded
 
       // Check for winner
-      if (this.p1Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN || this.p2Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN) {
-        this.showDogfightWinner();
+      if (this.dogfightManager.checkForWinner(this.p1Kills, this.p2Kills)) {
+        this.dogfightManager.showWinner(this.p1Kills, this.p2Kills);
         return;
       }
       // Quick restart for any death
-      this.quickRestartDogfight();
+      this.dogfightManager.quickRestart(this.p1Kills, this.p2Kills);
       return;
     }
 
@@ -2108,9 +1986,9 @@ export class GameScene extends Phaser.Scene {
 
     // Check for special power-ups
     if (collectible.special === 'bribe_cannons') {
-      this.activateBribeCannons();
+      this.powerUpManager.activateBribeCannons();
     } else if (collectible.special === 'speed_boost') {
-      this.activateSpeedBoost(playerNum);
+      this.powerUpManager.activateSpeedBoost(playerNum);
     } else if (collectible.special === 'fuel_boost') {
       // Covfefe gives instant 10% fuel
       const fuelToAdd = fuelSys.getMaxFuel() * 0.1;
@@ -2175,131 +2053,6 @@ export class GameScene extends Phaser.Scene {
     if (index > -1) {
       this.collectibles.splice(index, 1);
     }
-  }
-
-  private activateBribeCannons(): void {
-    const duration = 10000; // 10 seconds of bribed cannons
-    this.cannonsBribed = true;
-    this.bribeEndTime = this.time.now + duration;
-
-    // Sound is played by playPickupSound()
-
-    // Create bribe graphics (dollar signs floating)
-    if (!this.bribeGraphics) {
-      this.bribeGraphics = this.add.graphics();
-      this.bribeGraphics.setDepth(100);
-    }
-
-    // Show "CANNONS BRIBED!" text floating
-    const bribeText = this.add.text(this.shuttle.x, this.shuttle.y - 60, 'CANNONS BRIBED!', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '22px',
-      color: '#228B22',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 3,
-    });
-    bribeText.setOrigin(0.5, 0.5);
-
-    // Second line - the joke
-    const subText = this.add.text(this.shuttle.x, this.shuttle.y - 35, '"The art of the deal!"', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '14px',
-      color: '#FFD700',
-      fontStyle: 'italic',
-      stroke: '#000000',
-      strokeThickness: 2,
-    });
-    subText.setOrigin(0.5, 0.5);
-
-    this.tweens.add({
-      targets: [bribeText, subText],
-      y: '-=50',
-      alpha: 0,
-      duration: 2500,
-      onComplete: () => {
-        bribeText.destroy();
-        subText.destroy();
-      },
-    });
-
-    // Make dollar signs rain from top
-    for (let i = 0; i < 20; i++) {
-      this.time.delayedCall(i * 100, () => {
-        const dollarSign = this.add.text(
-          this.shuttle.x + (Math.random() - 0.5) * 200,
-          this.shuttle.y - 100,
-          '$',
-          {
-            fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '24px',
-            color: '#228B22',
-            fontStyle: 'bold',
-          }
-        );
-        dollarSign.setOrigin(0.5, 0.5);
-
-        this.tweens.add({
-          targets: dollarSign,
-          y: dollarSign.y + 150,
-          alpha: 0,
-          angle: Math.random() * 360,
-          duration: 1000,
-          onComplete: () => dollarSign.destroy(),
-        });
-      });
-    }
-
-    // Flash effect (green for money)
-    this.cameras.main.flash(300, 34, 139, 34);
-  }
-
-  private activateSpeedBoost(playerNum: number = 1): void {
-    const duration = 6000; // 6 seconds of speed boost
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
-
-    this.hasSpeedBoost = true;
-    this.speedBoostEndTime = this.time.now + duration;
-    this.speedBoostPlayer = playerNum; // Track which player has the boost
-
-    // Sound is played by playPickupSound()
-
-    // Modify shuttle thrust temporarily
-    shuttle.setThrustMultiplier(1.8);
-
-    // Create speed trail effect (floppy tie)
-    if (!this.speedBoostTrail) {
-      this.speedBoostTrail = this.add.graphics();
-      this.speedBoostTrail.setDepth(45);
-    }
-
-    // Initialize tie segments at shuttle position
-    this.tieSegments = [];
-    for (let i = 0; i < 8; i++) {
-      this.tieSegments.push({ x: shuttle.x, y: shuttle.y + i * 6 });
-    }
-
-    // Show "SPEED BOOST" text
-    const speedText = this.add.text(shuttle.x, shuttle.y - 60, 'RED TIE POWER!', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '18px',
-      color: '#DC143C',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 3,
-    });
-    speedText.setOrigin(0.5, 0.5);
-
-    this.tweens.add({
-      targets: speedText,
-      y: speedText.y - 40,
-      alpha: 0,
-      duration: 2000,
-      onComplete: () => speedText.destroy(),
-    });
-
-    // Flash effect
-    this.cameras.main.flash(300, 220, 20, 60);
   }
 
   // Play a sound only if it's not already playing (prevents overlap of same sound)
@@ -2564,370 +2317,6 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('destructionScore', this.destructionScore);
   }
 
-  private spawnEpsteinFiles(positions: { x: number; y: number }[]): void {
-    // Spawn collectible Epstein Files at the given positions
-    for (const pos of positions) {
-      // Create a file document graphic
-      const file = this.add.container(pos.x, pos.y);
-      file.setDepth(50);
-      file.setData('collected', false);
-
-      // File folder graphic
-      const folder = this.add.graphics();
-      // Folder tab
-      folder.fillStyle(0xDEB887, 1); // Burlywood (manila)
-      folder.fillRoundedRect(-12, -18, 10, 5, 2);
-      // Main folder
-      folder.fillStyle(0xF5DEB3, 1); // Wheat (manila folder)
-      folder.fillRoundedRect(-15, -15, 30, 22, 3);
-      // Folder outline
-      folder.lineStyle(1, 0xCD853F, 1);
-      folder.strokeRoundedRect(-15, -15, 30, 22, 3);
-      // "CLASSIFIED" text line
-      folder.fillStyle(0x8B0000, 1);
-      folder.fillRect(-10, -8, 20, 3);
-      // Document lines
-      folder.fillStyle(0x333333, 0.3);
-      folder.fillRect(-10, -2, 18, 2);
-      folder.fillRect(-10, 2, 15, 2);
-
-      file.add(folder);
-
-      // "EPSTEIN" label
-      const label = this.add.text(0, -5, 'EPSTEIN', {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '6px',
-        color: '#8B0000',
-        fontStyle: 'bold',
-      });
-      label.setOrigin(0.5, 0.5);
-      file.add(label);
-
-      // Track this file for pickup detection
-      this.epsteinFiles.push(file);
-
-      // Animate file scattering then floating down to terrain
-      const scatterX = pos.x + (Math.random() - 0.5) * 100;
-      const scatterY = pos.y - 50 - Math.random() * 30;
-      const terrainY = this.terrain.getHeightAt(scatterX) - 15; // Land on terrain
-
-      // First scatter upward
-      this.tweens.add({
-        targets: file,
-        x: scatterX,
-        y: scatterY,
-        angle: (Math.random() - 0.5) * 60,
-        duration: 400,
-        ease: 'Quad.easeOut',
-        onComplete: () => {
-          // Then float down to terrain level
-          this.tweens.add({
-            targets: file,
-            y: terrainY,
-            angle: file.angle + (Math.random() - 0.5) * 20,
-            duration: 2000,
-            ease: 'Bounce.easeOut',
-            onComplete: () => {
-              // File is now on the ground - stay there for a while
-              file.setData('grounded', true);
-
-              // Fade out after 10 seconds if not collected
-              this.time.delayedCall(10000, () => {
-                if (file && file.active && !file.getData('collected')) {
-                  // Remove from tracking and fade out
-                  const idx = this.epsteinFiles.indexOf(file);
-                  if (idx >= 0) {
-                    this.epsteinFiles.splice(idx, 1);
-                  }
-
-                  this.tweens.add({
-                    targets: file,
-                    alpha: 0,
-                    duration: 500,
-                    onComplete: () => file.destroy(),
-                  });
-                }
-              });
-            },
-          });
-        },
-      });
-    }
-  }
-
-  private updateEpsteinFiles(): void {
-    // Check for shuttle proximity to collect files - must be landed!
-    const pickupRadius = 60; // Must be close to pick up
-
-    // Check if shuttle is landed (very low velocity and on ground)
-    const velocity = this.shuttle.getVelocity();
-    const isLanded = velocity.total < 0.5;
-
-    for (let i = this.epsteinFiles.length - 1; i >= 0; i--) {
-      const file = this.epsteinFiles[i];
-      if (!file || !file.active || file.getData('collected')) continue;
-
-      const dx = this.shuttle.x - file.x;
-      const dy = this.shuttle.y - file.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < pickupRadius && isLanded) {
-        // Mark as collected
-        file.setData('collected', true);
-
-        // Play boing sound
-        this.playBoingSound();
-
-        // Add to cargo inventory
-        this.inventorySystem.add('EPSTEIN_FILES');
-
-        // Track in collection
-        const collectionSystem = getCollectionSystem();
-        collectionSystem.markDiscovered('EPSTEIN_FILES');
-
-        // Show pickup text
-        const pickupText = this.add.text(file.x, file.y - 20, '+1 EPSTEIN FILES', {
-          fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '12px',
-          color: '#8B0000',
-          fontStyle: 'bold',
-          stroke: '#FFFFFF',
-          strokeThickness: 2,
-        });
-        pickupText.setOrigin(0.5, 0.5);
-        pickupText.setDepth(150);
-
-        this.tweens.add({
-          targets: pickupText,
-          y: '-=30',
-          alpha: 0,
-          duration: 1500,
-          onComplete: () => pickupText.destroy(),
-        });
-
-        // Quick collect animation - file flies to shuttle
-        this.tweens.killTweensOf(file); // Stop floating
-        this.tweens.add({
-          targets: file,
-          x: this.shuttle.x,
-          y: this.shuttle.y,
-          scale: 0,
-          alpha: 0,
-          duration: 300,
-          ease: 'Quad.easeIn',
-          onComplete: () => {
-            const idx = this.epsteinFiles.indexOf(file);
-            if (idx >= 0) {
-              this.epsteinFiles.splice(idx, 1);
-            }
-            file.destroy();
-          },
-        });
-      }
-    }
-  }
-
-  private spawnPropagandaBanner(startX: number, startY: number, propagandaType: string, message: string, accentColor: number): void {
-    // Create banner container
-    const banner = this.add.container(startX, startY);
-    banner.setDepth(50);
-    banner.setData('collected', false);
-    banner.setData('grounded', false);
-    banner.setData('sinking', false);
-    banner.setData('propagandaType', propagandaType);
-
-    // Banner graphic - tattered shape
-    const bannerGraphics = this.add.graphics();
-    const bw = 70;
-
-    bannerGraphics.fillStyle(0xFFFFF5, 0.9);
-    bannerGraphics.beginPath();
-    bannerGraphics.moveTo(-bw / 2, -8);
-    bannerGraphics.lineTo(bw / 2 - 8, -10);
-    bannerGraphics.lineTo(bw / 2, 6);
-    bannerGraphics.lineTo(bw / 2 - 15, 10);
-    bannerGraphics.lineTo(-bw / 2 + 5, 8);
-    bannerGraphics.lineTo(-bw / 2, -8);
-    bannerGraphics.closePath();
-    bannerGraphics.fillPath();
-
-    bannerGraphics.lineStyle(2, accentColor, 0.8);
-    bannerGraphics.strokePath();
-
-    banner.add(bannerGraphics);
-
-    // Add truncated message text
-    const shortMessage = message.length > 12 ? message.substring(0, 12) + '...' : message;
-    const msgText = this.add.text(0, 0, shortMessage, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '7px',
-      color: '#333333',
-      fontStyle: 'bold',
-    });
-    msgText.setOrigin(0.5, 0.5);
-    banner.add(msgText);
-
-    this.propagandaBanners.push(banner);
-
-    // Calculate terrain landing position
-    const terrainY = this.terrain.getHeightAt(startX) - 15;
-
-    // Check if landing in water (Atlantic Ocean)
-    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
-    const isOverWater = startX >= atlanticStart && startX < atlanticEnd;
-
-    // Falling leaf animation - swaying side to side while descending (50% faster)
-    const fallDuration = 3000;
-    const swayAmount = 120;
-    const swayFrequency = 3;
-
-    let elapsed = 0;
-    const leafUpdate = this.time.addEvent({
-      delay: 16,
-      repeat: Math.floor(fallDuration / 16),
-      callback: () => {
-        if (!banner || !banner.active || banner.getData('collected')) {
-          leafUpdate.destroy();
-          return;
-        }
-
-        elapsed += 16;
-        const progress = Math.min(elapsed / fallDuration, 1);
-
-        // Vertical fall with slight acceleration, but stop at terrain
-        const targetY = startY + progress * progress * (terrainY - startY);
-        banner.y = Math.min(targetY, terrainY);
-
-        // Horizontal sway (sinusoidal)
-        const swayProgress = progress * swayFrequency * Math.PI * 2;
-        banner.x = startX + Math.sin(swayProgress) * swayAmount * (1 - progress * 0.5);
-
-        // Rotation follows the sway direction (tilts into the turn)
-        const swayVelocity = Math.cos(swayProgress);
-        banner.angle = swayVelocity * 35;
-
-        // Check if landed on terrain/water
-        if (banner.y >= terrainY - 5) {
-          banner.y = terrainY;
-          banner.angle = (Math.random() - 0.5) * 20; // Random resting angle
-          banner.setData('grounded', true);
-          leafUpdate.destroy();
-
-          // If landed in water, start sinking
-          if (isOverWater) {
-            banner.setData('sinking', true);
-            const sinkDepth = terrainY + 150;
-
-            this.tweens.add({
-              targets: banner,
-              y: sinkDepth,
-              alpha: 0,
-              duration: 3000,
-              ease: 'Quad.easeIn',
-              onComplete: () => {
-                const idx = this.propagandaBanners.indexOf(banner);
-                if (idx >= 0) {
-                  this.propagandaBanners.splice(idx, 1);
-                }
-                banner.destroy();
-              },
-            });
-          } else {
-            // Fade out after 15 seconds if not collected (on land)
-            this.time.delayedCall(15000, () => {
-              if (banner && banner.active && !banner.getData('collected')) {
-                const idx = this.propagandaBanners.indexOf(banner);
-                if (idx >= 0) {
-                  this.propagandaBanners.splice(idx, 1);
-                }
-
-                this.tweens.add({
-                  targets: banner,
-                  alpha: 0,
-                  duration: 500,
-                  onComplete: () => banner.destroy(),
-                });
-              }
-            });
-          }
-        }
-      },
-    });
-  }
-
-  private updatePropagandaBanners(): void {
-    const pickupRadius = 60;
-
-    for (let i = this.propagandaBanners.length - 1; i >= 0; i--) {
-      const banner = this.propagandaBanners[i];
-      if (!banner || !banner.active || banner.getData('collected') || banner.getData('sinking')) continue;
-
-      const dx = this.shuttle.x - banner.x;
-      const dy = this.shuttle.y - banner.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      // Can catch mid-air or on ground
-      if (dist < pickupRadius) {
-        banner.setData('collected', true);
-
-        // Play boing sound
-        this.playBoingSound();
-
-        // Add to cargo inventory
-        const propagandaType = banner.getData('propagandaType') as keyof typeof COLLECTIBLE_TYPES;
-        this.inventorySystem.add(propagandaType);
-
-        // Track in collection
-        const collectionSystem = getCollectionSystem();
-        collectionSystem.markDiscovered(propagandaType);
-
-        // Get display name from constants
-        const itemData = COLLECTIBLE_TYPES[propagandaType];
-        const displayName = itemData ? itemData.name : 'Propaganda';
-
-        // Show pickup text
-        const pickupText = this.add.text(banner.x, banner.y - 20, `+1 ${displayName.toUpperCase()}`, {
-          fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '12px',
-          color: '#3C3B6E',
-          fontStyle: 'bold',
-          stroke: '#FFFFFF',
-          strokeThickness: 2,
-        });
-        pickupText.setOrigin(0.5, 0.5);
-        pickupText.setDepth(150);
-
-        this.tweens.add({
-          targets: pickupText,
-          y: '-=30',
-          alpha: 0,
-          duration: 1500,
-          onComplete: () => pickupText.destroy(),
-        });
-
-        // Collect animation - banner flies to shuttle
-        this.tweens.killTweensOf(banner);
-        this.tweens.add({
-          targets: banner,
-          x: this.shuttle.x,
-          y: this.shuttle.y,
-          scale: 0,
-          alpha: 0,
-          duration: 300,
-          ease: 'Quad.easeIn',
-          onComplete: () => {
-            const idx = this.propagandaBanners.indexOf(banner);
-            if (idx >= 0) {
-              this.propagandaBanners.splice(idx, 1);
-            }
-            banner.destroy();
-          },
-        });
-      }
-    }
-  }
-
   // Transition to game over with 3 second delay and 1 second fade out
   private transitionToGameOver(data: {
     victory: boolean;
@@ -3034,165 +2423,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
   }
-
-  private updatePowerUps(): void {
-    const now = this.time.now;
-
-    // Update bribe effect - subtle green outline when cannons are standing down
-    if (this.cannonsBribed) {
-      if (now >= this.bribeEndTime) {
-        this.cannonsBribed = false;
-        if (this.bribeGraphics) {
-          this.bribeGraphics.clear();
-        }
-      } else {
-        // Draw subtle glow outline around shuttle
-        if (this.bribeGraphics) {
-          this.bribeGraphics.destroy();
-          this.bribeGraphics = this.add.graphics();
-          const timeLeft = this.bribeEndTime - now;
-          const pulseSpeed = timeLeft < 2000 ? 0.015 : 0.006;
-          const baseAlpha = timeLeft < 2000 ? 0.3 : 0.5;
-          const alpha = baseAlpha + Math.sin(now * pulseSpeed) * 0.15;
-
-          // Simple thin green outline around shuttle
-          this.bribeGraphics.lineStyle(2, 0x32CD32, alpha);
-          this.bribeGraphics.strokeCircle(this.shuttle.x, this.shuttle.y, 32 + Math.sin(now * 0.008) * 2);
-        }
-      }
-    }
-
-    // Update speed boost
-    if (this.hasSpeedBoost) {
-      const boostShuttle = this.speedBoostPlayer === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
-      if (now >= this.speedBoostEndTime) {
-        this.hasSpeedBoost = false;
-        boostShuttle.setThrustMultiplier(1.0);
-        if (this.speedBoostTrail) {
-          this.speedBoostTrail.clear();
-        }
-        this.tieSegments = [];
-      } else {
-        // Update and draw floppy red tie
-        if (this.speedBoostTrail && this.tieSegments.length > 0) {
-          this.speedBoostTrail.destroy();
-          this.speedBoostTrail = this.add.graphics();
-          const timeLeft = this.speedBoostEndTime - now;
-          const alpha = timeLeft < 2000 ? (Math.sin(now * 0.02) * 0.3 + 0.5) : 0.9;
-
-          // Tie attaches to bottom of shuttle
-          const attachX = boostShuttle.x;
-          const attachY = boostShuttle.y + 15;
-
-          // Update tie physics - each segment follows the one before it
-          // First segment follows the shuttle
-          this.tieSegments[0].x += (attachX - this.tieSegments[0].x) * 0.4;
-          this.tieSegments[0].y += (attachY - this.tieSegments[0].y) * 0.4;
-
-          // Each subsequent segment follows the previous one with some lag and gravity
-          for (let i = 1; i < this.tieSegments.length; i++) {
-            const prev = this.tieSegments[i - 1];
-            const curr = this.tieSegments[i];
-
-            // Follow previous segment
-            const followStrength = 0.25;
-            curr.x += (prev.x - curr.x) * followStrength;
-            curr.y += (prev.y - curr.y) * followStrength;
-
-            // Add gravity
-            curr.y += 0.8;
-
-            // Add some wind/flutter based on shuttle velocity
-            const vel = boostShuttle.getVelocity();
-            curr.x -= vel.x * 0.05;
-            curr.y -= vel.y * 0.03;
-
-            // Add flutter/wave motion
-            const flutter = Math.sin(now * 0.015 + i * 0.8) * (2 + i * 0.5);
-            curr.x += flutter;
-
-            // Constrain distance from previous segment
-            const dx = curr.x - prev.x;
-            const dy = curr.y - prev.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            const maxDist = 8;
-            if (dist > maxDist) {
-              const scale = maxDist / dist;
-              curr.x = prev.x + dx * scale;
-              curr.y = prev.y + dy * scale;
-            }
-          }
-
-          // Draw the tie
-          // Tie knot at top (small triangle)
-          this.speedBoostTrail.fillStyle(0xAA0000, alpha);
-          this.speedBoostTrail.fillTriangle(
-            this.tieSegments[0].x - 4, this.tieSegments[0].y,
-            this.tieSegments[0].x + 4, this.tieSegments[0].y,
-            this.tieSegments[0].x, this.tieSegments[0].y + 6
-          );
-
-          // Main tie body - draw as connected trapezoids that get wider then narrower
-          for (let i = 0; i < this.tieSegments.length - 1; i++) {
-            const curr = this.tieSegments[i];
-            const next = this.tieSegments[i + 1];
-
-            // Tie width: starts narrow, gets wider in middle, narrows at tip
-            const widthCurve = Math.sin((i / (this.tieSegments.length - 1)) * Math.PI);
-            const widthTop = 3 + widthCurve * 6;
-            const widthCurveNext = Math.sin(((i + 1) / (this.tieSegments.length - 1)) * Math.PI);
-            const widthBottom = 3 + widthCurveNext * 6;
-
-            // Calculate perpendicular direction for width
-            const dx = next.x - curr.x;
-            const dy = next.y - curr.y;
-            const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const perpX = -dy / len;
-            const perpY = dx / len;
-
-            // Draw tie segment as quadrilateral
-            this.speedBoostTrail.fillStyle(0xDC143C, alpha);
-            this.speedBoostTrail.beginPath();
-            this.speedBoostTrail.moveTo(curr.x + perpX * widthTop, curr.y + perpY * widthTop);
-            this.speedBoostTrail.lineTo(curr.x - perpX * widthTop, curr.y - perpY * widthTop);
-            this.speedBoostTrail.lineTo(next.x - perpX * widthBottom, next.y - perpY * widthBottom);
-            this.speedBoostTrail.lineTo(next.x + perpX * widthBottom, next.y + perpY * widthBottom);
-            this.speedBoostTrail.closePath();
-            this.speedBoostTrail.fillPath();
-
-            // Dark red stripe down the center for detail
-            this.speedBoostTrail.lineStyle(2, 0x8B0000, alpha * 0.7);
-            this.speedBoostTrail.lineBetween(curr.x, curr.y, next.x, next.y);
-          }
-
-          // Tie tip (pointed end)
-          const lastSeg = this.tieSegments[this.tieSegments.length - 1];
-          const secondLast = this.tieSegments[this.tieSegments.length - 2];
-          const tipDx = lastSeg.x - secondLast.x;
-          const tipDy = lastSeg.y - secondLast.y;
-          const tipLen = Math.sqrt(tipDx * tipDx + tipDy * tipDy) || 1;
-          this.speedBoostTrail.fillStyle(0xDC143C, alpha);
-          this.speedBoostTrail.fillTriangle(
-            lastSeg.x - 3, lastSeg.y,
-            lastSeg.x + 3, lastSeg.y,
-            lastSeg.x + (tipDx / tipLen) * 8, lastSeg.y + (tipDy / tipLen) * 8
-          );
-
-          // Also draw speed trail behind shuttle
-          const vel = this.shuttle.getVelocity();
-          if (Math.abs(vel.x) > 1 || Math.abs(vel.y) > 1) {
-            for (let i = 0; i < 5; i++) {
-              const offsetX = -vel.x * (i * 3) + (Math.random() - 0.5) * 10;
-              const offsetY = -vel.y * (i * 3) + (Math.random() - 0.5) * 10;
-              this.speedBoostTrail.fillStyle(0xDC143C, alpha * 0.5 * (1 - i * 0.15));
-              this.speedBoostTrail.fillCircle(this.shuttle.x + offsetX, this.shuttle.y + offsetY, 5 - i);
-            }
-          }
-        }
-      }
-    }
-  }
-
 
   private getProgress(): number {
     return Phaser.Math.Clamp(this.shuttle.x / WORLD_WIDTH, 0, 1);
@@ -3455,7 +2685,7 @@ export class GameScene extends Phaser.Scene {
 
     // Auto landing gear in dogfight mode
     if (this.gameMode === 'dogfight') {
-      this.updateAutoLandingGear();
+      this.dogfightManager.updateAutoLandingGear();
     }
 
     // Country visits are now tracked on successful landing, not just passing through
@@ -3501,28 +2731,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Update fisherboat (bob with waves) and check for landing
-    if (this.fisherBoat && !this.fisherBoat.isDestroyed) {
-      // Check shuttle proximity to stop bobbing
-      this.checkBoatProximity();
-      this.fisherBoat.update(this.terrain.getWaveOffset());
-    }
-
-    // Update sharks (with off-screen culling for performance)
-    const foodTargets = this.getFoodTargetsInOcean();
-    const cameraLeft = this.cameras.main.scrollX - 400;
-    const cameraRight = this.cameras.main.scrollX + GAME_WIDTH + 400;
-    for (const shark of this.sharks) {
-      if (!shark.isDestroyed) {
-        // Only fully update sharks near the camera
-        const isNearCamera = shark.x >= cameraLeft && shark.x <= cameraRight;
-        shark.update(this.terrain.getWaveOffset(), this.scorchMarkManager.getWaterPollutionLevel(), foodTargets, !isNearCamera);
-        // Check if shark can eat any sunken food
-        if (isNearCamera) {
-          this.checkSharkEatsSunkenFood(shark);
-        }
-      }
-    }
+    // Update entities (fisher boat, sharks)
+    this.entityManager.update();
 
     // Update Greenland ice
     const shuttle = this.shuttle;
@@ -3621,10 +2831,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Update Epstein Files (check for pickup)
-    this.updateEpsteinFiles();
+    this.epsteinFilesManager.update();
 
     // Update Propaganda Banners (check for pickup)
-    this.updatePropagandaBanners();
+    this.propagandaManager.update();
 
     // Update all shuttles
     for (const shuttle of this.shuttles) {
@@ -3682,7 +2892,7 @@ export class GameScene extends Phaser.Scene {
     this.carriedItemManager.updatePeaceMedalGraphics();
 
     // Update power-up effects
-    this.updatePowerUps();
+    this.powerUpManager.update();
 
     // Update cannons
     const activeShuttlesForCannons = this.shuttles.filter(s => s.active);
@@ -3694,7 +2904,7 @@ export class GameScene extends Phaser.Scene {
 
       // Only set target and allow firing if cannon is on-screen, active, AND not bribed
       // Bribed cannons stand down completely - they won't fire new projectiles
-      if (isOnScreen && cannon.isActive() && !this.cannonsBribed && activeShuttlesForCannons.length > 0) {
+      if (isOnScreen && cannon.isActive() && !this.powerUpManager.isCannonsBribed() && activeShuttlesForCannons.length > 0) {
         // Target the nearest shuttle
         let nearestTarget = activeShuttlesForCannons[0];
         let nearestDist = Math.hypot(cannon.x - nearestTarget.x, cannon.y - nearestTarget.y);
@@ -3706,7 +2916,7 @@ export class GameScene extends Phaser.Scene {
           }
         }
         cannon.setTarget({ x: nearestTarget.x, y: nearestTarget.y });
-      } else if (this.cannonsBribed) {
+      } else if (this.powerUpManager.isCannonsBribed()) {
         // Clear target so cannons stop aiming/firing
         cannon.setTarget(null as any);
       }
@@ -3906,102 +3116,6 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private quickRestartDogfight(): void {
-    // Brief delay for death animation, then restart round
-    this.time.delayedCall(DOGFIGHT_CONFIG.RESTART_DELAY_MS, () => {
-      this.scene.stop('UIScene');
-      // Don't pass dogfightPadIndex - let it pick a new random pad each round
-      this.scene.restart({
-        playerCount: 2,
-        gameMode: 'dogfight',
-        p1Kills: this.p1Kills,
-        p2Kills: this.p2Kills,
-      });
-    });
-  }
-
-  private showDogfightWinner(): void {
-    const winner = this.p1Kills >= DOGFIGHT_CONFIG.KILLS_TO_WIN ? 1 : 2;
-    const winnerColor = winner === 1 ? '#FF6B6B' : '#4ECDC4';
-
-    // Freeze gameplay
-    this.gameState = 'victory';
-
-    // Fade out country music and play victory fanfare
-    this.musicManager.fadeOutAndStop(1500);
-    this.sound.play('fanfare', { volume: 0.8 });
-
-    // Dark overlay
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7)
-      .setScrollFactor(0).setDepth(999);
-
-    // Trophy emoji
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 120, '🏆', {
-      fontSize: '96px'
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
-
-    // Winner announcement
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30,
-      `PLAYER ${winner} WINS!`, {
-      fontSize: '56px',
-      color: winnerColor,
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
-
-    // Final score
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40,
-      `Final Score: ${this.p1Kills} - ${this.p2Kills}`, {
-      fontSize: '32px',
-      color: '#FFFFFF'
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
-
-    // Instructions
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 100,
-      'Press ENTER to play again\nPress ESC for menu', {
-      fontSize: '20px',
-      color: '#AAAAAA',
-      align: 'center'
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
-
-    // Celebration particles (confetti)
-    this.createDogfightVictoryParticles();
-
-    // Key handlers for restart
-    const enterKey = this.input.keyboard!.addKey('ENTER');
-    enterKey.once('down', () => {
-      this.scene.stop('UIScene');
-      this.scene.restart({ playerCount: 2, gameMode: 'dogfight', p1Kills: 0, p2Kills: 0 });
-    });
-
-    const escKey = this.input.keyboard!.addKey('ESC');
-    escKey.once('down', () => {
-      this.scene.stop('UIScene');
-      this.scene.start('MenuScene');
-    });
-  }
-
-  private createDogfightVictoryParticles(): void {
-    // Gold/confetti particles falling from top
-    const colors = [0xFFD700, 0xFF6B6B, 0x4ECDC4, 0xFFFFFF];
-    for (let i = 0; i < 50; i++) {
-      const x = Math.random() * GAME_WIDTH;
-      const particle = this.add.rectangle(x, -20, 8, 8, colors[i % colors.length])
-        .setScrollFactor(0).setDepth(1001);
-
-      this.tweens.add({
-        targets: particle,
-        y: GAME_HEIGHT + 50,
-        x: x + (Math.random() - 0.5) * 200,
-        rotation: Math.random() * 10,
-        duration: 2000 + Math.random() * 2000,
-        delay: Math.random() * 1000,
-        ease: 'Quad.easeIn'
-      });
-    }
-  }
-
   // Show mode announcement at game start
   private showModeAnnouncement(): void {
     const modeText = this.gameMode === 'dogfight' ? 'DOGFIGHT MODE' : '2 PLAYER MODE';
@@ -4080,33 +3194,6 @@ export class GameScene extends Phaser.Scene {
         // Kill the shuttle
         shuttle.explode();
         this.checkGameOverAfterCrash();
-      }
-    }
-  }
-
-  // Auto landing gear management for dogfight mode
-  private updateAutoLandingGear(): void {
-    for (const shuttle of this.shuttles) {
-      if (!shuttle.active) continue;
-
-      // Find minimum distance to any landing pad
-      let minDistToPad = Infinity;
-      for (const pad of this.landingPads) {
-        const dx = shuttle.x - pad.x;
-        const dy = shuttle.y - pad.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minDistToPad) {
-          minDistToPad = dist;
-        }
-      }
-
-      // Auto-extend when close to a pad
-      if (minDistToPad < DOGFIGHT_CONFIG.AUTO_GEAR_EXTEND_DISTANCE) {
-        shuttle.extendLandingGear();
-      }
-      // Auto-retract when far from all pads
-      else if (minDistToPad > DOGFIGHT_CONFIG.AUTO_GEAR_RETRACT_DISTANCE) {
-        shuttle.retractLandingGear();
       }
     }
   }
@@ -4214,19 +3301,30 @@ export class GameScene extends Phaser.Scene {
       this.events.emit('fuelTankFull', playerNum);
     }
 
-    // Show trade message with actual fuel gained
-    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL`, playerNum);
+    // Build sold items string
+    const soldParts: string[] = [];
+    for (const [type, count] of itemsToSell) {
+      const itemData = COLLECTIBLE_TYPES[type];
+      const shortName = itemData?.name || type;
+      soldParts.push(`${count} ${shortName}`);
+    }
+    const soldStr = soldParts.join(', ');
+
+    // Show trade message with fuel gained and items sold
+    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL\nSold: ${soldStr}`, playerNum);
   }
 
   private showAutoTradeMessage(shuttle: Shuttle, message: string, playerNum: number): void {
     const color = playerNum === 2 ? '#66CCFF' : '#FFD700';
+    const isMultiline = message.includes('\n');
     const tradeText = this.add.text(shuttle.x, shuttle.y - 60, message, {
       fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '18px',
+      fontSize: isMultiline ? '14px' : '18px',
       color: color,
       fontStyle: 'bold',
       stroke: '#000000',
       strokeThickness: 3,
+      align: 'center',
     });
     tradeText.setOrigin(0.5, 0.5);
 

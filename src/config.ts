@@ -4,7 +4,6 @@ import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
-import { TradingScene } from './scenes/TradingScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { AchievementsScene } from './scenes/AchievementsScene';
 import { CollectionScene } from './scenes/CollectionScene';
@@ -26,7 +25,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MenuScene, GameScene, UIScene, TradingScene, GameOverScene, AchievementsScene, CollectionScene],
+  scene: [BootScene, MenuScene, GameScene, UIScene, GameOverScene, AchievementsScene, CollectionScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

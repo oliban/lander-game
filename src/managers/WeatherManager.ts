@@ -667,13 +667,14 @@ export class WeatherManager {
           const dx = Math.abs(shuttleScreenX - cloudScreenX);
           const dy = shuttleScreenY - cloudVisualCenterY;
           const collisionRadius = cloud.scale * 35;
-          const maxStrikeRange = collisionRadius + 150;
+          const maxStrikeRange = collisionRadius + 200;
 
           const terrainY = this.callbacks.getTerrainHeightAt(shuttle.x);
           const distanceFromGround = terrainY - shuttle.y;
           const isGrounded = distanceFromGround < 50;
 
-          const stillInRange = dx < 150 && dy > 0 && dy < maxStrikeRange;
+          // Strike zone is wider (250px horizontal) - need to get to ground to escape
+          const stillInRange = dx < 250 && dy > 0 && dy < maxStrikeRange;
 
           if (!isGrounded && stillInRange) {
             this.triggerLightningStrike(cloud, shuttle);
@@ -709,8 +710,9 @@ export class WeatherManager {
         const collisionRadius = cloud.scale * 35;
         const warningStartY = collisionRadius + 10;
 
-        if (dx < 100 && dy > warningStartY && dy < warningStartY + 120) {
-          if (Math.random() < 0.3) {
+        // Warning zone is 180px horizontal (strike zone is 250px) - gives player time to react
+        if (dx < 180 && dy > warningStartY && dy < warningStartY + 180) {
+          if (Math.random() < 0.35) {
             this.showLightningWarning(cloud, shuttle);
             this.pendingLightningStrike = { cloud, shuttle, warningStart: time, strikeDelay: 2000 + Math.random() * 1000 };
             cloud.lastLightningTime = time;
