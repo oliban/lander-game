@@ -6,6 +6,7 @@ import { GolfCart } from '../objects/GolfCart';
 import { GreenlandIce } from '../objects/GreenlandIce';
 import { Shuttle } from '../objects/Shuttle';
 import { Bomb } from '../objects/Bomb';
+import { Terrain } from '../objects/Terrain';
 
 interface SunkenFood {
   x: number;
@@ -21,6 +22,7 @@ export interface EntityManagerCallbacks {
   getWaveOffset: () => number;
   getWaterPollutionLevel: () => number;
   getCameraBounds: () => { left: number; right: number };
+  getTerrain: () => Terrain;
 }
 
 export class EntityManager {
@@ -125,12 +127,15 @@ export class EntityManager {
   /**
    * Update all entities (call from scene's update method)
    */
-  update(): void {
+  update(time: number): void {
     // Update fisher boat
     this.updateFisherBoat();
 
     // Update sharks with off-screen culling for performance
     this.updateSharks();
+
+    // Update golf cart
+    this.updateGolfCart(time);
   }
 
   /**
@@ -167,6 +172,34 @@ export class EntityManager {
         }
       }
     }
+  }
+
+  /**
+   * Update golf cart (patrol and flee from nearest shuttle)
+   */
+  private updateGolfCart(time: number): void {
+    if (!this.golfCart || this.golfCart.isDestroyed) return;
+
+    const activeShuttles = this.callbacks.getShuttles().filter(s => s.active);
+    if (activeShuttles.length === 0) return;
+
+    // Find nearest active shuttle
+    let nearestShuttle = activeShuttles[0];
+    let nearestDist = Math.abs(activeShuttles[0].x - this.golfCart.x);
+    for (const s of activeShuttles) {
+      const dist = Math.abs(s.x - this.golfCart.x);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestShuttle = s;
+      }
+    }
+
+    this.golfCart.update(
+      this.callbacks.getTerrain(),
+      nearestShuttle.x,
+      nearestShuttle.y,
+      time
+    );
   }
 
   /**

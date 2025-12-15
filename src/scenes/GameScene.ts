@@ -341,6 +341,7 @@ export class GameScene extends Phaser.Scene {
         left: this.cameras.main.scrollX - 400,
         right: this.cameras.main.scrollX + GAME_WIDTH + 400,
       }),
+      getTerrain: () => this.terrain,
     });
     this.entityManager.initialize(this.gameMode);
 
@@ -2608,8 +2609,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Update entities (fisher boat, sharks)
-    this.entityManager.update();
+    // Update entities (fisher boat, sharks, golf cart)
+    this.entityManager.update(time);
 
     // Update Greenland ice
     const shuttle = this.shuttle;
@@ -2636,24 +2637,6 @@ export class GameScene extends Phaser.Scene {
       const horizontalDistance = Math.abs(shuttle.x - pad.x);
       if (horizontalDistance > halfPadWidth + 20) {
         this.lastTradedPad = null;
-      }
-    }
-
-    // Update golf cart (patrol and flee from nearest shuttle)
-    if (this.golfCart && !this.golfCart.isDestroyed) {
-      // Find nearest active shuttle
-      const activeShuttles = this.shuttles.filter(s => s.active);
-      if (activeShuttles.length > 0) {
-        let nearestShuttle = activeShuttles[0];
-        let nearestDist = Math.abs(activeShuttles[0].x - this.golfCart.x);
-        for (const s of activeShuttles) {
-          const dist = Math.abs(s.x - this.golfCart.x);
-          if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestShuttle = s;
-          }
-        }
-        this.golfCart.update(this.terrain, nearestShuttle.x, nearestShuttle.y, time);
       }
     }
 
