@@ -17,6 +17,7 @@ import { InventorySystem } from '../systems/InventorySystem';
 import { getAchievementSystem, AchievementSystem } from '../systems/AchievementSystem';
 import { getCollectionSystem } from '../systems/CollectionSystem';
 import { MusicManager } from '../systems/MusicManager';
+import { PlayerState } from '../systems/PlayerState';
 import { WeatherManager } from '../managers/WeatherManager';
 import { ScorchMarkManager } from '../managers/ScorchMarkManager';
 import { TombstoneManager } from '../managers/TombstoneManager';
@@ -55,6 +56,7 @@ export class GameScene extends Phaser.Scene {
   private shuttle!: Shuttle; // Primary shuttle (P1) - kept for compatibility
   private shuttle2: Shuttle | null = null; // Secondary shuttle (P2)
   private shuttles: Shuttle[] = []; // All active shuttles
+  private players: PlayerState[] = []; // Consolidated player state (P1 at index 0, P2 at index 1)
   private playerCount: number = 1;
   private gameMode: GameMode = 'normal';
   private terrain!: Terrain;
@@ -300,8 +302,10 @@ export class GameScene extends Phaser.Scene {
       onKillScored: (killerPlayer: number) => {
         if (killerPlayer === 1) {
           this.p1Kills++;
+          if (this.players[0]) this.players[0].kills = this.p1Kills;
         } else {
           this.p2Kills++;
+          if (this.players[1]) this.players[1].kills = this.p2Kills;
         }
         return { p1Kills: this.p1Kills, p2Kills: this.p2Kills };
       },
@@ -522,6 +526,14 @@ export class GameScene extends Phaser.Scene {
       this.shuttle2.setControls(this.p2Controls);
       // P2 bomb key (S)
       this.p2BombKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+    }
+
+    // Initialize PlayerState array (consolidates all player-specific state)
+    this.players[0] = new PlayerState(1, this.shuttle, this.fuelSystem, this.inventorySystem, this.p1Controls);
+    this.players[0].kills = this.p1Kills; // Sync kills from persistent state
+    if (this.playerCount === 2 && this.shuttle2 && this.fuelSystem2 && this.inventorySystem2 && this.p2Controls) {
+      this.players[1] = new PlayerState(2, this.shuttle2, this.fuelSystem2, this.inventorySystem2, this.p2Controls);
+      this.players[1].kills = this.p2Kills; // Sync kills from persistent state
     }
 
     // Set up 1/2 keys to restart game with different player counts
@@ -949,7 +961,8 @@ export class GameScene extends Phaser.Scene {
     if (this.invulnerable) return; // Ignore collisions during invulnerability
 
     // Get the correct shuttle
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+    const player = this.getPlayer(playerNum);
+    const shuttle = player.shuttle;
     if (!shuttle || !shuttle.active) return;
 
     // Invulnerable in debug mode
@@ -987,8 +1000,7 @@ export class GameScene extends Phaser.Scene {
 
     if (isOverWater && !nearLandingPad && !overFisherBoat) {
       const vel = shuttle.body?.velocity || { x: 0, y: 0 };
-      const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
-      console.log(`[DEATH] P${playerNum} died: "Splashed into the Atlantic!" | Cause: water | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'}`);
+      console.log(`[DEATH] P${playerNum} died: "Splashed into the Atlantic!" | Cause: water | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)}`);
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
@@ -1035,14 +1047,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Check if out of fuel - special cause and message
-    const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-    const outOfFuel = fuelSys.isEmpty();
+    const outOfFuel = player.fuelSystem.isEmpty();
     const cause: CauseOfDeath = outOfFuel ? 'fuel' : 'terrain';
     const message = outOfFuel ? 'Ran out of fuel!' : 'Crashed into terrain!';
 
     const vel = shuttle.body?.velocity || { x: 0, y: 0 };
-    const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
-    console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'} | TerrainHeight: ${terrainHeight.toFixed(1)}`);
+    console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)} | TerrainHeight: ${terrainHeight.toFixed(1)}`);
 
     // In 2-player mode, only destroy this shuttle
     if (this.playerCount === 2) {
@@ -1075,7 +1085,8 @@ export class GameScene extends Phaser.Scene {
     if (this.gameState !== 'playing') return;
     if (this.invulnerable) return;
 
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+    const player = this.getPlayer(playerNum);
+    const shuttle = player.shuttle;
     if (!shuttle || !shuttle.active) return;
     if (shuttle.isDebugMode()) return; // Invulnerable in debug mode
 
@@ -1089,8 +1100,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const vel = shuttle.body?.velocity || { x: 0, y: 0 };
-    const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
-    console.log(`[DEATH] P${playerNum} died: "Crashed into the wall!" | Cause: terrain | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'}`);
+    console.log(`[DEATH] P${playerNum} died: "Crashed into the wall!" | Cause: terrain | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)}`);
 
     // In 2-player mode, only destroy this shuttle
     if (this.playerCount === 2) {
@@ -1353,7 +1363,8 @@ export class GameScene extends Phaser.Scene {
     if (this.lastTradedPad === pad) return;
 
     // Get the correct shuttle
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+    const player = this.getPlayer(playerNum);
+    const shuttle = player.shuttle;
     if (!shuttle || !shuttle.active) return;
 
     // Shuttle must be very close to the pad surface to count as a landing
@@ -1396,8 +1407,7 @@ export class GameScene extends Phaser.Scene {
 
     if (!landingResult.safe && !shuttle.isDebugMode()) {
       const vel = shuttle.body?.velocity || { x: 0, y: 0 };
-      const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
-      console.log(`[DEATH] P${playerNum} died: "Crash landing! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'} | Pad: ${pad.name}`);
+      console.log(`[DEATH] P${playerNum} died: "Crash landing! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)} | Pad: ${pad.name}`);
 
       // In 2-player mode, only destroy this shuttle
       if (this.playerCount === 2) {
@@ -1567,10 +1577,8 @@ export class GameScene extends Phaser.Scene {
       }
 
       // Auto-trade
-      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-      const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
       const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-      this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+      this.performAutoTrade(shuttle, player.inventorySystem, player.fuelSystem, quality, playerNum);
       this.gameState = 'playing';
     } else if (pad.isWashington && !this.carriedItemManager.getHasPeaceMedal() && this.gameMode !== 'dogfight') {
       // Pick up the Peace Medal at Washington! (not in dogfight mode)
@@ -1578,17 +1586,13 @@ export class GameScene extends Phaser.Scene {
       this.carriedItemManager.pickupPeaceMedal(shuttle);
 
       // Auto-trade
-      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-      const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
       const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-      this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+      this.performAutoTrade(shuttle, player.inventorySystem, player.fuelSystem, quality, playerNum);
       this.gameState = 'playing';
     } else {
       // Auto-trade
-      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-      const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
       const quality = landingResult.quality as 'perfect' | 'good' | 'rough';
-      this.performAutoTrade(shuttle, invSys, fuelSys, quality, playerNum);
+      this.performAutoTrade(shuttle, player.inventorySystem, player.fuelSystem, quality, playerNum);
       this.gameState = 'playing';
     }
   }
@@ -1602,15 +1606,15 @@ export class GameScene extends Phaser.Scene {
     if (now - this.lastLandingTime < 1000) return;
     if (this.shuttleOnBoat) return;
 
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
+    const player = this.getPlayer(playerNum);
+    const shuttle = player.shuttle;
     if (!shuttle || !shuttle.active) return;
 
     const landingResult = shuttle.checkLandingSafety();
 
     if (!landingResult.safe) {
       const vel = shuttle.body?.velocity || { x: 0, y: 0 };
-      const fuel = playerNum === 2 ? this.fuelSystem2?.getFuel() : this.fuelSystem.getFuel();
-      console.log(`[DEATH] P${playerNum} died: "Crash landing on boat! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuel?.toFixed(1) ?? 'N/A'}`);
+      console.log(`[DEATH] P${playerNum} died: "Crash landing on boat! ${landingResult.reason}" | Cause: landing | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)}`);
 
       if (this.playerCount === 2) {
         this.handleShuttleCrash(playerNum, `Crash landing on boat! ${landingResult.reason}`, 'landing');
@@ -1644,8 +1648,7 @@ export class GameScene extends Phaser.Scene {
     if (this.fisherBoat.hasFishPackage && !this.fisherBoat.fishPackageCollected) {
       this.fisherBoat.fishPackageCollected = true;
 
-      const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
-      invSys.add('FISH_PACKAGE');
+      player.inventorySystem.add('FISH_PACKAGE');
 
       // Track in collection
       const collectionSystem = getCollectionSystem();
@@ -1728,13 +1731,14 @@ export class GameScene extends Phaser.Scene {
 
   private handleProjectileHit(playerNum: number = 1): void {
     // Legacy method for backwards compatibility
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
-    this.handleProjectileHitOnShuttle(undefined, shuttle);
+    const player = this.getPlayer(playerNum);
+    this.handleProjectileHitOnShuttle(undefined, player.shuttle);
   }
 
   // Generic handler for shuttle crashes in 2-player mode
   private handleShuttleCrash(playerNum: number, message: string, cause: CauseOfDeath): void {
-    const shuttle = playerNum === 2 ? this.shuttle2 : this.shuttle;
+    const player = this.getPlayer(playerNum);
+    const shuttle = player.shuttle;
     if (!shuttle || !shuttle.active) return;
 
     // Mark shuttle inactive immediately to prevent duplicate collision handling
@@ -1744,11 +1748,11 @@ export class GameScene extends Phaser.Scene {
     this.lastDeadPlayerIndex = playerNum - 1;
 
     // Detailed death logging
-    const fuelSystem = playerNum === 2 ? this.fuelSystem2 : this.fuelSystem;
     const vel = shuttle.body?.velocity || { x: 0, y: 0 };
-    console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${fuelSystem?.getFuel().toFixed(1) ?? 'N/A'}`);
+    console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)}`);
 
-    // Store death message for this player
+    // Store death message for this player (in both PlayerState and legacy property)
+    player.deathMessage = message;
     if (playerNum === 1) {
       this.p1DeathMessage = message;
     } else {
@@ -1796,9 +1800,11 @@ export class GameScene extends Phaser.Scene {
         // lastDeadPlayerIndex: 1 = P2 died, so P1 gets kill
         if (this.lastDeadPlayerIndex === 0) {
           this.p2Kills++;  // P1 died, P2 gets the kill
+          if (this.players[1]) this.players[1].kills = this.p2Kills;
           console.log('Kill awarded to P2 (blue) - P1 died');
         } else {
           this.p1Kills++;  // P2 died, P1 gets the kill
+          if (this.players[0]) this.players[0].kills = this.p1Kills;
           console.log('Kill awarded to P1 (white) - P2 died');
         }
       }
@@ -1926,10 +1932,11 @@ export class GameScene extends Phaser.Scene {
   private handleCollectiblePickup(collectible: Collectible, playerNum: number = 1): void {
     if (collectible.collected) return;
 
-    // Get the correct shuttle, fuel system, and inventory for the player
-    const shuttle = playerNum === 2 && this.shuttle2 ? this.shuttle2 : this.shuttle;
-    const fuelSys = playerNum === 2 && this.fuelSystem2 ? this.fuelSystem2 : this.fuelSystem;
-    const invSys = playerNum === 2 && this.inventorySystem2 ? this.inventorySystem2 : this.inventorySystem;
+    // Get player state for the correct shuttle, fuel system, and inventory
+    const player = this.getPlayer(playerNum);
+    const shuttle = player.shuttle;
+    const fuelSys = player.fuelSystem;
+    const invSys = player.inventorySystem;
 
     // Track item discovery in collection (for both players)
     const collectionSystem = getCollectionSystem();
@@ -2211,6 +2218,14 @@ export class GameScene extends Phaser.Scene {
         this.matter.body.setAngularVelocity(body, body.angularVelocity + (Math.random() - 0.5) * force * 0.05);
       }
     }
+  }
+
+  /**
+   * Get PlayerState by player number (1 or 2)
+   * Use this instead of ternary patterns like: playerNum === 2 ? this.shuttle2 : this.shuttle
+   */
+  private getPlayer(playerNum: number): PlayerState {
+    return this.players[playerNum - 1];
   }
 
   private getProgress(): number {
