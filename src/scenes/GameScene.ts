@@ -104,10 +104,6 @@ export class GameScene extends Phaser.Scene {
   private lastDeadPlayerIndex: number = -1;
   private dogfightPadIndex: number = -1; // Random starting pad for dogfight mode
 
-  // Death messages for 2-player mode
-  private p1DeathMessage: string = '';
-  private p2DeathMessage: string = '';
-
   // Fisherboat in Atlantic
   private fisherBoat: FisherBoat | null = null;
   private shuttleOnBoat: boolean = false; // Track if shuttle has landed on boat
@@ -227,9 +223,6 @@ export class GameScene extends Phaser.Scene {
     this.sunkenFood = [];
     this.gameInitialized = false; // Reset to prevent splash effects on load
     // Note: p1Kills and p2Kills persist across restarts within a session
-    // Reset death messages for new game
-    this.p1DeathMessage = '';
-    this.p2DeathMessage = '';
 
     // Initialize systems
     this.fuelSystem = new FuelSystem();
@@ -582,22 +575,22 @@ export class GameScene extends Phaser.Scene {
 
     // Start UI scene
     this.scene.launch('UIScene', {
-      fuelSystem: this.fuelSystem,
-      inventorySystem: this.inventorySystem,
-      getShuttleVelocity: () => this.shuttle?.getVelocity() ?? { x: 0, y: 0, total: 0 },
+      fuelSystem: this.players[0].fuelSystem,
+      inventorySystem: this.players[0].inventorySystem,
+      getShuttleVelocity: () => this.players[0].shuttle?.getVelocity() ?? { x: 0, y: 0, total: 0 },
       getProgress: () => this.getProgress(),
       getCurrentCountry: () => this.getCurrentCountry(),
-      getLegsExtended: () => this.shuttle?.areLandingLegsExtended() ?? false,
+      getLegsExtended: () => this.players[0].shuttle?.areLandingLegsExtended() ?? false,
       getElapsedTime: () => this.getElapsedTime(),
       hasPeaceMedal: () => this.carriedItemManager.getHasPeaceMedal(),
       // P2 data for 2-player mode
       playerCount: this.playerCount,
-      fuelSystem2: this.fuelSystem2,
-      inventorySystem2: this.inventorySystem2,
-      getP2Velocity: () => this.shuttle2?.getVelocity() ?? { x: 0, y: 0, total: 0 },
-      getP2LegsExtended: () => this.shuttle2?.areLandingLegsExtended() ?? false,
-      isP2Active: () => this.shuttle2?.active ?? false,
-      getKillCounts: () => ({ p1Kills: this.p1Kills, p2Kills: this.p2Kills }),
+      fuelSystem2: this.players[1]?.fuelSystem ?? null,
+      inventorySystem2: this.players[1]?.inventorySystem ?? null,
+      getP2Velocity: () => this.players[1]?.shuttle?.getVelocity() ?? { x: 0, y: 0, total: 0 },
+      getP2LegsExtended: () => this.players[1]?.shuttle?.areLandingLegsExtended() ?? false,
+      isP2Active: () => this.players[1]?.shuttle?.active ?? false,
+      getKillCounts: () => ({ p1Kills: this.players[0]?.kills ?? 0, p2Kills: this.players[1]?.kills ?? 0 }),
       gameMode: this.gameMode,
     });
 
@@ -748,11 +741,8 @@ export class GameScene extends Phaser.Scene {
     // Handle game state
     if (this.playerCount === 2) {
       // In 2-player mode, handle as a regular death
-      if (playerNum === 1) {
-        this.p1DeathMessage = 'Struck by lightning!';
-      } else {
-        this.p2DeathMessage = 'Struck by lightning!';
-      }
+      const player = this.getPlayer(playerNum);
+      player.deathMessage = 'Struck by lightning!';
 
       // Check if game should end
       this.time.delayedCall(1000, () => {
@@ -1751,13 +1741,8 @@ export class GameScene extends Phaser.Scene {
     const vel = shuttle.body?.velocity || { x: 0, y: 0 };
     console.log(`[DEATH] P${playerNum} died: "${message}" | Cause: ${cause} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)}) | Velocity: (${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}) | Fuel: ${player.fuelSystem.getFuel().toFixed(1)}`);
 
-    // Store death message for this player (in both PlayerState and legacy property)
+    // Store death message for this player
     player.deathMessage = message;
-    if (playerNum === 1) {
-      this.p1DeathMessage = message;
-    } else {
-      this.p2DeathMessage = message;
-    }
 
     // Track death achievement
     this.achievementSystem.onDeath(cause);
@@ -1830,9 +1815,9 @@ export class GameScene extends Phaser.Scene {
       // Build combined message for 2-player mode
       let message = '';
       if (this.playerCount === 2) {
-        message = `P1: ${this.p1DeathMessage}\nP2: ${this.p2DeathMessage}`;
+        message = `P1: ${this.players[0]?.deathMessage || 'Unknown'}\nP2: ${this.players[1]?.deathMessage || 'Unknown'}`;
       } else {
-        message = this.p1DeathMessage || 'Mission failed!';
+        message = this.players[0]?.deathMessage || 'Mission failed!';
       }
 
       this.transitionToGameOver({
@@ -1862,11 +1847,7 @@ export class GameScene extends Phaser.Scene {
 
     // Generate and store death message
     const message = this.getProjectileDeathMessage(projectileSpriteKey);
-    if (playerNum === 1) {
-      this.p1DeathMessage = message;
-    } else {
-      this.p2DeathMessage = message;
-    }
+    this.getPlayer(playerNum).deathMessage = message;
 
     // Spawn tombstone at crash location with projectile type as cause
     this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, projectileSpriteKey || 'cannonball');
@@ -2386,21 +2367,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Handle bomb drop (arrow down for P1, S for P2)
-    const p1Bomb = this.cursors.down.isDown && this.shuttle && this.shuttle.active;
-    const p2Bomb = this.p2BombKey && this.shuttle2 && this.shuttle2.active && this.p2BombKey.isDown;
+    const p1 = this.players[0];
+    const p2 = this.players[1];
+    const p1Bomb = this.cursors.down.isDown && p1?.shuttle?.active;
+    const p2Bomb = this.p2BombKey && p2?.shuttle?.active && this.p2BombKey.isDown;
     if (p1Bomb && this.bombManager.canDropBomb(1)) {
-      this.bombManager.dropBomb(this.shuttle, this.inventorySystem, 1);
+      this.bombManager.dropBomb(p1.shuttle, p1.inventorySystem, 1);
       this.bombManager.startCooldown(1);
     }
     if (p2Bomb && this.bombManager.canDropBomb(2)) {
-      this.bombManager.dropBomb(this.shuttle2!, this.inventorySystem2!, 2);
+      this.bombManager.dropBomb(p2.shuttle, p2.inventorySystem, 2);
       this.bombManager.startCooldown(2);
     }
 
     // Update bombs
     this.bombManager.update(
-      this.shuttle,
-      this.shuttle2,
+      p1?.shuttle ?? null,
+      p2?.shuttle ?? null,
       this.decorations,
       this.cannons,
       this.landingPads,
@@ -2665,11 +2648,7 @@ export class GameScene extends Phaser.Scene {
         this.lastDeadPlayerIndex = playerIndex;
 
         // Set death message
-        if (playerNum === 1) {
-          this.p1DeathMessage = 'Lost in the void!';
-        } else {
-          this.p2DeathMessage = 'Lost in the void!';
-        }
+        this.getPlayer(playerNum).deathMessage = 'Lost in the void!';
 
         // Kill the shuttle
         shuttle.explode();
