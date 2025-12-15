@@ -76,34 +76,36 @@ export class Cannon extends Phaser.GameObjects.Container {
     this.base.fillCircle(10, 2, 2);
 
     // Create barrel (modern artillery style)
+    // Position barrel at turret center (0, -5) so it rotates correctly
     this.barrel = scene.add.graphics();
+    this.barrel.setPosition(0, -5);
 
-    // Main barrel (dark gunmetal)
+    // Main barrel (dark gunmetal) - coordinates relative to turret center
     this.barrel.fillStyle(0x2F2F2F, 1);
-    this.barrel.fillRect(-6, -45, 12, 40);
+    this.barrel.fillRect(-6, -40, 12, 40);
     this.barrel.lineStyle(2, 0x1F1F1F);
-    this.barrel.strokeRect(-6, -45, 12, 40);
+    this.barrel.strokeRect(-6, -40, 12, 40);
 
     // Barrel reinforcement rings
     this.barrel.fillStyle(0x3A3A3A, 1);
-    this.barrel.fillRect(-7, -42, 14, 4);
-    this.barrel.fillRect(-7, -30, 14, 3);
-    this.barrel.fillRect(-7, -18, 14, 3);
+    this.barrel.fillRect(-7, -37, 14, 4);
+    this.barrel.fillRect(-7, -25, 14, 3);
+    this.barrel.fillRect(-7, -13, 14, 3);
 
     // Muzzle brake (flash suppressor)
     this.barrel.fillStyle(0x252525, 1);
-    this.barrel.fillRect(-8, -48, 16, 6);
+    this.barrel.fillRect(-8, -43, 16, 6);
     this.barrel.lineStyle(1, 0x1A1A1A);
-    this.barrel.strokeRect(-8, -48, 16, 6);
+    this.barrel.strokeRect(-8, -43, 16, 6);
 
     // Muzzle brake slots
     this.barrel.fillStyle(0x1A1A1A, 1);
-    this.barrel.fillRect(-6, -47, 3, 4);
-    this.barrel.fillRect(3, -47, 3, 4);
+    this.barrel.fillRect(-6, -42, 3, 4);
+    this.barrel.fillRect(3, -42, 3, 4);
 
     // Barrel highlight (subtle shine)
     this.barrel.fillStyle(0x4A4A4A, 0.4);
-    this.barrel.fillRect(-4, -40, 2, 30);
+    this.barrel.fillRect(-4, -35, 2, 30);
 
     this.add([this.flag, this.base, this.barrel]);
     scene.add.existing(this);
@@ -159,28 +161,30 @@ export class Cannon extends Phaser.GameObjects.Container {
     // Don't aim or fire if destroyed or no target
     if (!this.target || this.isDestroyed) return;
 
-    // Aim at target
-    const angle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
+    // Aim at target from turret center (offset by -5 from container origin)
+    const turretY = this.y - 5;
+    const angle = Phaser.Math.Angle.Between(this.x, turretY, this.target.x, this.target.y);
     this.barrel.setRotation(angle + Math.PI / 2);
 
     // Fire at intervals
     if (time - this.lastFireTime > CANNON_FIRE_RATE) {
-      this.fire(angle);
+      this.fire(angle, turretY);
       this.lastFireTime = time;
     }
   }
 
-  private fire(angle: number): void {
+  private fire(angle: number, turretY: number): void {
     // Double-check we're not destroyed before firing
     if (this.isDestroyed) return;
 
     // Randomly select a projectile sprite from this cannon's country options
     const spriteKey = this.projectileSprites[Math.floor(Math.random() * this.projectileSprites.length)];
 
+    // Spawn projectile from turret center (barrel length ~40 pixels)
     const projectile = new Projectile(
       this.cannonScene,
       this.x + Math.cos(angle) * 45,
-      this.y + Math.sin(angle) * 45,
+      turretY + Math.sin(angle) * 45,
       angle,
       spriteKey
     );
@@ -189,7 +193,7 @@ export class Cannon extends Phaser.GameObjects.Container {
     // Muzzle flash (more dramatic for modern artillery)
     const flash = this.cannonScene.add.graphics();
     const flashX = this.x + Math.cos(angle) * 50;
-    const flashY = this.y + Math.sin(angle) * 50;
+    const flashY = turretY + Math.sin(angle) * 50;
 
     // Outer glow
     flash.fillStyle(0xFF6600, 0.6);
