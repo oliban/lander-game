@@ -1,11 +1,15 @@
 import Phaser from 'phaser';
 import { Terrain } from './Terrain';
 import { createExplosionFlash } from '../utils/ExplosionUtils';
+import { DestructibleObject } from '../core/base';
 
-export class GolfCart extends Phaser.GameObjects.Container {
-  public isDestroyed: boolean = false;
-  public readonly pointValue: number = 500;
+interface GolfCartExplosionResult {
+  name: string;
+  points: number;
+  filePositions: { x: number; y: number }[];
+}
 
+export class GolfCart extends DestructibleObject {
   private graphics: Phaser.GameObjects.Graphics;
   private patrolMinX: number;
   private patrolMaxX: number;
@@ -20,12 +24,15 @@ export class GolfCart extends Phaser.GameObjects.Container {
   private lastSpeechTime: number = 0;
   private nextSpeechDelay: number = 0;
 
-  // Collision dimensions
-  private collisionWidth: number = 60;
-  private collisionHeight: number = 55;
-
   constructor(scene: Phaser.Scene, x: number, patrolMinX: number, patrolMaxX: number) {
-    super(scene, x, 0);
+    super(scene, x, 0, {
+      collisionWidth: 60,
+      collisionHeight: 55,
+      boundsAlignment: 'top',
+      extraHeight: 10, // Original code added 10 to collision height
+      pointValue: 500,
+      name: 'Presidential Getaway',
+    });
 
     this.patrolMinX = patrolMinX;
     this.patrolMaxX = patrolMaxX;
@@ -38,8 +45,6 @@ export class GolfCart extends Phaser.GameObjects.Container {
 
     // Random initial speech delay
     this.nextSpeechDelay = 3000 + Math.random() * 5000;
-
-    scene.add.existing(this);
   }
 
   private drawCart(): void {
@@ -443,16 +448,7 @@ export class GolfCart extends Phaser.GameObjects.Container {
     });
   }
 
-  getCollisionBounds(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: this.x - this.collisionWidth / 2,
-      y: this.y - this.collisionHeight,
-      width: this.collisionWidth,
-      height: this.collisionHeight + 10,
-    };
-  }
-
-  explode(): { name: string; points: number; filePositions: { x: number; y: number }[] } {
+  explode(): GolfCartExplosionResult {
     if (this.isDestroyed) {
       return { name: 'Golf Cart', points: 0, filePositions: [] };
     }
@@ -465,6 +461,27 @@ export class GolfCart extends Phaser.GameObjects.Container {
       this.speechBubble = null;
     }
 
+    const scene = this.scene;
+    const x = this.x;
+    const y = this.y - 15;
+
+    // Run custom explosion effects
+    this.onExplode();
+
+    // Hide the cart
+    this.setVisible(false);
+
+    // Return positions for Epstein Files to spawn
+    const filePositions = [
+      { x: x - 40, y: y - 20 },
+      { x: x, y: y - 30 },
+      { x: x + 40, y: y - 20 },
+    ];
+
+    return { name: this.objectName, points: this.pointValue, filePositions };
+  }
+
+  protected onExplode(): void {
     const scene = this.scene;
     const x = this.x;
     const y = this.y - 15;
@@ -537,18 +554,6 @@ export class GolfCart extends Phaser.GameObjects.Container {
         });
       },
     });
-
-    // Hide the cart
-    this.setVisible(false);
-
-    // Return positions for Epstein Files to spawn
-    const filePositions = [
-      { x: x - 40, y: y - 20 },
-      { x: x, y: y - 30 },
-      { x: x + 40, y: y - 20 },
-    ];
-
-    return { name: 'Presidential Getaway', points: this.pointValue, filePositions };
   }
 
   destroy(fromScene?: boolean): void {

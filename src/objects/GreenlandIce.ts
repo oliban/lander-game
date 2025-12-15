@@ -1,30 +1,41 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT } from '../constants';
+import { BobbingObject } from '../core/base';
 
-export class GreenlandIce extends Phaser.GameObjects.Container {
-  public isDestroyed: boolean = false;
+export class GreenlandIce extends BobbingObject {
   public isAttached: boolean = false;
 
   private graphics: Phaser.GameObjects.Graphics;
   private signText: Phaser.GameObjects.Text;
-  private baseY: number;
   private waterSurface: number;
-  private collisionWidth: number = 90;  // 60 * 1.5
-  private collisionHeight: number = 60;  // 40 * 1.5
 
   constructor(scene: Phaser.Scene, x: number) {
     // Position at ocean surface level
     const oceanHeight = GAME_HEIGHT * 0.75;
-    super(scene, x, oceanHeight);
+
+    super(scene, x, oceanHeight, {
+      collisionWidth: 90,
+      collisionHeight: 60,
+      boundsAlignment: 'top',
+      extraHeight: 20, // Extend down into water
+      pointValue: 0, // No points for destroying ice
+      name: 'Greenland Ice',
+      bobbing: {
+        bobAmplitude: 6,
+        bobFrequency: 1.2,
+        rotationAmplitude: 0.04,
+        rotationFrequency: 0.7,
+        rotationPhaseOffset: 0.3,
+      },
+    });
 
     this.waterSurface = oceanHeight;
-    this.baseY = oceanHeight;
 
     // Create graphics
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(15);
 
-    // Create sign text (positioned on sign board: -28*1.5 - 35 + 8 = -69)
+    // Create sign text
     this.signText = scene.add.text(x, oceanHeight - 69, 'GREENLAND', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '8px',
@@ -38,8 +49,6 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
 
     // Set initial graphics position
     this.graphics.setPosition(x, oceanHeight);
-
-    scene.add.existing(this);
   }
 
   private drawIce(): void {
@@ -49,14 +58,14 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
     const s = 1.5;
 
     // Ice colors
-    const iceLight = 0xE0FFFF;      // Light cyan
-    const iceMid = 0xAFEEEE;        // Pale turquoise
-    const iceDark = 0x87CEEB;       // Sky blue (underwater portion)
-    const iceHighlight = 0xFFFFFF;  // White highlights
-    const signWood = 0x8B4513;      // Saddle brown for sign post
-    const signBoard = 0xDEB887;     // Burlywood for sign
+    const iceLight = 0xE0FFFF;
+    const iceMid = 0xAFEEEE;
+    const iceDark = 0x87CEEB;
+    const iceHighlight = 0xFFFFFF;
+    const signWood = 0x8B4513;
+    const signBoard = 0xDEB887;
 
-    // Underwater portion (darker, visible below waterline)
+    // Underwater portion
     this.graphics.fillStyle(iceDark, 0.7);
     this.graphics.beginPath();
     this.graphics.moveTo(-25 * s, 5);
@@ -68,22 +77,22 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // Main ice block (above water, irregular shape)
+    // Main ice block
     this.graphics.fillStyle(iceMid, 1);
     this.graphics.beginPath();
-    this.graphics.moveTo(-30 * s, 0);      // Left edge at waterline
-    this.graphics.lineTo(-28 * s, -15 * s);    // Left side going up
-    this.graphics.lineTo(-20 * s, -25 * s);    // Upper left peak
-    this.graphics.lineTo(-5 * s, -20 * s);     // Dip
-    this.graphics.lineTo(5 * s, -28 * s);      // Center peak (tallest)
-    this.graphics.lineTo(15 * s, -18 * s);     // Right slope
-    this.graphics.lineTo(25 * s, -12 * s);     // Upper right
-    this.graphics.lineTo(28 * s, 0);       // Right edge at waterline
-    this.graphics.lineTo(-30 * s, 0);      // Back to start
+    this.graphics.moveTo(-30 * s, 0);
+    this.graphics.lineTo(-28 * s, -15 * s);
+    this.graphics.lineTo(-20 * s, -25 * s);
+    this.graphics.lineTo(-5 * s, -20 * s);
+    this.graphics.lineTo(5 * s, -28 * s);
+    this.graphics.lineTo(15 * s, -18 * s);
+    this.graphics.lineTo(25 * s, -12 * s);
+    this.graphics.lineTo(28 * s, 0);
+    this.graphics.lineTo(-30 * s, 0);
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // Ice highlight (lighter top surfaces)
+    // Ice highlights
     this.graphics.fillStyle(iceLight, 0.9);
     this.graphics.beginPath();
     this.graphics.moveTo(-28 * s, -15 * s);
@@ -114,48 +123,32 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
     this.graphics.lineTo(28 * s, 0);
     this.graphics.strokePath();
 
-    // Sign post (wooden pole) - positioned on tallest peak, extended to meet ice
+    // Sign post
     this.graphics.fillStyle(signWood, 1);
     this.graphics.fillRect(-2, -28 * s - 25, 4, 35);
 
-    // Sign board (with margins around text)
+    // Sign board
     this.graphics.fillStyle(signBoard, 1);
     this.graphics.fillRect(-32, -28 * s - 35, 64, 16);
 
     // Sign border
     this.graphics.lineStyle(2, signWood, 1);
     this.graphics.strokeRect(-32, -28 * s - 35, 64, 16);
-
   }
 
   update(waveOffset: number): void {
     if (this.isDestroyed || this.isAttached) return;
 
-    // Bob up and down with the waves
-    const bobAmplitude = 6;
-    const bobY = Math.sin(waveOffset * 1.2) * bobAmplitude;
-    this.y = this.baseY + bobY;
-
-    // Slight rotation with waves
-    const rotationAmplitude = 0.04;
-    this.rotation = Math.sin(waveOffset * 0.7 + 0.3) * rotationAmplitude;
+    // Use base class bobbing
+    this.updateBobbing(waveOffset);
 
     // Update graphics position to follow the container
     this.graphics.setPosition(this.x, this.y);
     this.graphics.setRotation(this.rotation);
 
-    // Update text position (sign board is at -28*1.5 - 35 + 8 = -69)
+    // Update text position
     this.signText.setPosition(this.x, this.y - 69);
     this.signText.setRotation(this.rotation);
-  }
-
-  getCollisionBounds(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: this.x - this.collisionWidth / 2,
-      y: this.y - this.collisionHeight,
-      width: this.collisionWidth,
-      height: this.collisionHeight + 20, // Extend down into water
-    };
   }
 
   attach(): void {
@@ -168,7 +161,12 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
     if (this.isDestroyed) return;
 
     this.isDestroyed = true;
+    this.onExplode();
+    this.graphics.setVisible(false);
+    this.signText.setVisible(false);
+  }
 
+  protected onExplode(): void {
     const scene = this.scene;
     const x = this.x;
     const y = this.y - 10;
@@ -182,9 +180,7 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
       const chunk = scene.add.graphics();
       chunk.fillStyle(chunkColors[i % chunkColors.length], 0.9);
 
-      // Random chunk shapes
       if (i % 3 === 0) {
-        // Triangle chunk
         chunk.beginPath();
         chunk.moveTo(-5, -3);
         chunk.lineTo(5, -3);
@@ -192,10 +188,8 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
         chunk.closePath();
         chunk.fillPath();
       } else if (i % 3 === 1) {
-        // Rectangle chunk
         chunk.fillRect(-4, -3, 8, 6);
       } else {
-        // Irregular chunk
         chunk.beginPath();
         chunk.moveTo(-4, 0);
         chunk.lineTo(-2, -5);
@@ -210,12 +204,12 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
       chunk.setDepth(101);
 
       const distance = 40 + Math.random() * 50;
-      const upwardBias = -30 - Math.random() * 40; // Fly upward initially
+      const upwardBias = -30 - Math.random() * 40;
 
       scene.tweens.add({
         targets: chunk,
         x: x + Math.cos(angle) * distance,
-        y: y + Math.sin(angle) * distance + upwardBias + 80, // Arc up then down
+        y: y + Math.sin(angle) * distance + upwardBias + 80,
         angle: Math.random() * 720 - 360,
         alpha: 0,
         duration: 700 + Math.random() * 300,
@@ -245,7 +239,7 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
       });
     }
 
-    // Sign debris (wooden pieces)
+    // Sign debris
     for (let i = 0; i < 4; i++) {
       const signDebris = scene.add.graphics();
       signDebris.fillStyle(0x8B4513, 1);
@@ -264,10 +258,6 @@ export class GreenlandIce extends Phaser.GameObjects.Container {
         onComplete: () => signDebris.destroy(),
       });
     }
-
-    // Hide the ice graphics
-    this.graphics.setVisible(false);
-    this.signText.setVisible(false);
   }
 
   destroy(fromScene?: boolean): void {
