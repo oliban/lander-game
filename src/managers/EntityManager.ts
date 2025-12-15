@@ -23,6 +23,7 @@ export interface EntityManagerCallbacks {
   getWaterPollutionLevel: () => number;
   getCameraBounds: () => { left: number; right: number };
   getTerrain: () => Terrain;
+  isGreenlandIceCarried: () => boolean;
 }
 
 export class EntityManager {
@@ -136,6 +137,18 @@ export class EntityManager {
 
     // Update golf cart
     this.updateGolfCart(time);
+
+    // Update Greenland ice (bobbing with waves)
+    this.updateGreenlandIce();
+  }
+
+  /**
+   * Update Greenland ice bobbing with waves (only if not being carried)
+   */
+  private updateGreenlandIce(): void {
+    if (!this.greenlandIce || this.greenlandIce.isDestroyed) return;
+    if (this.callbacks.isGreenlandIceCarried()) return;
+    this.greenlandIce.update(this.callbacks.getWaveOffset());
   }
 
   /**

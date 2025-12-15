@@ -340,6 +340,7 @@ export class GameScene extends Phaser.Scene {
         right: this.cameras.main.scrollX + GAME_WIDTH + 400,
       }),
       getTerrain: () => this.terrain,
+      isGreenlandIceCarried: () => this.carriedItemManager.getHasGreenlandIce(),
     });
     this.entityManager.initialize(this.gameMode);
 
@@ -2574,25 +2575,18 @@ export class GameScene extends Phaser.Scene {
     // Update biplane (spawning, movement, shuttle collision)
     this.biplaneManager.update(time);
 
-    // Update entities (fisher boat, sharks, golf cart)
+    // Update entities (fisher boat, sharks, golf cart, greenland ice bobbing)
     this.entityManager.update(time);
 
-    // Update Greenland ice
-    const shuttle = this.shuttle;
-
+    // Check if shuttle can pick up Greenland ice
     if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.carriedItemManager.getHasGreenlandIce()) {
-      this.greenlandIce.update(this.terrain.getWaveOffset());
-
-      // Check if shuttle can pick up ice
-      if (shuttle && shuttle.active) {
-        this.carriedItemManager.checkGreenlandIcePickup(shuttle, this.greenlandIce);
+      if (this.shuttle && this.shuttle.active) {
+        this.carriedItemManager.checkGreenlandIcePickup(this.shuttle, this.greenlandIce);
       }
     }
 
-    // Update attached Greenland ice graphics
-    if (this.carriedItemManager.getHasGreenlandIce()) {
-      this.carriedItemManager.updateGreenlandIceGraphics();
-    }
+    // Update carried Greenland ice graphics
+    this.carriedItemManager.updateGreenlandIceGraphics();
 
     // Clear lastTradedPad when shuttle leaves the pad
     if (this.lastTradedPad) {
