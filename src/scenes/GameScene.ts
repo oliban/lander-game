@@ -2145,54 +2145,6 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('destructionScore', this.destructionScore);
   }
 
-  private showFisherBoatDestroyed(x: number, y: number, points: number): void {
-    showDestructionMessage({
-      scene: this,
-      x, y, points,
-      name: 'Drug Kingpin dinghy destroyed!',
-      nameColor: '#FF4500',
-      nameFontSize: '20px',
-      pointsFontSize: '28px',
-      duration: 4000,
-      delay: 800,
-      floatDistance: 100,
-    });
-    this.events.emit('destructionScore', this.destructionScore);
-  }
-
-  private showGolfCartDestroyed(x: number, y: number, points: number): void {
-    showDestructionMessage({
-      scene: this,
-      x, y, points,
-      name: 'Presidential Getaway destroyed!',
-      nameColor: '#FF4500',
-      nameFontSize: '20px',
-      pointsFontSize: '28px',
-      duration: 4000,
-      delay: 800,
-      floatDistance: 100,
-    });
-    this.events.emit('destructionScore', this.destructionScore);
-  }
-
-  private showBiplaneDestroyed(x: number, y: number, points: number, country: string): void {
-    const displayName = country === 'GAME_INFO' ? 'Info plane' : `${country} propaganda plane`;
-    showDestructionMessage({
-      scene: this,
-      x, y, points,
-      name: `${displayName} shot down!`,
-      nameColor: '#FF4500',
-      nameFontSize: '20px',
-      pointsFontSize: '28px',
-      duration: 4000,
-      delay: 1000,
-      floatDistance: 100,
-      extraText: 'RED BARON!',
-      extraTextColor: '#C0C0C0',
-    });
-    this.events.emit('destructionScore', this.destructionScore);
-  }
-
   // Transition to game over with 3 second delay and 1 second fade out
   private transitionToGameOver(data: {
     victory: boolean;
