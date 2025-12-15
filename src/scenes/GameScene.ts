@@ -28,6 +28,7 @@ import { PropagandaManager } from '../managers/PropagandaManager';
 import { EpsteinFilesManager } from '../managers/EpsteinFilesManager';
 import { DogfightManager } from '../managers/DogfightManager';
 import { EntityManager } from '../managers/EntityManager';
+import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -2132,188 +2133,64 @@ export class GameScene extends Phaser.Scene {
 
 
   private showDestructionPoints(x: number, y: number, points: number, name: string): void {
-    // Show building name
-    const nameText = this.add.text(x, y - 20, name, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '16px',
-      color: '#FF6600',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 3,
-    });
-    nameText.setOrigin(0.5, 0.5);
-    nameText.setDepth(150);
-
-    // Show points
-    const pointsText = this.add.text(x, y + 10, `+${points} POINTS!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '24px',
-      color: '#FFD700',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    pointsText.setOrigin(0.5, 0.5);
-    pointsText.setDepth(150);
-
-    // Animate both texts - stay visible longer then fade
-    this.tweens.add({
-      targets: [nameText, pointsText],
-      y: '-=80',
-      alpha: 0,
+    showDestructionMessage({
+      scene: this,
+      x, y, points, name,
+      nameColor: '#FF6600',
+      nameFontSize: '16px',
+      pointsFontSize: '24px',
       duration: 3500,
-      delay: 500, // Hold for half a second before starting to fade
-      ease: 'Power1',
-      onComplete: () => {
-        nameText.destroy();
-        pointsText.destroy();
-      },
+      delay: 500,
+      floatDistance: 80,
     });
-
-    // Emit event to UIScene to update score display
     this.events.emit('destructionScore', this.destructionScore);
   }
 
   private showFisherBoatDestroyed(x: number, y: number, points: number): void {
-    // Show "Drug Kingpin dinghy destroyed!" message
-    const nameText = this.add.text(x, y - 20, 'Drug Kingpin dinghy destroyed!', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
-      color: '#FF4500', // Orange-red
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    nameText.setOrigin(0.5, 0.5);
-    nameText.setDepth(150);
-
-    // Show points
-    const pointsText = this.add.text(x, y + 15, `+${points} POINTS!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
-      color: '#FFD700',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    pointsText.setOrigin(0.5, 0.5);
-    pointsText.setDepth(150);
-
-    // Animate both texts - stay visible longer then fade
-    this.tweens.add({
-      targets: [nameText, pointsText],
-      y: '-=100',
-      alpha: 0,
+    showDestructionMessage({
+      scene: this,
+      x, y, points,
+      name: 'Drug Kingpin dinghy destroyed!',
+      nameColor: '#FF4500',
+      nameFontSize: '20px',
+      pointsFontSize: '28px',
       duration: 4000,
-      delay: 800, // Hold longer for this special message
-      ease: 'Power1',
-      onComplete: () => {
-        nameText.destroy();
-        pointsText.destroy();
-      },
+      delay: 800,
+      floatDistance: 100,
     });
-
-    // Emit event to UIScene to update score display
     this.events.emit('destructionScore', this.destructionScore);
   }
 
   private showGolfCartDestroyed(x: number, y: number, points: number): void {
-    // Show "Presidential Getaway destroyed!" message
-    const nameText = this.add.text(x, y - 20, 'Presidential Getaway destroyed!', {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
-      color: '#FF4500', // Orange-red
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    nameText.setOrigin(0.5, 0.5);
-    nameText.setDepth(150);
-
-    // Show points
-    const pointsText = this.add.text(x, y + 15, `+${points} POINTS!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
-      color: '#FFD700',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    pointsText.setOrigin(0.5, 0.5);
-    pointsText.setDepth(150);
-
-    // Animate both texts - stay visible longer then fade
-    this.tweens.add({
-      targets: [nameText, pointsText],
-      y: '-=100',
-      alpha: 0,
+    showDestructionMessage({
+      scene: this,
+      x, y, points,
+      name: 'Presidential Getaway destroyed!',
+      nameColor: '#FF4500',
+      nameFontSize: '20px',
+      pointsFontSize: '28px',
       duration: 4000,
       delay: 800,
-      ease: 'Power1',
-      onComplete: () => {
-        nameText.destroy();
-        pointsText.destroy();
-      },
+      floatDistance: 100,
     });
-
-    // Emit event to UIScene to update score display
     this.events.emit('destructionScore', this.destructionScore);
   }
 
   private showBiplaneDestroyed(x: number, y: number, points: number, country: string): void {
-    // Show country-specific destruction message
     const displayName = country === 'GAME_INFO' ? 'Info plane' : `${country} propaganda plane`;
-    const nameText = this.add.text(x, y - 20, `${displayName} shot down!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
-      color: '#FF4500', // Orange-red
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    nameText.setOrigin(0.5, 0.5);
-    nameText.setDepth(150);
-
-    // Show points
-    const pointsText = this.add.text(x, y + 15, `+${points} POINTS!`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
-      color: '#FFD700',
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    pointsText.setOrigin(0.5, 0.5);
-    pointsText.setDepth(150);
-
-    // Show "RED BARON" achievement hint
-    const achievementText = this.add.text(x, y + 50, 'RED BARON!', {
-      fontFamily: 'Arial Black, Arial',
-      fontSize: '24px',
-      color: '#C0C0C0', // Silver
-      fontStyle: 'bold',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
-    achievementText.setOrigin(0.5, 0.5);
-    achievementText.setDepth(150);
-
-    // Animate all texts - stay visible longer then fade
-    this.tweens.add({
-      targets: [nameText, pointsText, achievementText],
-      y: '-=100',
-      alpha: 0,
+    showDestructionMessage({
+      scene: this,
+      x, y, points,
+      name: `${displayName} shot down!`,
+      nameColor: '#FF4500',
+      nameFontSize: '20px',
+      pointsFontSize: '28px',
       duration: 4000,
-      delay: 1000, // Hold longer for this special message
-      ease: 'Power1',
-      onComplete: () => {
-        nameText.destroy();
-        pointsText.destroy();
-        achievementText.destroy();
-      },
+      delay: 1000,
+      floatDistance: 100,
+      extraText: 'RED BARON!',
+      extraTextColor: '#C0C0C0',
     });
-
-    // Emit event to UIScene to update score display
     this.events.emit('destructionScore', this.destructionScore);
   }
 
