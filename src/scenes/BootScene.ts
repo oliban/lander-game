@@ -299,10 +299,10 @@ export class BootScene extends Phaser.Scene {
     const smokeGraphics = this.make.graphics({ x: 0, y: 0 });
     const smokeSize = 32;
     const center = smokeSize / 2;
-    // Create layered circles for soft edge effect
+    // Create layered circles for soft edge effect - more opaque for visibility
     for (let r = center; r > 0; r -= 2) {
-      const alpha = (r / center) * 0.4; // Fade toward edges
-      smokeGraphics.fillStyle(0xcccccc, alpha);
+      const alpha = (r / center) * 0.8; // More opaque (was 0.4)
+      smokeGraphics.fillStyle(0xcccccc, alpha); // Light gray
       smokeGraphics.fillCircle(center, center, r);
     }
     smokeGraphics.generateTexture('smoke', smokeSize, smokeSize);
