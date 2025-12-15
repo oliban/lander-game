@@ -116,6 +116,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: 'Destroy Greenland with a bomb',
     tier: 'bronze',
   },
+  {
+    id: 'sonic_boom',
+    name: 'Sonic Boom',
+    description: 'Break the sound barrier',
+    tier: 'silver',
+  },
 
   // Deaths & Mishaps (5)
   {
