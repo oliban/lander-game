@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLLECTIBLE_TYPES } from '../constants';
 import { getCollectionSystem } from '../systems/CollectionSystem';
+import { UIHeader } from '../ui/UIHeader';
+import { ScrollableContainer } from '../ui/ScrollableContainer';
+import { createGreenButton } from '../ui/UIButton';
 
 const ITEM_SIZE = 150;
 const ITEM_PADDING = 15;
@@ -41,9 +44,7 @@ const SPRITE_KEYS: Record<string, string | null> = {
 };
 
 export class CollectionScene extends Phaser.Scene {
-  private scrollY = 0;
-  private maxScroll = 0;
-  private listContainer!: Phaser.GameObjects.Container;
+  private scrollContainer!: ScrollableContainer;
 
   constructor() {
     super({ key: 'CollectionScene' });
@@ -55,63 +56,36 @@ export class CollectionScene extends Phaser.Scene {
     // Dark background
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0d1b2a);
 
-    // Header
-    const headerBg = this.add.graphics();
-    headerBg.fillStyle(0x1a1a2e, 0.9);
-    headerBg.fillRect(0, 0, GAME_WIDTH, 100);
-
-    const title = this.add.text(GAME_WIDTH / 2, 35, 'COLLECTION', {
-      fontSize: '32px',
-      color: '#FFD700',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
-    });
-    title.setOrigin(0.5, 0.5);
-
-    // Progress
+    // Progress stats
     const discovered = collectionSystem.getDiscoveredCount();
     const total = collectionSystem.getTotalCount();
-    const percent = Math.round((discovered / total) * 100);
 
-    const progress = this.add.text(GAME_WIDTH / 2, 70, `${discovered}/${total} Discovered (${percent}%)`, {
-      fontSize: '18px',
-      color: '#AAAAAA',
-      fontFamily: 'Arial, Helvetica, sans-serif',
+    // Header with progress bar
+    const header = new UIHeader(this, {
+      title: 'COLLECTION',
+      width: GAME_WIDTH,
+      showProgress: true,
+      current: discovered,
+      total: total,
+      progressLabelSuffix: 'Discovered',
     });
-    progress.setOrigin(0.5, 0.5);
 
-    // Progress bar
-    const barWidth = 300;
-    const barHeight = 8;
-    const barX = GAME_WIDTH / 2 - barWidth / 2;
-    const barY = 85;
-
-    const progressBarBg = this.add.graphics();
-    progressBarBg.fillStyle(0x333333, 1);
-    progressBarBg.fillRoundedRect(barX, barY, barWidth, barHeight, 4);
-
-    const progressBarFill = this.add.graphics();
-    progressBarFill.fillStyle(0xffd700, 1);
-    progressBarFill.fillRoundedRect(barX, barY, barWidth * (discovered / total), barHeight, 4);
-
-    // Create scrollable grid container
-    const listY = 110;
+    // Calculate list dimensions
+    const listY = header.getHeight() + 10;
     const listHeight = GAME_HEIGHT - listY - 60;
 
-    // Mask for scrolling
-    const maskShape = this.make.graphics({});
-    maskShape.fillStyle(0xffffff);
-    maskShape.fillRect(0, listY, GAME_WIDTH, listHeight);
-    const mask = maskShape.createGeometryMask();
-
-    this.listContainer = this.add.container(0, listY);
-    this.listContainer.setMask(mask);
-
-    // Get all item types and sort them
+    // Get all item types and calculate grid dimensions
     const allItems = collectionSystem.getAllItemTypes();
     const rows = Math.ceil(allItems.length / COLUMNS);
     const gridHeight = rows * (ITEM_SIZE + ITEM_PADDING) + LIST_PADDING * 2;
-    this.maxScroll = Math.max(0, gridHeight - listHeight);
+
+    // Create scrollable container
+    this.scrollContainer = new ScrollableContainer(this, {
+      y: listY,
+      width: GAME_WIDTH,
+      height: listHeight,
+      contentHeight: gridHeight,
+    });
 
     // Calculate grid offset to center it
     const gridWidth = COLUMNS * (ITEM_SIZE + ITEM_PADDING) - ITEM_PADDING;
@@ -127,39 +101,10 @@ export class CollectionScene extends Phaser.Scene {
       this.createCollectionItem(itemType, x, y, collectionSystem.isDiscovered(itemType));
     });
 
-    // Scroll handling
-    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
-      this.scrollY = Phaser.Math.Clamp(this.scrollY + deltaY * 0.5, 0, this.maxScroll);
-      this.listContainer.y = listY - this.scrollY;
-    });
-
-    // Touch/drag scrolling
-    let dragStartY = 0;
-    let dragStartScroll = 0;
-
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y > listY && pointer.y < listY + listHeight) {
-        dragStartY = pointer.y;
-        dragStartScroll = this.scrollY;
-      }
-    });
-
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.isDown && dragStartY > 0) {
-        const delta = dragStartY - pointer.y;
-        this.scrollY = Phaser.Math.Clamp(dragStartScroll + delta, 0, this.maxScroll);
-        this.listContainer.y = listY - this.scrollY;
-      }
-    });
-
-    this.input.on('pointerup', () => {
-      dragStartY = 0;
-    });
-
     // Back button
-    this.createButton(GAME_WIDTH / 2, GAME_HEIGHT - 35, 'BACK', () => {
+    createGreenButton(this, GAME_WIDTH / 2, GAME_HEIGHT - 35, 'BACK', () => {
       this.scene.start('MenuScene');
-    });
+    }, 'small');
 
     // ESC key to go back
     this.input.keyboard!.on('keydown-ESC', () => {
@@ -172,7 +117,7 @@ export class CollectionScene extends Phaser.Scene {
     if (!itemData) return;
 
     const container = this.add.container(0, 0);
-    this.listContainer.add(container);
+    this.scrollContainer.add(container);
 
     // Background
     const bg = this.add.graphics();
@@ -269,46 +214,5 @@ export class CollectionScene extends Phaser.Scene {
       unknown.setOrigin(0.5, 0.5);
       container.add(unknown);
     }
-  }
-
-  private createButton(x: number, y: number, label: string, callback: () => void): Phaser.GameObjects.Container {
-    const container = this.add.container(x, y);
-
-    const bg = this.add.graphics();
-    bg.fillStyle(0x4caf50, 1);
-    bg.fillRoundedRect(-80, -20, 160, 40, 8);
-    bg.lineStyle(2, 0x2e7d32);
-    bg.strokeRoundedRect(-80, -20, 160, 40, 8);
-
-    const text = this.add.text(0, 0, label, {
-      fontSize: '18px',
-      color: '#FFFFFF',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5, 0.5);
-
-    container.add([bg, text]);
-    container.setInteractive(new Phaser.Geom.Rectangle(-80, -20, 160, 40), Phaser.Geom.Rectangle.Contains);
-
-    container.on('pointerover', () => {
-      bg.clear();
-      bg.fillStyle(0x66bb6a, 1);
-      bg.fillRoundedRect(-80, -20, 160, 40, 8);
-      bg.lineStyle(2, 0x2e7d32);
-      bg.strokeRoundedRect(-80, -20, 160, 40, 8);
-    });
-
-    container.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(0x4caf50, 1);
-      bg.fillRoundedRect(-80, -20, 160, 40, 8);
-      bg.lineStyle(2, 0x2e7d32);
-      bg.strokeRoundedRect(-80, -20, 160, 40, 8);
-    });
-
-    container.on('pointerdown', callback);
-
-    return container;
   }
 }
