@@ -30,6 +30,7 @@ import { EntityManager } from '../managers/EntityManager';
 import { BiplaneManager } from '../managers/BiplaneManager';
 import { ProjectileCollisionManager } from '../managers/ProjectileCollisionManager';
 import { SittingDuckManager } from '../managers/SittingDuckManager';
+import { CollisionManager } from '../managers/CollisionManager';
 import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
@@ -129,6 +130,7 @@ export class GameScene extends Phaser.Scene {
   private entityManager!: EntityManager;
   private projectileCollisionManager!: ProjectileCollisionManager;
   private sittingDuckManager!: SittingDuckManager;
+  private collisionManager!: CollisionManager;
 
   // Oil towers at fuel depots
   private oilTowers: OilTower[] = [];
@@ -533,7 +535,19 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Set up collision detection
-    this.setupCollisions();
+    this.collisionManager = new CollisionManager(this, {
+      getShuttle1BodyId: () => this.shuttle?.body ? (this.shuttle.body as MatterJS.BodyType).id : -1,
+      getShuttle2BodyId: () => this.shuttle2?.body ? (this.shuttle2.body as MatterJS.BodyType).id : -1,
+      onTerrainCollision: (playerNum) => this.handleTerrainCollision(playerNum),
+      onLandingPadCollision: (pad, playerNum) => this.handleLandingPadCollision(pad, playerNum),
+      onBoatDeckCollision: (playerNum) => this.handleBoatDeckCollision(playerNum),
+      onProjectileHit: (playerNum) => this.handleProjectileHit(playerNum),
+      onCollectiblePickup: (collectible, playerNum) => this.handleCollectiblePickup(collectible, playerNum),
+      onTombstoneBounce: (body) => this.tombstoneManager.handleBounce(body),
+      onBrickWallCollision: (playerNum) => this.handleBrickWallCollision(playerNum),
+      onTombstoneTerrainCollision: (body) => this.tombstoneManager.resetJuggle(body),
+    });
+    this.collisionManager.initialize();
 
     // Start UI scene
     this.scene.launch('UIScene', {
@@ -909,91 +923,6 @@ export class GameScene extends Phaser.Scene {
       this.medalHouse = new MedalHouse(this, medalHouseX, medalHouseY);
       this.decorations.push(this.medalHouse);
     }
-  }
-
-  private setupCollisions(): void {
-    // Collision with terrain
-    this.matter.world.on('collisionstart', (event: Phaser.Physics.Matter.Events.CollisionStartEvent) => {
-      for (const pair of event.pairs) {
-        const bodyA = pair.bodyA;
-        const bodyB = pair.bodyB;
-
-        // Check shuttle collision with terrain
-        if (this.isShuttleCollision(bodyA, bodyB, 'terrain')) {
-          const shuttleBody = bodyA.label === 'terrain' ? bodyB : bodyA;
-          const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
-          this.handleTerrainCollision(isP2 ? 2 : 1);
-        }
-
-        // Check shuttle collision with landing pad
-        if (this.isShuttleCollision(bodyA, bodyB, 'landingPad')) {
-          const padBody = bodyA.label === 'landingPad' ? bodyA : bodyB;
-          const shuttleBody = bodyA.label === 'landingPad' ? bodyB : bodyA;
-          const pad = (padBody as unknown as { landingPadRef: LandingPad }).landingPadRef;
-          if (pad) {
-            const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
-            this.handleLandingPadCollision(pad, isP2 ? 2 : 1);
-          }
-        }
-
-        // Check shuttle collision with boat deck
-        if (this.isShuttleCollision(bodyA, bodyB, 'boatDeck')) {
-          const shuttleBody = bodyA.label === 'boatDeck' ? bodyB : bodyA;
-          const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
-          this.handleBoatDeckCollision(isP2 ? 2 : 1);
-        }
-
-        // Check shuttle collision with projectile
-        if (this.isShuttleCollision(bodyA, bodyB, 'projectile')) {
-          const shuttleBody = bodyA.label === 'projectile' ? bodyB : bodyA;
-          const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
-          this.handleProjectileHit(isP2 ? 2 : 1);
-        }
-
-        // Check shuttle collision with collectible
-        if (this.isShuttleCollision(bodyA, bodyB, 'collectible')) {
-          const collectibleBody = bodyA.label === 'collectible' ? bodyA : bodyB;
-          const shuttleBody = bodyA.label === 'collectible' ? bodyB : bodyA;
-          const collectible = (collectibleBody as unknown as { collectibleRef: Collectible }).collectibleRef;
-          if (collectible) {
-            // Determine which shuttle picked it up
-            const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
-            this.handleCollectiblePickup(collectible, isP2 ? 2 : 1);
-          }
-        }
-
-        // Check shuttle collision with tombstone (for Puskás Award)
-        if (this.isShuttleCollision(bodyA, bodyB, 'tombstone')) {
-          const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
-          this.tombstoneManager.handleBounce(tombstoneBody);
-        }
-
-        // Check shuttle collision with brick wall
-        if (this.isShuttleCollision(bodyA, bodyB, 'brick_wall')) {
-          const shuttleBody = bodyA.label === 'brick_wall' ? bodyB : bodyA;
-          const isP2 = this.shuttle2 && shuttleBody.id === (this.shuttle2.body as MatterJS.BodyType).id;
-          this.handleBrickWallCollision(isP2 ? 2 : 1);
-        }
-
-        // Check tombstone collision with terrain (resets juggle count)
-        if ((bodyA.label === 'tombstone' && bodyB.label === 'terrain') ||
-            (bodyB.label === 'tombstone' && bodyA.label === 'terrain')) {
-          const tombstoneBody = bodyA.label === 'tombstone' ? bodyA : bodyB;
-          this.tombstoneManager.resetJuggle(tombstoneBody);
-        }
-      }
-    });
-  }
-
-  private isShuttleCollision(bodyA: MatterJS.BodyType, bodyB: MatterJS.BodyType, label: string): boolean {
-    // Check if body belongs to shuttle1 or shuttle2 by ID
-    const shuttle1BodyId = this.shuttle?.body ? (this.shuttle.body as MatterJS.BodyType).id : -1;
-    const shuttle2BodyId = this.shuttle2?.body ? (this.shuttle2.body as MatterJS.BodyType).id : -1;
-
-    const isShuttleA = bodyA.id === shuttle1BodyId || bodyA.id === shuttle2BodyId;
-    const isShuttleB = bodyB.id === shuttle1BodyId || bodyB.id === shuttle2BodyId;
-
-    return (isShuttleA && bodyB.label === label) || (isShuttleB && bodyA.label === label);
   }
 
   private handleTerrainCollision(playerNum: number = 1): void {
