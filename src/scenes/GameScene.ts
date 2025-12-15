@@ -10,7 +10,6 @@ import { Bomb } from '../objects/Bomb';
 import { FisherBoat } from '../objects/FisherBoat';
 import { GolfCart } from '../objects/GolfCart';
 import { OilTower } from '../objects/OilTower';
-import { Biplane } from '../objects/Biplane';
 import { Shark } from '../objects/Shark';
 import { GreenlandIce } from '../objects/GreenlandIce';
 import { FuelSystem } from '../systems/FuelSystem';
@@ -28,6 +27,7 @@ import { PropagandaManager } from '../managers/PropagandaManager';
 import { EpsteinFilesManager } from '../managers/EpsteinFilesManager';
 import { DogfightManager } from '../managers/DogfightManager';
 import { EntityManager } from '../managers/EntityManager';
+import { BiplaneManager } from '../managers/BiplaneManager';
 import { showDestructionMessage } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
@@ -124,10 +124,8 @@ export class GameScene extends Phaser.Scene {
   private golfCart: GolfCart | null = null;
   private epsteinFilesManager!: EpsteinFilesManager;
 
-  // Propaganda biplane
-  private biplane: Biplane | null = null;
-  private biplaneTargetCountry: string | null = null; // Country where biplane will spawn when player enters
-  private biplaneSpawned: boolean = false;
+  // Propaganda biplane (managed by BiplaneManager)
+  private biplaneManager!: BiplaneManager;
   private propagandaManager!: PropagandaManager;
   private dogfightManager!: DogfightManager;
   private entityManager!: EntityManager;
@@ -351,14 +349,13 @@ export class GameScene extends Phaser.Scene {
     this.golfCart = this.entityManager.getGolfCart();
     this.greenlandIce = this.entityManager.getGreenlandIce();
 
-    // Pick biplane type: 30% chance for info plane, 70% for country propaganda
-    if (Math.random() < 0.3) {
-      this.biplaneTargetCountry = 'GAME_INFO';
-    } else {
-      const biplaneCountries = ['USA', 'United Kingdom', 'France', 'Switzerland', 'Germany', 'Poland', 'Russia'];
-      this.biplaneTargetCountry = biplaneCountries[Math.floor(Math.random() * biplaneCountries.length)];
-    }
-    this.biplaneSpawned = false;
+    // Initialize biplane manager (propaganda/info planes)
+    this.biplaneManager = new BiplaneManager(this, {
+      getShuttles: () => this.shuttles,
+      getMatterPhysics: () => this.matter,
+      playBoingSound: () => this.playBoingSound(),
+    });
+    this.biplaneManager.initialize();
 
     // Create cannons first (so decorations can avoid them)
     this.createCannons();
@@ -2574,40 +2571,8 @@ export class GameScene extends Phaser.Scene {
       this.achievementSystem.unlock('singing_in_the_rain');
     }
 
-    // Spawn biplane when any player gets close to the target country (or any country for GAME_INFO)
-    if (!this.biplaneSpawned && this.biplaneTargetCountry) {
-      const spawnDistance = 1500; // Spawn when player is within 1500px of country center
-      const validCountries = ['USA', 'United Kingdom', 'France', 'Switzerland', 'Germany', 'Poland', 'Russia'];
-
-      // For GAME_INFO, check all countries; for propaganda, check only target country
-      const countriesToCheck = this.biplaneTargetCountry === 'GAME_INFO'
-        ? validCountries
-        : [this.biplaneTargetCountry];
-
-      for (const countryName of countriesToCheck) {
-        const targetCountryData = COUNTRIES.find(c => c.name === countryName);
-        const nextCountryData = COUNTRIES.find(c => c.startX > (targetCountryData?.startX ?? 0));
-        if (!targetCountryData) continue;
-
-        const countryStartX = targetCountryData.startX;
-        const countryEndX = nextCountryData ? nextCountryData.startX : countryStartX + 6000;
-        const countryCenter = countryStartX + (countryEndX - countryStartX) / 2;
-
-        // Check all active shuttles
-        for (const shuttle of this.shuttles) {
-          if (!shuttle.active) continue;
-          const distToCenter = Math.abs(shuttle.x - countryCenter);
-          if (distToCenter < spawnDistance) {
-            // For GAME_INFO, spawn at the country player is approaching
-            const spawnCountry = this.biplaneTargetCountry === 'GAME_INFO' ? countryName : this.biplaneTargetCountry;
-            this.biplane = new Biplane(this, this.biplaneTargetCountry, shuttle.x, spawnCountry);
-            this.biplaneSpawned = true;
-            break;
-          }
-        }
-        if (this.biplaneSpawned) break;
-      }
-    }
+    // Update biplane (spawning, movement, shuttle collision)
+    this.biplaneManager.update(time);
 
     // Update entities (fisher boat, sharks, golf cart)
     this.entityManager.update(time);
@@ -2637,56 +2602,6 @@ export class GameScene extends Phaser.Scene {
       const horizontalDistance = Math.abs(shuttle.x - pad.x);
       if (horizontalDistance > halfPadWidth + 20) {
         this.lastTradedPad = null;
-      }
-    }
-
-    // Update biplane (fly across sky) and check shuttle collision
-    if (this.biplane && !this.biplane.isDestroyed) {
-      this.biplane.update(time, 16); // ~60fps delta
-
-      // Check collision with shuttles - bounce off, don't destroy (skip if hidden/waiting)
-      if (!this.biplane.isHidden) {
-        const bounds = this.biplane.getCollisionBounds();
-      for (const shuttle of this.shuttles) {
-        if (!shuttle.active) continue;
-
-        // Simple AABB collision check
-        const shuttleBounds = {
-          x: shuttle.x - 14,
-          y: shuttle.y - 18,
-          width: 28,
-          height: 36,
-        };
-
-        if (
-          shuttleBounds.x < bounds.x + bounds.width &&
-          shuttleBounds.x + shuttleBounds.width > bounds.x &&
-          shuttleBounds.y < bounds.y + bounds.height &&
-          shuttleBounds.y + shuttleBounds.height > bounds.y
-        ) {
-          // Collision! Bounce shuttle off the plane (don't destroy)
-          const body = shuttle.body as MatterJS.BodyType;
-          if (body) {
-            // Calculate bounce direction based on relative position
-            const dx = shuttle.x - this.biplane.x;
-            const dy = shuttle.y - this.biplane.y;
-
-            // Strong bounce away from plane
-            const bounceStrength = 8;
-            const normalX = dx / (Math.abs(dx) + Math.abs(dy) + 0.1);
-            const normalY = dy / (Math.abs(dx) + Math.abs(dy) + 0.1);
-
-            this.matter.body.setVelocity(body, {
-              x: body.velocity.x + normalX * bounceStrength,
-              y: body.velocity.y + normalY * bounceStrength - 2, // Slight upward bias
-            });
-
-            // Play boing sound for bouncy collision
-            this.playBoingSound();
-          }
-          break;
-        }
-      }
       }
     }
 
@@ -2740,7 +2655,7 @@ export class GameScene extends Phaser.Scene {
       this.decorations,
       this.cannons,
       this.landingPads,
-      this.biplane ? [this.biplane] : [],
+      this.biplaneManager.getBiplanes(),
       this.golfCart,
       this.fisherBoat,
       this.oilTowers,
