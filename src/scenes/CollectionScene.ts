@@ -134,7 +134,7 @@ export class CollectionScene extends Phaser.Scene {
     container.add(bg);
 
     const centerX = x + ITEM_SIZE / 2;
-    const centerY = y + ITEM_SIZE / 2 - 8;
+    const centerY = y + ITEM_SIZE / 2 - 15; // Moved up to make room for value text
 
     if (isDiscovered) {
       // Show item
@@ -181,13 +181,50 @@ export class CollectionScene extends Phaser.Scene {
       if (displayName.length > 16) {
         displayName = displayName.substring(0, 14) + '..';
       }
-      const name = this.add.text(centerX, y + ITEM_SIZE - 18, displayName, {
+      const name = this.add.text(centerX, y + ITEM_SIZE - 28, displayName, {
         fontSize: '12px',
         color: '#FFFFFF',
         fontFamily: 'Arial, Helvetica, sans-serif',
       });
       name.setOrigin(0.5, 0.5);
       container.add(name);
+
+      // Item value display
+      let valueText = '';
+      let valueColor = '#AAAAAA';
+      const itemDataExt = itemData as { special?: string; mystery?: boolean; fuelValue: number };
+
+      if (itemDataExt.special) {
+        // Power-up items
+        const specialNames: Record<string, string> = {
+          'fuel_boost': '⚡ FUEL+',
+          'bribe_cannons': '💰 BRIBE',
+          'speed_boost': '🚀 SPEED',
+        };
+        valueText = specialNames[itemDataExt.special] || 'SPECIAL';
+        valueColor = '#FFD700';
+      } else if (itemDataExt.mystery) {
+        // Mystery items (Casino Chip)
+        valueText = '??? FUEL';
+        valueColor = '#9932CC';
+      } else if (itemDataExt.fuelValue === 0) {
+        // Bomb items (droppable, no fuel value)
+        valueText = '💣 BOMB';
+        valueColor = '#FF6B35';
+      } else {
+        // Standard tradeable items
+        valueText = `${itemDataExt.fuelValue} FUEL`;
+        valueColor = '#44FF44';
+      }
+
+      const value = this.add.text(centerX, y + ITEM_SIZE - 12, valueText, {
+        fontSize: '11px',
+        color: valueColor,
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontStyle: 'bold',
+      });
+      value.setOrigin(0.5, 0.5);
+      container.add(value);
     } else {
       // Unknown item - show silhouette
       const circle = this.add.graphics();
@@ -206,7 +243,7 @@ export class CollectionScene extends Phaser.Scene {
       questionMark.setOrigin(0.5, 0.5);
       container.add(questionMark);
 
-      const unknown = this.add.text(centerX, y + ITEM_SIZE - 18, '???', {
+      const unknown = this.add.text(centerX, y + ITEM_SIZE - 20, '???', {
         fontSize: '12px',
         color: '#555555',
         fontFamily: 'Arial, Helvetica, sans-serif',
