@@ -592,18 +592,43 @@ export class GameOverScene extends Phaser.Scene {
         this.scene.start('MenuScene');
       }, 'medium');
 
-      // Enter key hint
-      this.add.text(GAME_WIDTH / 2, buttonY + 55, 'Press ENTER to play again', {
+      // Key hints
+      this.add.text(GAME_WIDTH / 2, buttonY + 55, 'ENTER to retry  |  1 for 1P  |  2 for 2P  |  3 for Dogfight', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '13px',
         color: '#2d3748',
         fontStyle: 'italic',
       }).setOrigin(0.5, 0.5);
 
-      // Enter key to play again
+      // Enter key to play again (preserves kills in 2-player mode)
       this.input.keyboard!.on('keydown-ENTER', () => {
         if (!this.nameEntryActive) {
           this.scene.start('GameScene', this.getRestartData());
+        }
+      });
+
+      // Keys 1/2/3 start fresh game with selected mode (does not preserve kills)
+      // Key 1 for 1 player mode - key code 49 is '1'
+      const key1 = this.input.keyboard!.addKey(49);
+      key1.on('down', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene', { playerCount: 1 });
+        }
+      });
+
+      // Key 2 for 2 player mode - key code 50 is '2'
+      const key2 = this.input.keyboard!.addKey(50);
+      key2.on('down', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene', { playerCount: 2 });
+        }
+      });
+
+      // Key 3 for dogfight mode - key code 51 is '3'
+      const key3 = this.input.keyboard!.addKey(51);
+      key3.on('down', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene', { playerCount: 2, gameMode: 'dogfight' });
         }
       });
     }
@@ -756,21 +781,22 @@ export class GameOverScene extends Phaser.Scene {
       }, 'medium');
 
       // Key hints
-      const enterHint = this.add.text(GAME_WIDTH / 2, 540, 'Press 1 for 1P  |  Press 2 for 2P  |  Press 3 for Dogfight', {
+      const enterHint = this.add.text(GAME_WIDTH / 2, 540, 'ENTER to retry  |  1 for 1P  |  2 for 2P  |  3 for Dogfight', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '14px',
         color: '#888888',
       });
       enterHint.setOrigin(0.5, 0.5);
 
-      // Enter key to try again
+      // Enter key to try again (preserves kills in 2-player mode)
       this.input.keyboard!.on('keydown-ENTER', () => {
         if (!this.nameEntryActive) {
           this.scene.start('GameScene', this.getRestartData());
         }
       });
 
-      // Key 1 for 1 player mode
+      // Keys 1/2/3 start fresh game with selected mode (does not preserve kills)
+      // Key 1 for 1 player mode - key code 49 is '1'
       const key1 = this.input.keyboard!.addKey(49);
       key1.on('down', () => {
         if (!this.nameEntryActive) {
@@ -778,7 +804,7 @@ export class GameOverScene extends Phaser.Scene {
         }
       });
 
-      // Key 2 for 2 player mode
+      // Key 2 for 2 player mode - key code 50 is '2'
       const key2 = this.input.keyboard!.addKey(50);
       key2.on('down', () => {
         if (!this.nameEntryActive) {
@@ -786,7 +812,7 @@ export class GameOverScene extends Phaser.Scene {
         }
       });
 
-      // Key 3 for dogfight mode
+      // Key 3 for dogfight mode - key code 51 is '3'
       const key3 = this.input.keyboard!.addKey(51);
       key3.on('down', () => {
         if (!this.nameEntryActive) {
