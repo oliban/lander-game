@@ -205,7 +205,7 @@ export class CollectionScene extends Phaser.Scene {
         valueColor = '#FFD700';
       } else if (itemDataExt.mystery) {
         // Mystery items (Casino Chip)
-        valueText = '??? FUEL';
+        valueText = '$???';
         valueColor = '#9932CC';
       } else if (itemDataExt.fuelValue === 0) {
         // Bomb items (droppable, no fuel value)
@@ -213,7 +213,7 @@ export class CollectionScene extends Phaser.Scene {
         valueColor = '#FF6B35';
       } else {
         // Standard tradeable items
-        valueText = `${itemDataExt.fuelValue} FUEL`;
+        valueText = `$${itemDataExt.fuelValue}`;
         valueColor = '#44FF44';
       }
 
