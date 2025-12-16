@@ -36,6 +36,7 @@ export const COLORS = {
   TEXT_GRAY: '#AAAAAA',
   TEXT_LIGHT_GRAY: '#CCCCCC',
   TEXT_DARK: '#333333',
+  TEXT_ACCENT_ORANGE: '#FF8C00',
 
   // Progress bar
   PROGRESS_BG: 0x333333,
@@ -157,3 +158,6 @@ export const PROGRESS_BAR = {
   BG_COLOR: COLORS.PROGRESS_BG,
   FILL_COLOR: COLORS.PROGRESS_FILL,
 };
+
+// Alternating stripe colors for list items (grey/orange pattern)
+export const LIST_STRIPE_COLORS = [COLORS.TEXT_GRAY, COLORS.TEXT_ACCENT_ORANGE];

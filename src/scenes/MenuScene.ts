@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../constants';
 import { getAchievementSystem } from '../systems/AchievementSystem';
 import { getCollectionSystem } from '../systems/CollectionSystem';
-import { TIER_COLORS } from '../data/achievements';
 import { COLLECTIBLE_TYPES } from '../constants';
 import { createGreenButton } from '../ui/UIButton';
+import { LIST_STRIPE_COLORS } from '../ui/UIStyles';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -108,7 +108,7 @@ export class MenuScene extends Phaser.Scene {
     const medals = ['🥇', '🥈', '🥉', randomAnimal(), randomAnimal()];
     for (let i = 0; i < 5; i++) {
       const score = highScores[i];
-      const yPos = panelY + 36 + i * 16;
+      const yPos = panelY + 42 + i * 15;
       const medal = medals[i];
       const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
       const leftX = scoresPanelX - panelW / 2 + 20;
@@ -221,12 +221,13 @@ export class MenuScene extends Phaser.Scene {
     if (recentUnlocks.length > 0) {
       for (let i = 0; i < recentUnlocks.length; i++) {
         const achievement = recentUnlocks[i];
-        const yPos = panelY + 38 + i * 16;
-        const tierColor = '#' + TIER_COLORS[achievement.tier].toString(16).padStart(6, '0');
+        const yPos = panelY + 44 + i * 15;
+        // Use grey/orange tiger stripes for readability
+        const achievementColor = LIST_STRIPE_COLORS[i % 2];
 
         const achievementText = this.add.text(panelX - panelW / 2 + 25, yPos, `✓ ${achievement.name}`, {
           fontSize: '14px',
-          color: tierColor,
+          color: achievementColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
         achievementText.setOrigin(0, 0);
@@ -272,8 +273,9 @@ export class MenuScene extends Phaser.Scene {
         const itemData = COLLECTIBLE_TYPES[itemType as keyof typeof COLLECTIBLE_TYPES];
         if (!itemData) continue;
 
-        const yPos = panelY + 38 + i * 16;
-        const itemColor = '#' + itemData.color.toString(16).padStart(6, '0');
+        const yPos = panelY + 44 + i * 15;
+        // Use grey/orange tiger stripes for readability
+        const itemColor = LIST_STRIPE_COLORS[i % 2];
 
         // Truncate long names
         let displayName = itemData.name;
