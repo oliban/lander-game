@@ -8,3 +8,4 @@ dist/
 asset_creation/
 .playwright-mcp/
 coverage/
+.claude/settings.local.json
