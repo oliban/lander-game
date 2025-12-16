@@ -657,30 +657,16 @@ export class WeatherManager {
         const cloud = this.pendingLightningStrike.cloud;
 
         if (shuttle.active) {
-          const cameraX = this.scene.cameras.main.scrollX;
-          const cameraY = this.scene.cameras.main.scrollY;
-          const shuttleScreenX = shuttle.x - cameraX;
-          const shuttleScreenY = shuttle.y - cameraY;
-          const cloudScreenX = this.getCloudScreenX(cloud);
-          const cloudScreenY = cloud.y - cameraY * 0.02;
-          const cloudVisualCenterY = cloudScreenY + 5 * cloud.scale;
-          const dx = Math.abs(shuttleScreenX - cloudScreenX);
-          const dy = shuttleScreenY - cloudVisualCenterY;
-          const collisionRadius = cloud.scale * 35;
-          const maxStrikeRange = collisionRadius + 200;
-
           const terrainY = this.callbacks.getTerrainHeightAt(shuttle.x);
           const distanceFromGround = terrainY - shuttle.y;
           const isGrounded = distanceFromGround < 50;
 
-          // Strike zone is wider (250px horizontal) - need to get to ground to escape
-          const stillInRange = dx < 250 && dy > 0 && dy < maxStrikeRange;
-
-          if (!isGrounded && stillInRange) {
+          // Once warned, only escape is to land - no flying away
+          if (!isGrounded) {
             this.triggerLightningStrike(cloud, shuttle);
           } else {
             this.triggerAmbientLightning(cloud);
-            console.log('[Lightning] Shuttle escaped! Strike missed.', { dx, dy, isGrounded, stillInRange });
+            console.log('[Lightning] Shuttle escaped by landing!');
           }
         }
         this.pendingLightningStrike = null;
@@ -696,21 +682,20 @@ export class WeatherManager {
     for (const shuttle of shuttles) {
       if (!shuttle.active) continue;
 
-      const shuttleScreenX = shuttle.x - cameraX;
-      const shuttleScreenY = shuttle.y - cameraY;
-
       for (const cloud of visibleStormClouds) {
         if (time - cloud.lastLightningTime < 5000 + Math.random() * 5000) continue;
 
-        const cloudScreenX = this.getCloudScreenX(cloud);
-        const cloudScreenY = cloud.y - cameraY * 0.02;
-        const cloudVisualCenterY = cloudScreenY + 5 * cloud.scale;
-        const dx = Math.abs(shuttleScreenX - cloudScreenX);
-        const dy = shuttleScreenY - cloudVisualCenterY;
+        // Use world coordinates for both X and Y to fix parallax mismatch
+        // Clouds have 0.02 scroll factor, so effective world pos = cloud.pos + camera * 0.98
+        const cloudWorldX = cloud.x + cameraX * 0.98;
+        const cloudWorldY = cloud.y + cameraY * 0.98;
+        const cloudWorldCenterY = cloudWorldY + 5 * cloud.scale;
+        const dx = Math.abs(shuttle.x - cloudWorldX);
+        const dy = shuttle.y - cloudWorldCenterY;  // World coords: positive when shuttle below cloud
         const collisionRadius = cloud.scale * 35;
         const warningStartY = collisionRadius + 10;
 
-        // Warning zone is 180px horizontal (strike zone is 250px) - gives player time to react
+        // Warning zone - must be near cloud horizontally and below it vertically
         if (dx < 180 && dy > warningStartY && dy < warningStartY + 180) {
           if (Math.random() < 0.35) {
             this.showLightningWarning(cloud, shuttle);
