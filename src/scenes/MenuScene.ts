@@ -52,27 +52,6 @@ export class MenuScene extends Phaser.Scene {
     });
     subtitle.setOrigin(0.5, 0.5);
 
-    // MISSION BRIEFING - clear objective
-    const missionPanel = this.add.graphics();
-    missionPanel.fillStyle(0xCC0000, 0.9);
-    missionPanel.fillRoundedRect(GAME_WIDTH / 2 - 300, 395, 600, 50, 8);
-    missionPanel.lineStyle(3, 0xFFD700);
-    missionPanel.strokeRoundedRect(GAME_WIDTH / 2 - 300, 395, 600, 50, 8);
-
-    const missionText = this.add.text(GAME_WIDTH / 2, 420,
-      'MISSION: Deliver PEACE to Putino in Russia!', {
-      fontSize: '22px',
-      color: '#FFFFFF',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
-    });
-    missionText.setOrigin(0.5, 0.5);
-
-    // Trump quote box - dark background
-    const quoteBox = this.add.graphics();
-    quoteBox.fillStyle(0x000000, 0.6);
-    quoteBox.fillRoundedRect(GAME_WIDTH / 2 - 290, 455, 580, 55, 8);
-
     // Trump quotes - authentic style (10 quotes)
     const quotes = [
       '"These are numbers that nobody has seen. They don\'t even believe it."',
@@ -88,113 +67,93 @@ export class MenuScene extends Phaser.Scene {
     ];
     const selectedQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
-    const quoteText = this.add.text(GAME_WIDTH / 2, 472, selectedQuote, {
+    // Quote panel with dark background for readability
+    const quotePanel = this.add.graphics();
+    quotePanel.fillStyle(0x000000, 0.85);
+    quotePanel.fillRoundedRect(GAME_WIDTH / 2 - 320, 390, 640, 40, 8);
+    quotePanel.setDepth(5);
+
+    const quoteText = this.add.text(GAME_WIDTH / 2, 410, selectedQuote, {
       fontSize: '16px',
       color: '#FFD700',
       fontFamily: 'Georgia, serif',
       fontStyle: 'italic',
     });
-    quoteText.setOrigin(0.5, 0);
+    quoteText.setOrigin(0.5, 0.5);
+    quoteText.setDepth(6);
 
-    const quoteAttrib = this.add.text(GAME_WIDTH / 2, 492, '- President Trumpleton', {
-      fontSize: '12px',
-      color: '#AAAAAA',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-    });
-    quoteAttrib.setOrigin(0.5, 0);
+    // Bottom section: 3 panels in a row (removed controls panel)
+    const panelY = 445;
+    const panelH = 130;
+    const panelW = 220;
+    const panelSpacing = 240;
 
-    // Bottom section: 4 panels in a row, then start button below
-    const panelY = 520;
-    const panelH = 105;
-    const panelW = 145;
-    const panelSpacing = 155;
-
-    // HIGH SCORES panel on the left
-    const scoresPanelX = GAME_WIDTH / 2 - panelSpacing * 1.5;
+    // HIGH SCORES panel (left)
+    const scoresPanelX = GAME_WIDTH / 2 - panelSpacing;
 
     const scoresPanel = this.add.graphics();
     scoresPanel.fillStyle(0x000000, 0.6);
     scoresPanel.fillRoundedRect(scoresPanelX - panelW / 2, panelY, panelW, panelH, 8);
-    scoresPanel.lineStyle(2, 0xFFD700, 0.5);
+    scoresPanel.lineStyle(2, 0xFFD700, 0.3);
     scoresPanel.strokeRoundedRect(scoresPanelX - panelW / 2, panelY, panelW, panelH, 8);
 
-    const scoresTitle = this.add.text(scoresPanelX, panelY + 12, 'TOP SCORES', {
-      fontSize: '12px',
+    const scoresTitle = this.add.text(scoresPanelX, panelY + 18, 'TOP SCORES', {
+      fontSize: '16px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
     scoresTitle.setOrigin(0.5, 0);
 
-    // Load and display high scores (top 10)
+    // Load and display high scores (top 5)
     const highScores = this.loadHighScores();
-    for (let i = 0; i < 10; i++) {
+    const animals = ['🐸', '🦊', '🐼', '🐨', '🦁', '🐯', '🐮', '🐷', '🐵', '🦄', '🐔', '🐧', '🐻', '🐶', '🐱'];
+    const randomAnimal = () => animals[Math.floor(Math.random() * animals.length)];
+    const medals = ['🥇', '🥈', '🥉', randomAnimal(), randomAnimal()];
+    for (let i = 0; i < 5; i++) {
       const score = highScores[i];
-      const yPos = panelY + 30 + i * 12;
-      const rank = i + 1;
+      const yPos = panelY + 36 + i * 16;
+      const medal = medals[i];
       const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
+      const leftX = scoresPanelX - panelW / 2 + 20;
 
       if (score) {
-        const scoreText = this.add.text(scoresPanelX, yPos,
-          `${rank.toString().padStart(2, ' ')}. ${score.name.substring(0, 8)} ${score.score}`, {
-          fontSize: '10px',
+        // Medal and name
+        const nameText = this.add.text(leftX, yPos,
+          `${medal} ${score.name.substring(0, 10)}`, {
+          fontSize: '14px',
           color: color,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
-        scoreText.setOrigin(0.5, 0);
+        nameText.setOrigin(0, 0);
+        // Score on the right
+        const scoreText = this.add.text(scoresPanelX + panelW / 2 - 20, yPos,
+          `${score.score}`, {
+          fontSize: '14px',
+          color: color,
+          fontFamily: 'Arial, Helvetica, sans-serif',
+        });
+        scoreText.setOrigin(1, 0);
       } else {
-        const emptyText = this.add.text(scoresPanelX, yPos, `${rank.toString().padStart(2, ' ')}. ---`, {
-          fontSize: '10px',
+        const emptyText = this.add.text(leftX, yPos, `${medal} ---`, {
+          fontSize: '14px',
           color: '#555555',
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
-        emptyText.setOrigin(0.5, 0);
+        emptyText.setOrigin(0, 0);
       }
     }
 
-    // ACHIEVEMENTS panel (second from left)
-    this.createAchievementsPanel(GAME_WIDTH / 2 - panelSpacing * 0.5, panelY, panelW, panelH);
+    // ACHIEVEMENTS panel (center)
+    this.createAchievementsPanel(GAME_WIDTH / 2, panelY, panelW, panelH);
 
-    // COLLECTION panel (second from right)
-    this.createCollectionPanel(GAME_WIDTH / 2 + panelSpacing * 0.5, panelY, panelW, panelH);
+    // COLLECTION panel (right)
+    this.createCollectionPanel(GAME_WIDTH / 2 + panelSpacing, panelY, panelW, panelH)
 
-    // CONTROLS panel on the right
-    const controlsPanelX = GAME_WIDTH / 2 + panelSpacing * 1.5;
-
-    const controlsPanel = this.add.graphics();
-    controlsPanel.fillStyle(0x000000, 0.6);
-    controlsPanel.fillRoundedRect(controlsPanelX - panelW / 2, panelY, panelW, panelH, 8);
-    controlsPanel.lineStyle(2, 0x4CAF50, 0.5);
-    controlsPanel.strokeRoundedRect(controlsPanelX - panelW / 2, panelY, panelW, panelH, 8);
-
-    const controlsTitle = this.add.text(controlsPanelX, panelY + 12, 'CONTROLS', {
-      fontSize: '12px',
-      color: '#4CAF50',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
-    });
-    controlsTitle.setOrigin(0.5, 0);
-
-    const controlsList = [
-      '↑ = Thrust',
-      '←→ = Rotate',
-      'SPACE = Gear',
-      '↓ = Bomb',
-    ];
-
-    for (let i = 0; i < controlsList.length; i++) {
-      const controlText = this.add.text(controlsPanelX, panelY + 30 + i * 16, controlsList[i], {
-        fontSize: '11px',
-        color: '#FFFFFF',
-        fontFamily: 'Arial, Helvetica, sans-serif',
-      });
-      controlText.setOrigin(0.5, 0);
-    }
-
-    // Start button - below all panels with enough space
+    // Start button - below all panels with good spacing
     const startButton = createGreenButton(this, GAME_WIDTH / 2, panelY + panelH + 45, 'START MISSION', () => {
       this.startGame(1);
-    }).getContainer();
+    }, 'large').getContainer();
 
     // Pulsing animation on start button
     this.tweens.add({
@@ -207,9 +166,9 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Press Enter hint
-    const enterHint = this.add.text(GAME_WIDTH / 2, panelY + panelH + 80, 'Press 1 for 1P  |  Press 2 for 2P  |  Press 3 for Dogfight', {
-      fontSize: '13px',
-      color: '#666666',
+    const enterHint = this.add.text(GAME_WIDTH / 2, panelY + panelH + 90, 'Press 1 for 1P  |  Press 2 for 2P  |  Press 3 for Dogfight', {
+      fontSize: '14px',
+      color: '#888888',
       fontFamily: 'Arial, Helvetica, sans-serif',
     });
     enterHint.setOrigin(0.5, 0.5);
@@ -248,16 +207,16 @@ export class MenuScene extends Phaser.Scene {
     const unlocked = achievementSystem.getUnlockedCount();
     const total = achievementSystem.getTotalCount();
 
-    // Panel background
+    // Panel background with unified gold border
     const panel = this.add.graphics();
     panel.fillStyle(0x000000, 0.6);
     panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
-    panel.lineStyle(2, 0xffd700, 0.5);
+    panel.lineStyle(2, 0xFFD700, 0.3);
     panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
 
     // Title with trophy icon and progress
-    const titleText = this.add.text(panelX, panelY + 12, `🏆 ${unlocked}/${total}`, {
-      fontSize: '12px',
+    const titleText = this.add.text(panelX, panelY + 18, `ACHIEVEMENTS ${unlocked}/${total}`, {
+      fontSize: '16px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
@@ -270,20 +229,20 @@ export class MenuScene extends Phaser.Scene {
     if (recentUnlocks.length > 0) {
       for (let i = 0; i < recentUnlocks.length; i++) {
         const achievement = recentUnlocks[i];
-        const yPos = panelY + 30 + i * 14;
+        const yPos = panelY + 38 + i * 16;
         const tierColor = '#' + TIER_COLORS[achievement.tier].toString(16).padStart(6, '0');
 
-        const achievementText = this.add.text(panelX, yPos, `✓ ${achievement.name}`, {
-          fontSize: '10px',
+        const achievementText = this.add.text(panelX - panelW / 2 + 25, yPos, `✓ ${achievement.name}`, {
+          fontSize: '14px',
           color: tierColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
-        achievementText.setOrigin(0.5, 0);
+        achievementText.setOrigin(0, 0);
       }
     } else {
       // No achievements yet - show hint
-      const hintText = this.add.text(panelX, panelY + 38, 'Land safely for\nyour first trophy!', {
-        fontSize: '10px',
+      const hintText = this.add.text(panelX, panelY + 50, 'Land safely for\nyour first trophy!', {
+        fontSize: '12px',
         color: '#888888',
         fontFamily: 'Arial, Helvetica, sans-serif',
         align: 'center',
@@ -293,7 +252,7 @@ export class MenuScene extends Phaser.Scene {
 
     // View All button at bottom of panel
     const viewBtn = this.add.text(panelX, panelY + panelH - 12, '[ VIEW ALL ]', {
-      fontSize: '10px',
+      fontSize: '13px',
       color: '#4CAF50',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
@@ -319,17 +278,17 @@ export class MenuScene extends Phaser.Scene {
     const discovered = collectionSystem.getDiscoveredCount();
     const total = collectionSystem.getTotalCount();
 
-    // Panel background
+    // Panel background with unified gold border
     const panel = this.add.graphics();
     panel.fillStyle(0x000000, 0.6);
     panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
-    panel.lineStyle(2, 0xff6b35, 0.5); // Orange border for collection
+    panel.lineStyle(2, 0xFFD700, 0.3);
     panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
 
     // Title with count
-    const titleText = this.add.text(panelX, panelY + 12, `ITEMS ${discovered}/${total}`, {
-      fontSize: '11px',
-      color: '#FF6B35',
+    const titleText = this.add.text(panelX, panelY + 18, `COLLECTION ${discovered}/${total}`, {
+      fontSize: '16px',
+      color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
@@ -344,26 +303,26 @@ export class MenuScene extends Phaser.Scene {
         const itemData = COLLECTIBLE_TYPES[itemType as keyof typeof COLLECTIBLE_TYPES];
         if (!itemData) continue;
 
-        const yPos = panelY + 30 + i * 14;
+        const yPos = panelY + 38 + i * 16;
         const itemColor = '#' + itemData.color.toString(16).padStart(6, '0');
 
         // Truncate long names
         let displayName = itemData.name;
-        if (displayName.length > 14) {
-          displayName = displayName.substring(0, 12) + '..';
+        if (displayName.length > 16) {
+          displayName = displayName.substring(0, 14) + '..';
         }
 
-        const itemText = this.add.text(panelX, yPos, `• ${displayName}`, {
-          fontSize: '10px',
+        const itemText = this.add.text(panelX - panelW / 2 + 25, yPos, `• ${displayName}`, {
+          fontSize: '14px',
           color: itemColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
-        itemText.setOrigin(0.5, 0);
+        itemText.setOrigin(0, 0);
       }
     } else {
       // No items yet - show hint
-      const hintText = this.add.text(panelX, panelY + 38, 'Pick up items\nto discover them!', {
-        fontSize: '10px',
+      const hintText = this.add.text(panelX, panelY + 50, 'Pick up items\nto discover them!', {
+        fontSize: '12px',
         color: '#888888',
         fontFamily: 'Arial, Helvetica, sans-serif',
         align: 'center',
@@ -373,7 +332,7 @@ export class MenuScene extends Phaser.Scene {
 
     // View All button at bottom of panel
     const viewBtn = this.add.text(panelX, panelY + panelH - 12, '[ VIEW ALL ]', {
-      fontSize: '10px',
+      fontSize: '13px',
       color: '#4CAF50',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
