@@ -755,8 +755,8 @@ export class GameOverScene extends Phaser.Scene {
         this.scene.start('MenuScene');
       }, 'medium');
 
-      // Enter key hint
-      const enterHint = this.add.text(GAME_WIDTH / 2, 540, 'Press ENTER to try again', {
+      // Key hints
+      const enterHint = this.add.text(GAME_WIDTH / 2, 540, 'Press 1 for 1P  |  Press 2 for 2P  |  Press 3 for Dogfight', {
         fontFamily: 'Arial, Helvetica, sans-serif',
         fontSize: '14px',
         color: '#888888',
@@ -767,6 +767,30 @@ export class GameOverScene extends Phaser.Scene {
       this.input.keyboard!.on('keydown-ENTER', () => {
         if (!this.nameEntryActive) {
           this.scene.start('GameScene', this.getRestartData());
+        }
+      });
+
+      // Key 1 for 1 player mode
+      const key1 = this.input.keyboard!.addKey(49);
+      key1.on('down', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene', { playerCount: 1 });
+        }
+      });
+
+      // Key 2 for 2 player mode
+      const key2 = this.input.keyboard!.addKey(50);
+      key2.on('down', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene', { playerCount: 2 });
+        }
+      });
+
+      // Key 3 for dogfight mode
+      const key3 = this.input.keyboard!.addKey(51);
+      key3.on('down', () => {
+        if (!this.nameEntryActive) {
+          this.scene.start('GameScene', { playerCount: 2, gameMode: 'dogfight' });
         }
       });
     }
