@@ -91,11 +91,7 @@ export class MenuScene extends Phaser.Scene {
     // HIGH SCORES panel (left)
     const scoresPanelX = GAME_WIDTH / 2 - panelSpacing;
 
-    const scoresPanel = this.add.graphics();
-    scoresPanel.fillStyle(0x000000, 0.6);
-    scoresPanel.fillRoundedRect(scoresPanelX - panelW / 2, panelY, panelW, panelH, 8);
-    scoresPanel.lineStyle(2, 0xFFD700, 0.3);
-    scoresPanel.strokeRoundedRect(scoresPanelX - panelW / 2, panelY, panelW, panelH, 8);
+    this.createPanelBackground(scoresPanelX, panelY, panelW, panelH);
 
     const scoresTitle = this.add.text(scoresPanelX, panelY + 18, 'TOP SCORES', {
       fontSize: '16px',
@@ -148,7 +144,7 @@ export class MenuScene extends Phaser.Scene {
     this.createAchievementsPanel(GAME_WIDTH / 2, panelY, panelW, panelH);
 
     // COLLECTION panel (right)
-    this.createCollectionPanel(GAME_WIDTH / 2 + panelSpacing, panelY, panelW, panelH)
+    this.createCollectionPanel(GAME_WIDTH / 2 + panelSpacing, panelY, panelW, panelH);
 
     // Start button - below all panels with good spacing
     const startButton = createGreenButton(this, GAME_WIDTH / 2, panelY + panelH + 45, 'START MISSION', () => {
@@ -208,11 +204,7 @@ export class MenuScene extends Phaser.Scene {
     const total = achievementSystem.getTotalCount();
 
     // Panel background with unified gold border
-    const panel = this.add.graphics();
-    panel.fillStyle(0x000000, 0.6);
-    panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
-    panel.lineStyle(2, 0xFFD700, 0.3);
-    panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+    this.createPanelBackground(panelX, panelY, panelW, panelH);
 
     // Title with trophy icon and progress
     const titleText = this.add.text(panelX, panelY + 18, `ACHIEVEMENTS ${unlocked}/${total}`, {
@@ -251,26 +243,7 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // View All button at bottom of panel
-    const viewBtn = this.add.text(panelX, panelY + panelH - 12, '[ VIEW ALL ]', {
-      fontSize: '13px',
-      color: '#4CAF50',
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontStyle: 'bold',
-    });
-    viewBtn.setOrigin(0.5, 0.5);
-    viewBtn.setInteractive({ useHandCursor: true });
-
-    viewBtn.on('pointerover', () => {
-      viewBtn.setColor('#66BB6A');
-    });
-
-    viewBtn.on('pointerout', () => {
-      viewBtn.setColor('#4CAF50');
-    });
-
-    viewBtn.on('pointerdown', () => {
-      this.scene.start('AchievementsScene');
-    });
+    this.createViewAllButton(panelX, panelY, panelH, 'AchievementsScene');
   }
 
   private createCollectionPanel(panelX: number, panelY: number, panelW: number, panelH: number): void {
@@ -279,11 +252,7 @@ export class MenuScene extends Phaser.Scene {
     const total = collectionSystem.getTotalCount();
 
     // Panel background with unified gold border
-    const panel = this.add.graphics();
-    panel.fillStyle(0x000000, 0.6);
-    panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
-    panel.lineStyle(2, 0xFFD700, 0.3);
-    panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+    this.createPanelBackground(panelX, panelY, panelW, panelH);
 
     // Title with count
     const titleText = this.add.text(panelX, panelY + 18, `COLLECTION ${discovered}/${total}`, {
@@ -331,6 +300,32 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // View All button at bottom of panel
+    this.createViewAllButton(panelX, panelY, panelH, 'CollectionScene');
+  }
+
+  private loadHighScores(): { name: string; score: number; date: string }[] {
+    const STORAGE_KEY = 'peaceShuttle_highScores';
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load high scores:', e);
+    }
+    return [];
+  }
+
+  private createPanelBackground(panelX: number, panelY: number, panelW: number, panelH: number): Phaser.GameObjects.Graphics {
+    const panel = this.add.graphics();
+    panel.fillStyle(0x000000, 0.6);
+    panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+    panel.lineStyle(2, 0xFFD700, 0.3);
+    panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
+    return panel;
+  }
+
+  private createViewAllButton(panelX: number, panelY: number, panelH: number, targetScene: string): Phaser.GameObjects.Text {
     const viewBtn = this.add.text(panelX, panelY + panelH - 12, '[ VIEW ALL ]', {
       fontSize: '13px',
       color: '#4CAF50',
@@ -349,21 +344,10 @@ export class MenuScene extends Phaser.Scene {
     });
 
     viewBtn.on('pointerdown', () => {
-      this.scene.start('CollectionScene');
+      this.scene.start(targetScene);
     });
-  }
 
-  private loadHighScores(): { name: string; score: number; date: string }[] {
-    const STORAGE_KEY = 'peaceShuttle_highScores';
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Failed to load high scores:', e);
-    }
-    return [];
+    return viewBtn;
   }
 
   private drawCloud(x: number, y: number, scale: number): void {
