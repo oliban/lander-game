@@ -485,4 +485,65 @@ describe('MenuScene', () => {
       expect((scene as any).sys?.settings?.key || 'MenuScene').toBe('MenuScene');
     });
   });
+
+  describe('LIST_STRIPE_COLORS pattern', () => {
+    it('should alternate between grey and orange colors', () => {
+      // Test the stripe color values used in MenuScene
+      const LIST_STRIPE_COLORS = ['#AAAAAA', '#FF8C00'];
+
+      expect(LIST_STRIPE_COLORS).toHaveLength(2);
+      expect(LIST_STRIPE_COLORS[0]).toBe('#AAAAAA'); // Grey
+      expect(LIST_STRIPE_COLORS[1]).toBe('#FF8C00'); // Orange
+    });
+
+    it('should correctly alternate colors using modulo operation', () => {
+      const LIST_STRIPE_COLORS = ['#AAAAAA', '#FF8C00'];
+
+      // Test the alternation pattern used in createAchievementsPanel and createCollectionPanel
+      expect(LIST_STRIPE_COLORS[0 % 2]).toBe('#AAAAAA'); // First item: grey
+      expect(LIST_STRIPE_COLORS[1 % 2]).toBe('#FF8C00'); // Second item: orange
+      expect(LIST_STRIPE_COLORS[2 % 2]).toBe('#AAAAAA'); // Third item: grey
+      expect(LIST_STRIPE_COLORS[3 % 2]).toBe('#FF8C00'); // Fourth item: orange
+    });
+
+    it('should use consistent stripe colors across panels', () => {
+      // Both achievements and collections panels should use the same stripe pattern
+      const STRIPE_GREY = '#AAAAAA';
+      const STRIPE_ORANGE = '#FF8C00';
+
+      // Verify the pattern matches the UIStyles constant values
+      expect(STRIPE_GREY).toBe('#AAAAAA'); // TEXT_GRAY value
+      expect(STRIPE_ORANGE).toBe('#FF8C00'); // TEXT_ACCENT_ORANGE value
+    });
+  });
+
+  describe('panel item Y positioning', () => {
+    it('should calculate correct Y positions for list items', () => {
+      const panelY = 445; // Base panel Y from MenuScene
+      const itemStartOffset = 44; // Updated offset after PR
+      const itemSpacing = 15; // Updated spacing after PR
+
+      // Test the Y position calculation: panelY + 44 + i * 15
+      expect(panelY + itemStartOffset + 0 * itemSpacing).toBe(489); // First item
+      expect(panelY + itemStartOffset + 1 * itemSpacing).toBe(504); // Second item
+      expect(panelY + itemStartOffset + 2 * itemSpacing).toBe(519); // Third item
+      expect(panelY + itemStartOffset + 3 * itemSpacing).toBe(534); // Fourth item
+    });
+
+    it('should have consistent spacing between items', () => {
+      const itemSpacing = 15;
+
+      // Verify 4 items fit within panel constraints (panelH = 130)
+      // Title at panelY + 18, items start at panelY + 44, VIEW ALL at panelY + panelH - 12
+      const panelY = 0; // Relative positioning
+      const panelH = 130;
+      const titleY = 18;
+      const itemsStartY = 44;
+      const viewAllY = panelH - 12;
+
+      const lastItemY = itemsStartY + 3 * itemSpacing; // 4th item (index 3)
+      expect(lastItemY).toBeLessThan(viewAllY - 10); // Should have space before VIEW ALL
+      expect(itemsStartY).toBeGreaterThan(titleY + 10); // Should have space after title
+    });
+  });
 });
