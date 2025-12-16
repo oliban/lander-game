@@ -268,14 +268,11 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
     if (this.isThrusting) {
       // Position emitter at bottom/back of shuttle
-      const backOfShipAngle = this.rotation + Math.PI / 2;
-      const offsetX = Math.cos(backOfShipAngle) * 20;
-      const offsetY = Math.sin(backOfShipAngle) * 20;
-
-      this.thrusterParticles.setPosition(this.x + offsetX, this.y + offsetY);
+      const thrustPos = this.getThrustPosition();
+      this.thrusterParticles.setPosition(thrustPos.x, thrustPos.y);
 
       // Particles shoot out from back of ship
-      const exhaustAngle = 90 + Phaser.Math.RadToDeg(this.rotation);
+      const exhaustAngle = Phaser.Math.RadToDeg(this.getBackAngle());
 
       // Scale particle intensity with ship speed
       const velocity = this.getVelocity();
@@ -322,18 +319,16 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       // Emit chemtrail particles at the exhaust position (world coordinates)
       // These stay in place because the emitter is stationary
       if (this.chemtrailEmitter) {
-        const exhaustX = this.x + offsetX;
-        const exhaustY = this.y + offsetY;
         // Emit chemtrail particles (more with speed boost power-up)
         const baseChemtrail = this.thrustMultiplier > 1 ? 2 : 1;
-        this.chemtrailEmitter.emitParticleAt(exhaustX, exhaustY, baseChemtrail);
+        this.chemtrailEmitter.emitParticleAt(thrustPos.x, thrustPos.y, baseChemtrail);
         this.chemtrailParticleCount += baseChemtrail;
         if (speed > 3 || this.thrustMultiplier > 1) {
           // Extra particles at higher speeds or with power-up
           const extraCount = this.thrustMultiplier > 1 ? 2 : 1;
           this.chemtrailEmitter.emitParticleAt(
-            exhaustX + (Math.random() - 0.5) * 10,
-            exhaustY + (Math.random() - 0.5) * 10,
+            thrustPos.x + (Math.random() - 0.5) * 10,
+            thrustPos.y + (Math.random() - 0.5) * 10,
             extraCount
           );
           this.chemtrailParticleCount += extraCount;
@@ -382,18 +377,23 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
     return this.chemtrailParticleCount;
   }
 
+  getBackAngle(): number {
+    // Angle pointing to the back of the ship (opposite of nose direction)
+    return this.rotation + Math.PI / 2;
+  }
+
   getThrustPosition(): { x: number; y: number } {
     // Position at the back of the ship (where exhaust comes out)
-    const backOfShipAngle = this.rotation + Math.PI / 2;
-    const offsetX = Math.cos(backOfShipAngle) * 20;
-    const offsetY = Math.sin(backOfShipAngle) * 20;
+    const backAngle = this.getBackAngle();
+    const offsetX = Math.cos(backAngle) * 20;
+    const offsetY = Math.sin(backAngle) * 20;
     return { x: this.x + offsetX, y: this.y + offsetY };
   }
 
   getThrustDirection(): { x: number; y: number } {
     // Direction the thrust is pointing (opposite of ship's forward direction)
-    const angle = this.rotation + Math.PI / 2;
-    return { x: Math.cos(angle), y: Math.sin(angle) };
+    const backAngle = this.getBackAngle();
+    return { x: Math.cos(backAngle), y: Math.sin(backAngle) };
   }
 
   checkLandingSafety(): { safe: boolean; quality: 'perfect' | 'good' | 'rough' | 'crash'; reason?: string } {
