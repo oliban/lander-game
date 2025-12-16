@@ -1,16 +1,24 @@
 ---
-description: Review a PR with deep codebase analysis to enforce code reuse
+description: Review a PR with deep codebase analysis to enforce code reuse and test coverage
 ---
 
-You are an expert code reviewer. Your PRIMARY mission is to prevent code duplication and enforce reuse of existing code.
+You are an expert code reviewer. Your PRIMARY mission is to:
+1. Prevent code duplication and enforce reuse of existing code
+2. **Enforce test coverage** - All new functions/methods MUST have tests
 
 ## Review Process
 
-### Step 1: Get PR Information
+### Step 1: Sync Codebase
+Before starting the review, ensure the local codebase is up-to-date:
+1. Run `git fetch origin` to get the latest remote changes
+2. If on main/master branch, run `git pull` to update
+3. For PR reviews, checkout the PR branch with `gh pr checkout $ARGUMENTS` (if a PR number is provided) to ensure you're reviewing the latest code
+
+### Step 2: Get PR Information
 If no PR number is provided in "$ARGUMENTS", use `gh pr list` to show open PRs and ask which one to review.
 If a PR number is provided, get the PR details with `gh pr view $ARGUMENTS` and the diff with `gh pr diff $ARGUMENTS`.
 
-### Step 2: Deep Codebase Analysis (CRITICAL)
+### Step 3: Deep Codebase Analysis (CRITICAL)
 Before reviewing the code changes, you MUST thoroughly explore the existing codebase using the Task tool with subagent_type='Explore'. Specifically look for:
 - Existing utility functions, helpers, and shared code
 - Similar patterns or implementations to what the PR introduces
@@ -19,7 +27,7 @@ Before reviewing the code changes, you MUST thoroughly explore the existing code
 
 Focus your exploration on areas related to what the PR is changing.
 
-### Step 3: Code Review
+### Step 4: Code Review
 Analyze the PR changes with your codebase knowledge and provide:
 
 #### Overview
@@ -54,20 +62,44 @@ Flag any violations with: **DUPLICATION DETECTED** or **REUSE OPPORTUNITY**
 - Network/IO efficiency
 - Impact on frame rate for game loop code
 
-#### Test Coverage
-- Are all new functions/methods tested?
+#### Test Coverage (CRITICAL - BLOCKING)
+All new functions/methods MUST have tests. This is a blocking requirement.
+
+Check:
+- Are all new functions/methods tested? If NOT, flag with **MISSING TESTS**
 - Are edge cases and error paths covered?
 - Do tests actually verify behavior (not just coverage)?
 - Are there integration tests where needed?
 - Can the code be easily tested? If not, suggest refactoring
 
+Flag violations with: **MISSING TESTS** - This is a blocking issue that requires changes.
+
+### Step 5: Submit Review to GitHub
+After completing your analysis, post your review as a comment on the PR using the GitHub CLI:
+
+```
+gh pr comment $PR_NUMBER --body "YOUR_REVIEW"
+```
+
+Include a verdict at the end of your comment:
+- ✅ **Approved** - No blocking issues, good to merge
+- 🔄 **Changes Requested** - Found issues that must be fixed (bugs, security, **DUPLICATION DETECTED**, **MISSING TESTS**)
+- 💬 **Comments Only** - Suggestions but not blocking (**REUSE OPPORTUNITY**)
+
 ### Output Format
 Structure your review with clear sections. Be direct and specific. When you find reuse opportunities, point to the EXACT file and function that should be used instead.
 
-Example:
+Examples:
 ```
 **REUSE OPPORTUNITY**: Lines 45-60 implement angle normalization.
 This already exists in `src/utils/math.ts:normalizeAngle()` - use that instead.
 ```
 
-Remember: It's better to adapt existing code than to write new code. The burden of proof is on NEW code to justify its existence.
+```
+**MISSING TESTS**: New function `formatDollarValue()` in `src/utils/DisplayUtils.ts` has no tests.
+Add tests covering: numeric values, string values, prefix parameter.
+```
+
+Remember:
+- It's better to adapt existing code than to write new code. The burden of proof is on NEW code to justify its existence.
+- All new code MUST have tests. No exceptions.
