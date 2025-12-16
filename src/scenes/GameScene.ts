@@ -48,6 +48,7 @@ import {
   COLLECTIBLE_TYPES,
   GameMode,
   DOGFIGHT_CONFIG,
+  SHOW_DEBUG_INFO,
 } from '../constants';
 
 type GameState = 'playing' | 'landed' | 'crashed' | 'victory';
@@ -620,7 +621,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.currentCountryText.setOrigin(0.5, 0);
 
-    // Debug monitoring display (bottom-right corner)
+    // Debug monitoring display (bottom-right corner) - shown when SHOW_DEBUG_INFO is true or shuttle debug mode is on
     this.debugText = this.add.text(GAME_WIDTH - 10, GAME_HEIGHT - 10, '', {
       fontFamily: 'monospace', fontSize: '14px',
       color: '#00ff00',
@@ -630,6 +631,7 @@ export class GameScene extends Phaser.Scene {
     this.debugText.setOrigin(1, 1);
     this.debugText.setScrollFactor(0);
     this.debugText.setDepth(1000);
+    this.debugText.setVisible(SHOW_DEBUG_INFO); // Start hidden unless SHOW_DEBUG_INFO is true
 
     // Handle first thrust - enable physics and collisions
     let hasLaunched = false;
@@ -2560,8 +2562,10 @@ export class GameScene extends Phaser.Scene {
       // Show warning (handled in UI)
     }
 
-    // Update debug monitoring display
+    // Update debug monitoring display - show/hide based on shuttle debug mode or SHOW_DEBUG_INFO constant
     if (this.debugText) {
+      const shuttleDebugMode = this.shuttle?.isDebugMode() ?? false;
+      this.debugText.setVisible(SHOW_DEBUG_INFO || shuttleDebugMode);
       const fps = Math.round(this.game.loop.actualFps);
       const now = Date.now();
       const gameTime = now - this.gameStartTime;

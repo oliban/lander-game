@@ -2,6 +2,16 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS, COLLECTIBLE_TYPES } from '../constants';
 import { InventoryItem } from '../systems/InventorySystem';
 import { createColoredButton } from '../ui/UIButton';
+import {
+  submitScore,
+  fetchScores,
+  getLocalScores,
+  syncPendingScores,
+  ScoreCategory,
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  HighScoreEntry,
+} from '../services/ScoreService';
 
 interface DestroyedBuilding {
   name: string;
@@ -28,11 +38,7 @@ interface GameOverData {
   p2Kills?: number;
 }
 
-interface HighScoreEntry {
-  name: string;
-  score: number;
-  date: string;
-}
+// Using HighScoreEntry from ScoreService
 
 const STORAGE_KEY = 'peaceShuttle_highScores';
 
@@ -72,6 +78,12 @@ export class GameOverScene extends Phaser.Scene {
   private playerCount: number = 1;
   private p1Kills: number = 0;
   private p2Kills: number = 0;
+  // Pagination state for highscores
+  private currentCategory: ScoreCategory = 'alltime';
+  private displayedScores: HighScoreEntry[] = [];
+  private scoreDisplayElements: Phaser.GameObjects.GameObject[] = [];
+  private categoryLabel!: Phaser.GameObjects.Text;
+  private isLoadingScores: boolean = false;
 
   constructor() {
     super({ key: 'GameOverScene' });
@@ -1023,7 +1035,7 @@ export class GameOverScene extends Phaser.Scene {
     });
   }
 
-  private submitHighScore(score: number): void {
+  private async submitHighScore(score: number): Promise<void> {
     if (!this.nameEntryActive) return;
     this.nameEntryActive = false;
 
@@ -1031,6 +1043,10 @@ export class GameOverScene extends Phaser.Scene {
       this.cursorBlink.destroy();
     }
 
+    // Submit to server (also saves locally as fallback)
+    await submitScore(this.playerName, score);
+
+    // Also save to legacy local storage for backward compatibility
     this.addHighScore(this.playerName, score);
 
     // Start a new game after saving the high score
@@ -1123,5 +1139,69 @@ export class GameOverScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  // ============ API-based Score Methods ============
+
+  private async loadScoresFromAPI(category: ScoreCategory): Promise<HighScoreEntry[]> {
+    this.isLoadingScores = true;
+    try {
+      const scores = await fetchScores(category);
+      return scores;
+    } catch (error) {
+      console.error('Failed to fetch scores from API:', error);
+      // Fallback to local scores
+      return getLocalScores();
+    } finally {
+      this.isLoadingScores = false;
+    }
+  }
+
+  private cycleCategory(direction: 'next' | 'prev'): void {
+    const currentIndex = CATEGORY_ORDER.indexOf(this.currentCategory);
+    let newIndex: number;
+
+    if (direction === 'next') {
+      newIndex = (currentIndex + 1) % CATEGORY_ORDER.length;
+    } else {
+      newIndex = (currentIndex - 1 + CATEGORY_ORDER.length) % CATEGORY_ORDER.length;
+    }
+
+    this.currentCategory = CATEGORY_ORDER[newIndex];
+    this.refreshScoreDisplay();
+  }
+
+  private async refreshScoreDisplay(): Promise<void> {
+    // Update category label
+    if (this.categoryLabel) {
+      this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory]);
+    }
+
+    // Show loading indicator
+    if (this.categoryLabel) {
+      this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory] + '...');
+    }
+
+    // Fetch new scores
+    this.displayedScores = await this.loadScoresFromAPI(this.currentCategory);
+
+    // Update label
+    if (this.categoryLabel) {
+      this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory]);
+    }
+
+    // Update the score display
+    this.updateScoreListDisplay();
+  }
+
+  private updateScoreListDisplay(): void {
+    // Clear existing score elements
+    for (const element of this.scoreDisplayElements) {
+      element.destroy();
+    }
+    this.scoreDisplayElements = [];
+
+    // This will be called by the actual display methods
+    // The implementation depends on which panel is being updated
   }
 }
