@@ -121,3 +121,4 @@ After posting the final review comment, ask the user if they want to merge:
 - If a fix would require major refactoring, flag it and ask the user instead of implementing
 - Always push changes to the existing PR branch, never create a new branch
 - Merge step requires explicit user approval - will NOT auto-merge without confirmation
+- Code structure and style must remain consistent with the existing codebase - preserve established patterns

@@ -47,6 +47,7 @@ Flag any violations with: **DUPLICATION DETECTED** or **REUSE OPPORTUNITY**
 - Following project conventions and patterns
 - Error handling
 - Type safety
+- **Code structure and style consistency** - New code must match the existing codebase style
 
 #### Security Vulnerabilities
 - Input validation and sanitization
@@ -103,3 +104,4 @@ Add tests covering: numeric values, string values, prefix parameter.
 Remember:
 - It's better to adapt existing code than to write new code. The burden of proof is on NEW code to justify its existence.
 - All new code MUST have tests. No exceptions.
+- Code structure and style must remain consistent with the existing codebase - flag deviations from established patterns.
