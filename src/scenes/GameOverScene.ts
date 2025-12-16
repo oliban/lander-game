@@ -6,7 +6,6 @@ import {
   submitScore,
   fetchScores,
   getLocalScores,
-  syncPendingScores,
   ScoreCategory,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -1043,11 +1042,8 @@ export class GameOverScene extends Phaser.Scene {
       this.cursorBlink.destroy();
     }
 
-    // Submit to server (also saves locally as fallback)
+    // Submit to server (also saves locally as fallback via ScoreService)
     await submitScore(this.playerName, score);
-
-    // Also save to legacy local storage for backward compatibility
-    this.addHighScore(this.playerName, score);
 
     // Start a new game after saving the high score
     this.scene.start('GameScene', this.getRestartData());

@@ -137,7 +137,7 @@ export async function syncPendingScores(): Promise<void> {
       }
     } catch (error) {
       // Still offline, will try again later
-      console.log('Still offline, keeping pending scores');
+      console.warn('Still offline, keeping pending scores');
       break;
     }
   }
