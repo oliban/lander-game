@@ -309,8 +309,8 @@ export class CarriedItemManager {
       greenlandIce.x, greenlandIce.y - 40
     );
 
-    // Pickup range: 20px (must fly very close to ice)
-    if (dist < 20) {
+    // Pickup range: 25px (must fly close to ice)
+    if (dist < 25) {
       this.pickupGreenlandIce(shuttle, greenlandIce);
     }
   }
