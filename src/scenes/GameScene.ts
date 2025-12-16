@@ -2396,14 +2396,44 @@ export class GameScene extends Phaser.Scene {
     // Update tombstones (physics sync and sinking) - always
     this.tombstoneManager.update();
 
+    // Update weather system (clouds, rain, lightning, wind) - continue during death
+    this.weatherManager.update(time, this.shuttles);
+
+    // Update entities (fisher boat, sharks, golf cart, greenland ice bobbing) - continue during death
+    this.entityManager.update(time);
+
+    // Update landing pad flags with wind - continue during death
+    this.landingPadManager.update();
+
+    // Update biplane (spawning, movement) - continue during death
+    this.biplaneManager.update(time);
+
+    // Update cannons (targeting, firing, projectiles) - continue during death
+    this.cannonManager.update(time);
+
+    // Check projectile collisions - continue during death
+    this.projectileCollisionManager.update();
+
+    // Update bombs (in-flight bombs continue during death)
+    this.bombManager.update(
+      this.players[0]?.shuttle ?? null,
+      this.players[1]?.shuttle ?? null,
+      this.decorations,
+      this.cannons,
+      this.landingPads,
+      this.biplaneManager.getBiplanes(),
+      this.golfCart,
+      this.fisherBoat,
+      this.oilTowers,
+      this.greenlandIce,
+      this.sharks
+    );
+
     // Stop here if not playing
     if (this.gameState !== 'playing') return;
 
     // Check for shuttles flying out of bounds (into the void)
     this.checkOutOfBounds();
-
-    // Update weather system (clouds, rain, lightning, wind)
-    this.weatherManager.update(time, this.shuttles);
 
     // Update altitude overlay (sky darkens at high altitude)
     this.updateAltitudeOverlay();
@@ -2418,11 +2448,8 @@ export class GameScene extends Phaser.Scene {
     // Update speed lines (motion blur when falling fast)
     this.updateSpeedLines();
 
-    // Get wind strength for physics and flags
+    // Get wind strength for physics
     const windStrength = this.weatherManager.getWindStrength();
-
-    // Update landing pad flags with wind
-    this.landingPadManager.update();
 
     // Apply wind force to shuttles (only when airborne)
     const WIND_FORCE = 0.0015; // About 25% of THRUST_POWER (0.006)
@@ -2452,12 +2479,6 @@ export class GameScene extends Phaser.Scene {
     if (currentCountry.name === 'Russia' && this.weatherManager.getRainIntensity() === 'heavy') {
       this.achievementSystem.unlock('singing_in_the_rain');
     }
-
-    // Update biplane (spawning, movement, shuttle collision)
-    this.biplaneManager.update(time);
-
-    // Update entities (fisher boat, sharks, golf cart, greenland ice bobbing)
-    this.entityManager.update(time);
 
     // Check if shuttle can pick up Greenland ice
     if (this.greenlandIce && !this.greenlandIce.isDestroyed && !this.carriedItemManager.getHasGreenlandIce()) {
@@ -2520,32 +2541,11 @@ export class GameScene extends Phaser.Scene {
       this.bombManager.startCooldown(2);
     }
 
-    // Update bombs
-    this.bombManager.update(
-      p1?.shuttle ?? null,
-      p2?.shuttle ?? null,
-      this.decorations,
-      this.cannons,
-      this.landingPads,
-      this.biplaneManager.getBiplanes(),
-      this.golfCart,
-      this.fisherBoat,
-      this.oilTowers,
-      this.greenlandIce,
-      this.sharks
-    );
-
     // Update peace medal graphics if carrying
     this.carriedItemManager.updatePeaceMedalGraphics();
 
     // Update power-up effects
     this.powerUpManager.update();
-
-    // Update cannons (targeting, firing, projectile collisions)
-    this.cannonManager.update(time);
-
-    // Check projectile collisions (projectile-projectile and projectile-building)
-    this.projectileCollisionManager.update();
 
     // Update country display
     const country = this.getCurrentCountry();

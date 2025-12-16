@@ -25,8 +25,9 @@ interface RainDrop {
 interface RainSplash {
   x: number;
   y: number;
-  particles: { dx: number; dy: number; vy: number }[];
+  particles: { dx: number; dy: number; vy: number; gravity: number }[];
   age: number;
+  maxAge: number;
 }
 
 interface WindDebris {
@@ -550,24 +551,29 @@ export class WeatherManager {
 
     if (visibleWaterWidth <= 0) return;
 
-    for (let s = 0; s < splashParams.spawnRate; s++) {
+    // Randomize spawn count for more chaotic timing (0 to spawnRate*2, weighted toward lower values)
+    const actualSpawnCount = Math.floor(Math.random() * Math.random() * splashParams.spawnRate * 2);
+
+    for (let s = 0; s < actualSpawnCount; s++) {
       if (this.rainSplashes.length >= splashParams.maxSplashes) break;
 
       const splashX = visibleWaterStart + Math.random() * visibleWaterWidth;
       const numParticles = splashParams.particleCount[0] + Math.floor(Math.random() * (splashParams.particleCount[1] - splashParams.particleCount[0] + 1));
-      const particles: { dx: number; dy: number; vy: number }[] = [];
+      const particles: { dx: number; dy: number; vy: number; gravity: number }[] = [];
       for (let p = 0; p < numParticles; p++) {
         particles.push({
           dx: (Math.random() - 0.5) * splashParams.spread,
           dy: 0,
-          vy: -(splashParams.velocityMin + Math.random() * splashParams.velocityRange)
+          vy: -(splashParams.velocityMin + Math.random() * splashParams.velocityRange),
+          gravity: 0.25 + Math.random() * 0.15  // Randomized gravity per particle (0.25-0.4)
         });
       }
       this.rainSplashes.push({
         x: splashX,
         y: waterWorldY,
         particles,
-        age: 0
+        age: Math.floor(Math.random() * 5),  // Random initial age (0-4 frames)
+        maxAge: 16 + Math.floor(Math.random() * 8)  // Random lifetime (16-23 frames)
       });
     }
   }
@@ -592,7 +598,7 @@ export class WeatherManager {
       const splash = this.rainSplashes[i];
       splash.age++;
 
-      if (splash.age > 20) {
+      if (splash.age > splash.maxAge) {
         this.rainSplashes.splice(i, 1);
         continue;
       }
@@ -601,11 +607,11 @@ export class WeatherManager {
       const screenY = splash.y - cameraY;
 
       if (screenX > -50 && screenX < GAME_WIDTH + 50 && screenY > 0 && screenY < GAME_HEIGHT) {
-        const alpha = (1 - (splash.age / 20)) * 0.8;
+        const alpha = (1 - (splash.age / splash.maxAge)) * 0.8;
 
         for (const particle of splash.particles) {
           particle.dy += particle.vy;
-          particle.vy += 0.3;
+          particle.vy += particle.gravity;
 
           if (particle.dy <= 2) {
             particlesToDraw.push({
