@@ -35,7 +35,7 @@ import { CollisionManager } from '../managers/CollisionManager';
 import { LandingPadManager } from '../managers/LandingPadManager';
 import { CannonManager } from '../managers/CannonManager';
 import { DecorationManager } from '../managers/DecorationManager';
-import { showDestructionMessage } from '../utils/DisplayUtils';
+import { showDestructionMessage, formatDollarValue } from '../utils/DisplayUtils';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -2910,7 +2910,7 @@ export class GameScene extends Phaser.Scene {
     const soldStr = soldParts.join('\n');
 
     // Show trade message with fuel gained and items sold (one item per line)
-    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL`, playerNum, soldStr);
+    this.showAutoTradeMessage(shuttle, formatDollarValue(actualFuelGained, '+'), playerNum, soldStr);
   }
 
   private showAutoTradeMessage(shuttle: Shuttle, message: string, playerNum: number, soldItems?: string): void {
