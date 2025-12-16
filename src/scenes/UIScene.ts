@@ -5,6 +5,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLORS, MAX_SAFE_LANDING_VELOCITY, BOMB_DROPPA
 import { AchievementPopup } from '../ui/AchievementPopup';
 import { getAchievementSystem } from '../systems/AchievementSystem';
 import { Achievement } from '../data/achievements';
+import { formatDollarValue } from '../utils/DisplayUtils';
 
 interface UISceneData {
   fuelSystem: FuelSystem;
@@ -690,7 +691,7 @@ export class UIScene extends Phaser.Scene {
       const totalValue = inventorySys.getTotalFuelValue();
       if (totalValue > 0) {
         const y = -4 + currentRow * plankHeight + (plankHeight - 10) / 2;
-        const totalText = this.add.text(0, y, `Total: $${totalValue}`, {
+        const totalText = this.add.text(0, y, `Total: ${formatDollarValue(totalValue)}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '10px',
           color: '#2E5D1A',
