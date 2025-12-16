@@ -108,7 +108,7 @@ export class MenuScene extends Phaser.Scene {
     const medals = ['🥇', '🥈', '🥉', randomAnimal(), randomAnimal()];
     for (let i = 0; i < 5; i++) {
       const score = highScores[i];
-      const yPos = panelY + 36 + i * 16;
+      const yPos = panelY + 42 + i * 15;
       const medal = medals[i];
       const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
       const leftX = scoresPanelX - panelW / 2 + 20;
@@ -221,12 +221,14 @@ export class MenuScene extends Phaser.Scene {
     if (recentUnlocks.length > 0) {
       for (let i = 0; i < recentUnlocks.length; i++) {
         const achievement = recentUnlocks[i];
-        const yPos = panelY + 38 + i * 16;
-        const tierColor = '#' + TIER_COLORS[achievement.tier].toString(16).padStart(6, '0');
+        const yPos = panelY + 44 + i * 15;
+        // Use grey/orange tiger stripes for readability
+        const stripeColors = ['#AAAAAA', '#FF8C00'];
+        const achievementColor = stripeColors[i % 2];
 
         const achievementText = this.add.text(panelX - panelW / 2 + 25, yPos, `✓ ${achievement.name}`, {
           fontSize: '14px',
-          color: tierColor,
+          color: achievementColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
         achievementText.setOrigin(0, 0);
@@ -272,8 +274,10 @@ export class MenuScene extends Phaser.Scene {
         const itemData = COLLECTIBLE_TYPES[itemType as keyof typeof COLLECTIBLE_TYPES];
         if (!itemData) continue;
 
-        const yPos = panelY + 38 + i * 16;
-        const itemColor = '#' + itemData.color.toString(16).padStart(6, '0');
+        const yPos = panelY + 44 + i * 15;
+        // Use grey/orange tiger stripes for readability
+        const stripeColors = ['#AAAAAA', '#FF8C00'];
+        const itemColor = stripeColors[i % 2];
 
         // Truncate long names
         let displayName = itemData.name;
