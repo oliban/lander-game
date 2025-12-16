@@ -98,8 +98,26 @@ The following manual tests are recommended before merging:
 🤖 Review by Claude Code
 ```
 
+### Phase 6: Merge (with user approval)
+After posting the final review comment, ask the user if they want to merge:
+
+1. Use the AskUserQuestion tool to prompt:
+   - Question: "PR is approved and ready. Merge now?"
+   - Options: "Yes, squash merge" / "No, I'll merge manually"
+
+2. If user approves:
+   ```
+   gh pr merge $ARGUMENTS --squash --delete-branch
+   ```
+
+3. Confirm merge success and return to main branch:
+   ```
+   git checkout main && git pull
+   ```
+
 ## Important Notes
 - Do NOT ask for permission to make fixes - just do them
 - Do NOT commit without running tests first
 - If a fix would require major refactoring, flag it and ask the user instead of implementing
 - Always push changes to the existing PR branch, never create a new branch
+- Merge step requires explicit user approval - will NOT auto-merge without confirmation
