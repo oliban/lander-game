@@ -12,9 +12,10 @@ You are an AI assistant helping review pull requests.
 3. Run `gh pr checkout {PR_NUMBER}` to checkout the PR branch
 4. Confirm with `git branch --show-current`
 
-### Step 2: Start Dev Server
-1. Run `npm run dev` in the background so the user can test immediately
-2. Note the URL where the app is running (usually http://localhost:5173 or similar)
+### Step 2: Start Dev Server (MANDATORY - DO NOT SKIP)
+1. ALWAYS run `npm run dev` in the background using `run_in_background: true` parameter
+2. Wait briefly and check the output to find the "Local:" URL (usually http://localhost:3000 or similar port)
+3. The user expects to start testing immediately - the server MUST be running before showing results
 
 ### Step 3: Fetch All Comments
 1. `gh api /repos/{owner}/{repo}/issues/{number}/comments` - PR-level comments
@@ -53,9 +54,6 @@ The following manual tests were specified in the PR review. **You MUST complete 
 - [ ] ...
 
 **DO NOT MERGE until you have verified all tests pass.**
-
-Quick commands:
-- `npm test` - Run automated tests
 ```
 
 If no manual tests are found in comments, state: "No manual tests specified in PR comments."
