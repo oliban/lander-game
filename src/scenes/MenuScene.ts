@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../constants';
 import { getAchievementSystem } from '../systems/AchievementSystem';
 import { getCollectionSystem } from '../systems/CollectionSystem';
-import { TIER_COLORS } from '../data/achievements';
 import { COLLECTIBLE_TYPES } from '../constants';
 import { createGreenButton } from '../ui/UIButton';
+import { LIST_STRIPE_COLORS } from '../ui/UIStyles';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -223,8 +223,7 @@ export class MenuScene extends Phaser.Scene {
         const achievement = recentUnlocks[i];
         const yPos = panelY + 44 + i * 15;
         // Use grey/orange tiger stripes for readability
-        const stripeColors = ['#AAAAAA', '#FF8C00'];
-        const achievementColor = stripeColors[i % 2];
+        const achievementColor = LIST_STRIPE_COLORS[i % 2];
 
         const achievementText = this.add.text(panelX - panelW / 2 + 25, yPos, `✓ ${achievement.name}`, {
           fontSize: '14px',
@@ -276,8 +275,7 @@ export class MenuScene extends Phaser.Scene {
 
         const yPos = panelY + 44 + i * 15;
         // Use grey/orange tiger stripes for readability
-        const stripeColors = ['#AAAAAA', '#FF8C00'];
-        const itemColor = stripeColors[i % 2];
+        const itemColor = LIST_STRIPE_COLORS[i % 2];
 
         // Truncate long names
         let displayName = itemData.name;
