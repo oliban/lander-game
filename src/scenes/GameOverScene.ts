@@ -702,8 +702,9 @@ export class GameOverScene extends Phaser.Scene {
   private selectedCrashQuoteIndex: number = 0;
 
   private createCrashScreen(data: GameOverData): void {
-    // Select random crash quote index for text display
+    // Play random crash quote (use same index for audio and text)
     this.selectedCrashQuoteIndex = Math.floor(Math.random() * CRASH_QUOTES.length);
+    this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
 
     const score = data.score || 0;
     this.currentScore = score;
