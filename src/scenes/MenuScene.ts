@@ -5,8 +5,16 @@ import { getCollectionSystem } from '../systems/CollectionSystem';
 import { COLLECTIBLE_TYPES } from '../constants';
 import { createGreenButton } from '../ui/UIButton';
 import { LIST_STRIPE_COLORS } from '../ui/UIStyles';
+import { fetchScores, getLocalScores, syncPendingScores, ScoreCategory, CATEGORY_LABELS, CATEGORY_ORDER, HighScoreEntry } from '../services/ScoreService';
 
 export class MenuScene extends Phaser.Scene {
+  private currentCategory: ScoreCategory = 'alltime';
+  private scoreTexts: Phaser.GameObjects.Text[] = [];
+  private categoryLabel!: Phaser.GameObjects.Text;
+  private leftArrow!: Phaser.GameObjects.Text;
+  private rightArrow!: Phaser.GameObjects.Text;
+  private loadingText!: Phaser.GameObjects.Text;
+
   constructor() {
     super({ key: 'MenuScene' });
   }
@@ -93,52 +101,79 @@ export class MenuScene extends Phaser.Scene {
 
     this.createPanelBackground(scoresPanelX, panelY, panelW, panelH);
 
-    const scoresTitle = this.add.text(scoresPanelX, panelY + 18, 'TOP SCORES', {
-      fontSize: '16px',
+    // Title
+    const scoresTitle = this.add.text(scoresPanelX, panelY + 14, 'TOP 5 SCORES', {
+      fontSize: '14px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
     scoresTitle.setOrigin(0.5, 0);
 
-    // Load and display high scores (top 5)
-    const highScores = this.loadHighScores();
-    const animals = ['🐸', '🦊', '🐼', '🐨', '🦁', '🐯', '🐮', '🐷', '🐵', '🦄', '🐔', '🐧', '🐻', '🐶', '🐱'];
-    const randomAnimal = () => animals[Math.floor(Math.random() * animals.length)];
-    const medals = ['🥇', '🥈', '🥉', randomAnimal(), randomAnimal()];
-    for (let i = 0; i < 5; i++) {
-      const score = highScores[i];
-      const yPos = panelY + 42 + i * 15;
-      const medal = medals[i];
-      const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
-      const leftX = scoresPanelX - panelW / 2 + 20;
+    // Category navigation row: ◀ All Time ▶
+    this.leftArrow = this.add.text(scoresPanelX - 55, panelY + 32, '◀', {
+      fontSize: '14px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    this.leftArrow.setOrigin(0.5, 0);
+    this.leftArrow.setInteractive({ useHandCursor: true });
+    this.leftArrow.on('pointerdown', () => this.cycleCategory(-1));
+    this.leftArrow.on('pointerover', () => this.leftArrow.setColor('#66BB6A'));
+    this.leftArrow.on('pointerout', () => this.leftArrow.setColor('#4CAF50'));
 
-      if (score) {
-        // Medal and name
-        const nameText = this.add.text(leftX, yPos,
-          `${medal} ${score.name.substring(0, 10)}`, {
-          fontSize: '14px',
-          color: color,
-          fontFamily: 'Arial, Helvetica, sans-serif',
-        });
-        nameText.setOrigin(0, 0);
-        // Score on the right
-        const scoreText = this.add.text(scoresPanelX + panelW / 2 - 20, yPos,
-          `${score.score}`, {
-          fontSize: '14px',
-          color: color,
-          fontFamily: 'Arial, Helvetica, sans-serif',
-        });
-        scoreText.setOrigin(1, 0);
-      } else {
-        const emptyText = this.add.text(leftX, yPos, `${medal} ---`, {
-          fontSize: '14px',
-          color: '#555555',
-          fontFamily: 'Arial, Helvetica, sans-serif',
-        });
-        emptyText.setOrigin(0, 0);
-      }
+    this.categoryLabel = this.add.text(scoresPanelX, panelY + 32, CATEGORY_LABELS[this.currentCategory], {
+      fontSize: '12px',
+      color: '#AAAAAA',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    this.categoryLabel.setOrigin(0.5, 0);
+
+    this.rightArrow = this.add.text(scoresPanelX + 55, panelY + 32, '▶', {
+      fontSize: '14px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    this.rightArrow.setOrigin(0.5, 0);
+    this.rightArrow.setInteractive({ useHandCursor: true });
+    this.rightArrow.on('pointerdown', () => this.cycleCategory(1));
+    this.rightArrow.on('pointerover', () => this.rightArrow.setColor('#66BB6A'));
+    this.rightArrow.on('pointerout', () => this.rightArrow.setColor('#4CAF50'));
+
+    // Loading indicator
+    this.loadingText = this.add.text(scoresPanelX, panelY + 70, 'Loading...', {
+      fontSize: '12px',
+      color: '#888888',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    this.loadingText.setOrigin(0.5, 0.5);
+
+    // Create placeholder score texts (5 rows)
+    const leftX = scoresPanelX - panelW / 2 + 20;
+    for (let i = 0; i < 5; i++) {
+      const yPos = panelY + 50 + i * 15;
+      const nameText = this.add.text(leftX, yPos, '', {
+        fontSize: '13px',
+        color: '#AAAAAA',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+      });
+      nameText.setOrigin(0, 0);
+      this.scoreTexts.push(nameText);
+
+      const scoreText = this.add.text(scoresPanelX + panelW / 2 - 20, yPos, '', {
+        fontSize: '13px',
+        color: '#AAAAAA',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+      });
+      scoreText.setOrigin(1, 0);
+      this.scoreTexts.push(scoreText);
     }
+
+    // Sync pending scores and load initial scores
+    syncPendingScores().catch(console.error);
+    this.loadScores();
 
     // ACHIEVEMENTS panel (center)
     this.createAchievementsPanel(GAME_WIDTH / 2, panelY, panelW, panelH);
@@ -206,27 +241,27 @@ export class MenuScene extends Phaser.Scene {
     // Panel background with unified gold border
     this.createPanelBackground(panelX, panelY, panelW, panelH);
 
-    // Title with trophy icon and progress
-    const titleText = this.add.text(panelX, panelY + 18, `ACHIEVEMENTS ${unlocked}/${total}`, {
-      fontSize: '16px',
+    // Title with progress - aligned with other panels
+    const titleText = this.add.text(panelX, panelY + 14, `ACHIEVEMENTS ${unlocked}/${total}`, {
+      fontSize: '14px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
     titleText.setOrigin(0.5, 0);
 
-    // Show list of recent unlocks (up to 4)
-    const recentUnlocks = achievementSystem.getRecentUnlocks(4);
+    // Show list of recent unlocks (up to 5)
+    const recentUnlocks = achievementSystem.getRecentUnlocks(5);
 
     if (recentUnlocks.length > 0) {
       for (let i = 0; i < recentUnlocks.length; i++) {
         const achievement = recentUnlocks[i];
-        const yPos = panelY + 44 + i * 15;
+        const yPos = panelY + 36 + i * 15;
         // Use grey/orange tiger stripes for readability
         const achievementColor = LIST_STRIPE_COLORS[i % 2];
 
-        const achievementText = this.add.text(panelX - panelW / 2 + 25, yPos, `✓ ${achievement.name}`, {
-          fontSize: '14px',
+        const achievementText = this.add.text(panelX - panelW / 2 + 20, yPos, `✓ ${achievement.name}`, {
+          fontSize: '13px',
           color: achievementColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
@@ -234,7 +269,7 @@ export class MenuScene extends Phaser.Scene {
       }
     } else {
       // No achievements yet - show hint
-      const hintText = this.add.text(panelX, panelY + 50, 'Land safely for\nyour first trophy!', {
+      const hintText = this.add.text(panelX, panelY + 55, 'Land safely for\nyour first trophy!', {
         fontSize: '12px',
         color: '#888888',
         fontFamily: 'Arial, Helvetica, sans-serif',
@@ -255,17 +290,17 @@ export class MenuScene extends Phaser.Scene {
     // Panel background with unified gold border
     this.createPanelBackground(panelX, panelY, panelW, panelH);
 
-    // Title with count
-    const titleText = this.add.text(panelX, panelY + 18, `COLLECTION ${discovered}/${total}`, {
-      fontSize: '16px',
+    // Title with count - aligned with other panels
+    const titleText = this.add.text(panelX, panelY + 14, `COLLECTION ${discovered}/${total}`, {
+      fontSize: '14px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
     titleText.setOrigin(0.5, 0);
 
-    // Show recent discoveries (up to 4 item names)
-    const recentDiscoveries = collectionSystem.getRecentDiscoveries(4);
+    // Show recent discoveries (up to 5 item names)
+    const recentDiscoveries = collectionSystem.getRecentDiscoveries(5);
 
     if (recentDiscoveries.length > 0) {
       for (let i = 0; i < recentDiscoveries.length; i++) {
@@ -273,7 +308,7 @@ export class MenuScene extends Phaser.Scene {
         const itemData = COLLECTIBLE_TYPES[itemType as keyof typeof COLLECTIBLE_TYPES];
         if (!itemData) continue;
 
-        const yPos = panelY + 44 + i * 15;
+        const yPos = panelY + 36 + i * 15;
         // Use grey/orange tiger stripes for readability
         const itemColor = LIST_STRIPE_COLORS[i % 2];
 
@@ -283,8 +318,8 @@ export class MenuScene extends Phaser.Scene {
           displayName = displayName.substring(0, 14) + '..';
         }
 
-        const itemText = this.add.text(panelX - panelW / 2 + 25, yPos, `• ${displayName}`, {
-          fontSize: '14px',
+        const itemText = this.add.text(panelX - panelW / 2 + 20, yPos, `• ${displayName}`, {
+          fontSize: '13px',
           color: itemColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
         });
@@ -292,7 +327,7 @@ export class MenuScene extends Phaser.Scene {
       }
     } else {
       // No items yet - show hint
-      const hintText = this.add.text(panelX, panelY + 50, 'Pick up items\nto discover them!', {
+      const hintText = this.add.text(panelX, panelY + 55, 'Pick up items\nto discover them!', {
         fontSize: '12px',
         color: '#888888',
         fontFamily: 'Arial, Helvetica, sans-serif',
@@ -305,17 +340,55 @@ export class MenuScene extends Phaser.Scene {
     this.createViewAllButton(panelX, panelY, panelH, 'CollectionScene');
   }
 
-  private loadHighScores(): { name: string; score: number; date: string }[] {
-    const STORAGE_KEY = 'peaceShuttle_highScores';
+  private cycleCategory(direction: number): void {
+    const currentIndex = CATEGORY_ORDER.indexOf(this.currentCategory);
+    const newIndex = (currentIndex + direction + CATEGORY_ORDER.length) % CATEGORY_ORDER.length;
+    this.currentCategory = CATEGORY_ORDER[newIndex];
+    this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory]);
+    this.loadScores();
+  }
+
+  private async loadScores(): Promise<void> {
+    // Show loading state
+    this.loadingText.setVisible(true);
+    this.scoreTexts.forEach(text => text.setText(''));
+
+    // Random animals for positions 4 and 5
+    const animals = ['🐸', '🦊', '🐼', '🐨', '🦁', '🐯', '🐮', '🐷', '🐵', '🦄', '🐔', '🐧', '🐻', '🐶', '🐱'];
+    const randomAnimal = () => animals[Math.floor(Math.random() * animals.length)];
+    const medals = ['🥇', '🥈', '🥉', randomAnimal(), randomAnimal()];
+
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Failed to load high scores:', e);
+      const scores = await fetchScores(this.currentCategory);
+      this.loadingText.setVisible(false);
+      this.updateScoreDisplay(scores, medals);
+    } catch (error) {
+      console.error('Failed to fetch scores:', error);
+      // Fallback to local scores
+      const localScores = getLocalScores();
+      this.loadingText.setVisible(false);
+      this.updateScoreDisplay(localScores, medals);
     }
-    return [];
+  }
+
+  private updateScoreDisplay(scores: HighScoreEntry[], medals: string[]): void {
+    for (let i = 0; i < 5; i++) {
+      const nameText = this.scoreTexts[i * 2];
+      const scoreText = this.scoreTexts[i * 2 + 1];
+      const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
+
+      if (scores[i]) {
+        nameText.setText(`${medals[i]} ${scores[i].name.substring(0, 10)}`);
+        nameText.setColor(color);
+        scoreText.setText(`${scores[i].score}`);
+        scoreText.setColor(color);
+      } else {
+        nameText.setText(`${medals[i]} ---`);
+        nameText.setColor('#555555');
+        scoreText.setText('');
+        scoreText.setColor('#555555');
+      }
+    }
   }
 
   private createPanelBackground(panelX: number, panelY: number, panelW: number, panelH: number): Phaser.GameObjects.Graphics {
