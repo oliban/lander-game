@@ -690,7 +690,7 @@ export class UIScene extends Phaser.Scene {
       const totalValue = inventorySys.getTotalFuelValue();
       if (totalValue > 0) {
         const y = -4 + currentRow * plankHeight + (plankHeight - 10) / 2;
-        const totalText = this.add.text(0, y, `Total: ⛽${totalValue}`, {
+        const totalText = this.add.text(0, y, `Total: $${totalValue}`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '10px',
           color: '#2E5D1A',

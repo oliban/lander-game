@@ -2910,7 +2910,7 @@ export class GameScene extends Phaser.Scene {
     const soldStr = soldParts.join('\n');
 
     // Show trade message with fuel gained and items sold (one item per line)
-    this.showAutoTradeMessage(shuttle, `+${actualFuelGained} FUEL`, playerNum, soldStr);
+    this.showAutoTradeMessage(shuttle, `+$${actualFuelGained}`, playerNum, soldStr);
   }
 
   private showAutoTradeMessage(shuttle: Shuttle, message: string, playerNum: number, soldItems?: string): void {
