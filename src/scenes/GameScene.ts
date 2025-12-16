@@ -912,8 +912,8 @@ export class GameScene extends Phaser.Scene {
         const particleCount = 3 + Math.floor(intensity * 6);
 
         // Emit from the back of the ship (based on ship rotation, not velocity)
-        const backAngle = shuttle.rotation + Math.PI / 2; // Back of ship (opposite of nose)
-        const backOffset = 18; // Distance from center to back
+        const backAngle = shuttle.getBackAngle();
+        const backOffset = 18; // Distance from center to back (slightly closer than thrust particles)
 
         for (let i = 0; i < particleCount; i++) {
           // Scatter emission points at the back of the ship
