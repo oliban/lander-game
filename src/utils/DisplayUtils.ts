@@ -1,5 +1,15 @@
 import Phaser from 'phaser';
 
+/**
+ * Format a value as a dollar amount for display.
+ * @param value - The numeric value to format
+ * @param prefix - Optional prefix (e.g., '+' for gains)
+ * @returns Formatted string like "$45" or "+$10"
+ */
+export function formatDollarValue(value: number | string, prefix: string = ''): string {
+  return `${prefix}$${value}`;
+}
+
 export interface DestructionMessageConfig {
   scene: Phaser.Scene;
   x: number;

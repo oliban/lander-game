@@ -4,6 +4,7 @@ import { getCollectionSystem } from '../systems/CollectionSystem';
 import { UIHeader } from '../ui/UIHeader';
 import { ScrollableContainer } from '../ui/ScrollableContainer';
 import { createGreenButton } from '../ui/UIButton';
+import { formatDollarValue } from '../utils/DisplayUtils';
 
 const ITEM_SIZE = 150;
 const ITEM_PADDING = 15;
@@ -205,7 +206,7 @@ export class CollectionScene extends Phaser.Scene {
         valueColor = '#FFD700';
       } else if (itemDataExt.mystery) {
         // Mystery items (Casino Chip)
-        valueText = '??? FUEL';
+        valueText = formatDollarValue('???');
         valueColor = '#9932CC';
       } else if (itemDataExt.fuelValue === 0) {
         // Bomb items (droppable, no fuel value)
@@ -213,7 +214,7 @@ export class CollectionScene extends Phaser.Scene {
         valueColor = '#FF6B35';
       } else {
         // Standard tradeable items
-        valueText = `${itemDataExt.fuelValue} FUEL`;
+        valueText = formatDollarValue(itemDataExt.fuelValue);
         valueColor = '#44FF44';
       }
 
