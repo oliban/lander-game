@@ -307,34 +307,7 @@ describe('MenuScene', () => {
     vi.unstubAllGlobals();
   });
 
-  describe('loadHighScores', () => {
-    it('should return empty array when no scores saved', () => {
-      const scores = (scene as any).loadHighScores();
-      expect(scores).toEqual([]);
-    });
-
-    it('should return parsed scores from localStorage', () => {
-      const mockScores = [
-        { name: 'Alice', score: 1000, date: '2024-01-01' },
-        { name: 'Bob', score: 800, date: '2024-01-02' },
-      ];
-      localStorageMock['peaceShuttle_highScores'] = JSON.stringify(mockScores);
-
-      const scores = (scene as any).loadHighScores();
-      expect(scores).toEqual(mockScores);
-    });
-
-    it('should return empty array on parse error', () => {
-      localStorageMock['peaceShuttle_highScores'] = 'invalid json';
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      const scores = (scene as any).loadHighScores();
-
-      expect(scores).toEqual([]);
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
-    });
-  });
+  // Note: loadHighScores was removed - scores are now fetched via ScoreService API
 
   describe('createPanelBackground', () => {
     it('should create a graphics panel with correct styling', () => {

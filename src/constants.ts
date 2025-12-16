@@ -1,3 +1,6 @@
+// Debug settings
+export const SHOW_DEBUG_INFO = false; // Set to true to show FPS and debug panel
+
 // Game dimensions
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
