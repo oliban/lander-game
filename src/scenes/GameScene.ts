@@ -110,6 +110,7 @@ export class GameScene extends Phaser.Scene {
   // Track which player died most recently
   private lastDeadPlayerIndex: number = -1;
   private lastDeathCause: string | undefined = undefined; // Track cause of death for game over screen
+  private playedHighAltitudeSound: boolean = false; // Track if "I can see my house" sound played this life
   private dogfightPadIndex: number = -1; // Random starting pad for dogfight mode
 
   // Fisherboat in Atlantic
@@ -495,6 +496,7 @@ export class GameScene extends Phaser.Scene {
 
     // Invulnerability at start - prevents crashes until player launches
     this.invulnerable = true;
+    this.playedHighAltitudeSound = false;
 
     // Start background music for starting country (now that shuttle exists)
     const startingCountry = this.getCurrentCountry();
@@ -2887,6 +2889,17 @@ export class GameScene extends Phaser.Scene {
 
       // Check for space altitude (flying too high)
       const altitude = GROUND_LEVEL - shuttle.y;
+
+      // Play "I can see my house" sound when crossing 11000m going up
+      const HIGH_ALTITUDE_SOUND_THRESHOLD = 11000;
+      if (!this.playedHighAltitudeSound && altitude > HIGH_ALTITUDE_SOUND_THRESHOLD) {
+        const velocity = shuttle.getVelocity();
+        if (velocity.y < 0) { // Negative y = going up
+          this.playedHighAltitudeSound = true;
+          this.sound.play('i_can_see_my_house');
+        }
+      }
+
       if (altitude > SPACE_ALTITUDE) {
         this.handleSpaceDeath(shuttle);
         continue;
