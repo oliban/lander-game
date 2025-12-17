@@ -729,14 +729,19 @@ export class GameOverScene extends Phaser.Scene {
   private selectedCrashQuoteIndex: number = 0;
 
   private createCrashScreen(data: GameOverData): void {
+    // Special handling for space death - show victory-style screen
+    const isSpaceDeath = data.cause === 'space';
+
     // Play random crash quote (use same index for audio and text)
     this.selectedCrashQuoteIndex = Math.floor(Math.random() * CRASH_QUOTES.length);
 
-    // Play special sound for baguette death, otherwise random crash quote
-    if (data.cause === 'baguette' && this.cache.audio.exists('baguette_death')) {
-      this.sound.play('baguette_death');
-    } else {
-      this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
+    // Play special sound for baguette death, skip sound for space death (already played)
+    if (!isSpaceDeath) {
+      if (data.cause === 'baguette' && this.cache.audio.exists('baguette_death')) {
+        this.sound.play('baguette_death');
+      } else {
+        this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
+      }
     }
 
     const score = data.score || 0;
@@ -752,53 +757,90 @@ export class GameOverScene extends Phaser.Scene {
       this.highScoreRank = highScoreCheck.rank;
     }
 
-    // Title with shadow (cartoon style)
-    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, 73, 'MISSION FAILED', {
+    // Title with shadow (cartoon style) - Gold for space, red for crash
+    const titleText = isSpaceDeath ? 'YOU WON!' : 'MISSION FAILED';
+    const titleColor = isSpaceDeath ? '#FFD700' : '#F44336';
+    const titleShadowColor = isSpaceDeath ? '#B8860B' : '#8B0000';
+    const titleY = isSpaceDeath ? 50 : 70;
+
+    const titleShadow = this.add.text(GAME_WIDTH / 2 + 3, titleY + 3, titleText, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '48px',
-      color: '#8B0000',
+      color: titleShadowColor,
       fontStyle: 'bold',
     });
     titleShadow.setOrigin(0.5, 0.5);
 
-    const title = this.add.text(GAME_WIDTH / 2, 70, 'MISSION FAILED', {
+    const title = this.add.text(GAME_WIDTH / 2, titleY, titleText, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '48px',
-      color: '#F44336',
+      color: titleColor,
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0.5);
 
-    
-    // Message
-    const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '20px',
-      color: '#333333',
-    });
-    message.setOrigin(0.5, 0.5);
+    // Different layout for space death vs normal crash
+    if (isSpaceDeath) {
+      // Space death: Show congratulations and space message nicely spaced
+      const congratsText = this.add.text(GAME_WIDTH / 2, 100, 'Congratulations!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '24px',
+        color: '#228B22',
+        fontStyle: 'bold',
+      });
+      congratsText.setOrigin(0.5, 0.5);
 
-    // Show score
-    this.add.text(GAME_WIDTH / 2, 160, `SCORE: ${score}`, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '28px',
-      color: '#FFD700',
-      fontStyle: 'bold',
-    }).setOrigin(0.5, 0.5);
+      // Space message with rocket emojis
+      const spaceMessage = this.add.text(GAME_WIDTH / 2, 155, '🚀 Trump will now perform very important work in space. 🚀\nMaking the galaxy great again!', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '18px',
+        color: '#4169E1',
+        align: 'center',
+        lineSpacing: 8,
+      });
+      spaceMessage.setOrigin(0.5, 0.5);
 
-    // Quote (synced with audio) - special quote for baguette death
-    const quote = data.cause === 'baguette'
-      ? "\"It was a beautiful baguette, in a way. Very long. Very gold. Tremendous crust.\""
-      : CRASH_QUOTES[this.selectedCrashQuoteIndex];
-    const quoteText = this.add.text(GAME_WIDTH / 2, 210, quote, {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontSize: '14px',
-      color: '#666666',
-      fontStyle: 'italic',
-      wordWrap: { width: 500 },
-      align: 'center',
-    });
-    quoteText.setOrigin(0.5, 0.5);
+      // Score below the message
+      this.add.text(GAME_WIDTH / 2, 215, `SCORE: ${score}`, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '28px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+      }).setOrigin(0.5, 0.5);
+    } else {
+      // Normal crash: Original layout
+      const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '20px',
+        color: '#333333',
+        align: 'center',
+      });
+      message.setOrigin(0.5, 0.5);
+
+      // Show score
+      this.add.text(GAME_WIDTH / 2, 160, `SCORE: ${score}`, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '28px',
+        color: '#FFD700',
+        fontStyle: 'bold',
+      }).setOrigin(0.5, 0.5);
+    }
+
+    // Quote (synced with audio) - special quote for baguette death, skip for space death
+    if (!isSpaceDeath) {
+      const quote = data.cause === 'baguette'
+        ? "\"It was a beautiful baguette, in a way. Very long. Very gold. Tremendous crust.\""
+        : CRASH_QUOTES[this.selectedCrashQuoteIndex];
+      const quoteText = this.add.text(GAME_WIDTH / 2, 210, quote, {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '14px',
+        color: '#666666',
+        fontStyle: 'italic',
+        wordWrap: { width: 500 },
+        align: 'center',
+      });
+      quoteText.setOrigin(0.5, 0.5);
+    }
 
     // Show name entry or leaderboard
     if (this.isNewHighScore) {

@@ -168,6 +168,7 @@ export class BootScene extends Phaser.Scene {
     this.load.audio('p2_gotcha', 'assets/audio/p2-gotcha.mp3');
     this.load.audio('self_bomb', 'assets/audio/that-was-clever.mp3');
     this.load.audio('space_force', 'assets/audio/space-force.mp3');
+    this.load.audio('i_can_see_my_house', 'assets/audio/i-can-see-my-house.mp3');
     this.load.audio('baguette_death', 'assets/audio/beautiful-baguette.mp3');
 
     // Explosion sound effects
