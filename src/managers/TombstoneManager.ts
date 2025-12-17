@@ -94,6 +94,7 @@ export class TombstoneManager {
       case 'fuel': return '⛽';
       case 'p1_bombed': return '🟢';
       case 'p2_bombed': return '🔵';
+      case 'self_bomb': return '🤦';
     }
 
     // Projectile type emojis

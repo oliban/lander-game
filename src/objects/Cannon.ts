@@ -341,6 +341,9 @@ export class Projectile extends Phaser.GameObjects.Container {
         category: 4,
       },
     });
+
+    // Store reference to this projectile on the body for collision detection
+    (this.matterBody as any).projectileRef = this;
   }
 
   update(): void {

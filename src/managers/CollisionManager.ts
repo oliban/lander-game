@@ -8,7 +8,7 @@ export interface CollisionManagerCallbacks {
   onTerrainCollision: (playerNum: number) => void;
   onLandingPadCollision: (pad: LandingPad, playerNum: number) => void;
   onBoatDeckCollision: (playerNum: number) => void;
-  onProjectileHit: (playerNum: number) => void;
+  onProjectileHit: (playerNum: number, spriteKey?: string) => void;
   onCollectiblePickup: (collectible: Collectible, playerNum: number) => void;
   onTombstoneBounce: (tombstoneBody: MatterJS.BodyType) => void;
   onBrickWallCollision: (playerNum: number) => void;
@@ -60,9 +60,13 @@ export class CollisionManager {
 
         // Check shuttle collision with projectile
         if (this.isShuttleCollision(bodyA, bodyB, 'projectile')) {
+          const projectileBody = bodyA.label === 'projectile' ? bodyA : bodyB;
           const shuttleBody = bodyA.label === 'projectile' ? bodyB : bodyA;
           const playerNum = this.getPlayerFromBody(shuttleBody);
-          this.callbacks.onProjectileHit(playerNum);
+          // Get projectile sprite key from the projectile reference
+          const projectileRef = (projectileBody as any).projectileRef;
+          const spriteKey = projectileRef?.getSpriteKey?.();
+          this.callbacks.onProjectileHit(playerNum, spriteKey);
         }
 
         // Check shuttle collision with collectible
