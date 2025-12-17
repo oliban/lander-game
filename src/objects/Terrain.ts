@@ -25,7 +25,7 @@ export class Terrain {
   private staticOceanDrawn: boolean = false; // Track if static ocean has been drawn (for low quality)
 
   // Chunked terrain for performance
-  private readonly CHUNK_WIDTH = 2000; // 2000px per chunk
+  private readonly CHUNK_WIDTH = 1000; // 1000px per chunk (smaller = better culling)
   private chunks: Map<number, Phaser.GameObjects.Graphics> = new Map();
   private chunkStartX: number = 0;
   private chunkEndX: number = 0;
