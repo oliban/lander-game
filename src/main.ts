@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameConfig } from './config';
 import { GyroscopeManager } from './input/GyroscopeManager';
 import { isMobileDevice, supportsGyroscope } from './utils/DeviceDetection';
+import { PerformanceSettings } from './systems/PerformanceSettings';
 
 // Gyroscope manager instance (created on mobile)
 let gyroManager: GyroscopeManager | null = null;
@@ -314,13 +315,18 @@ async function handleGyroToggle(
 }
 
 // Initialize touch controls if on mobile device
-if (isMobileDevice()) {
+const mobile = isMobileDevice();
+if (mobile) {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeTouchControls);
   } else {
     initializeTouchControls();
   }
 }
+
+// Set default performance settings based on device type
+// Mobile devices default to Medium quality, desktop to Ultra
+PerformanceSettings.setDefaultForDevice(mobile);
 
 // Create the game instance
 new Phaser.Game(gameConfig);

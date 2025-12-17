@@ -7,6 +7,7 @@ import { GreenlandIce } from '../objects/GreenlandIce';
 import { Shuttle } from '../objects/Shuttle';
 import { Bomb } from '../objects/Bomb';
 import { Terrain } from '../objects/Terrain';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 interface SunkenFood {
   x: number;
@@ -129,17 +130,28 @@ export class EntityManager {
    * Update all entities (call from scene's update method)
    */
   update(time: number): void {
-    // Update fisher boat
+    // Performance optimization: Skip non-essential entity updates at low quality
+    const shouldUpdateEntities = PerformanceSettings.getPreset().entityUpdates;
+
+    // Update fisher boat (essential for gameplay - always update)
     this.updateFisherBoat();
 
     // Update sharks with off-screen culling for performance
-    this.updateSharks();
+    // Only update if entityUpdates enabled (cosmetic)
+    if (shouldUpdateEntities) {
+      this.updateSharks();
+    }
 
-    // Update golf cart
-    this.updateGolfCart(time);
+    // Update golf cart (has gameplay elements - collectibles drop on destruction)
+    // Only update if entityUpdates enabled
+    if (shouldUpdateEntities) {
+      this.updateGolfCart(time);
+    }
 
-    // Update Greenland ice (bobbing with waves)
-    this.updateGreenlandIce();
+    // Update Greenland ice (bobbing with waves) - cosmetic
+    if (shouldUpdateEntities) {
+      this.updateGreenlandIce();
+    }
   }
 
   /**

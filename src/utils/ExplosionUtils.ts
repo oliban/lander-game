@@ -3,6 +3,8 @@
  * Provides reusable explosion components including flashes, debris, and smoke.
  */
 
+import { PerformanceSettings } from '../systems/PerformanceSettings';
+
 export interface ExplosionFlashConfig {
   /** Array of colors for concentric circles (outer to inner). Default: [0xFFFF00, 0xFF6600, 0xFFFFFF] */
   flashColors?: number[];
@@ -268,6 +270,9 @@ export function createExplosion(
   y: number,
   config: ExplosionConfig = {}
 ): void {
+  // Get performance settings
+  const preset = PerformanceSettings.getPreset();
+
   const {
     includeFlash = true,
     includeDebris = true,
@@ -278,23 +283,28 @@ export function createExplosion(
     ...restConfig
   } = config;
 
-  // Create flash
+  // Create flash (always included for visual feedback)
   if (includeFlash) {
     createExplosionFlash(scene, x, y, restConfig);
   }
 
-  // Create debris
-  if (includeDebris) {
-    createExplosionDebris(scene, x, y, restConfig);
+  // Create debris - check performance settings
+  if (includeDebris && preset.explosionDebris) {
+    // Apply debris count from performance settings
+    const debrisConfig = {
+      ...restConfig,
+      debrisCount: preset.explosionDebrisCount > 0 ? preset.explosionDebrisCount : restConfig.debrisCount,
+    };
+    createExplosionDebris(scene, x, y, debrisConfig);
   }
 
-  // Create smoke
-  if (includeSmoke) {
+  // Create smoke - check performance settings
+  if (includeSmoke && preset.explosionSmoke) {
     createSmokePuffs(scene, x, y, restConfig);
   }
 
-  // Camera shake
-  if (shakeCamera && scene.cameras?.main) {
+  // Camera shake - check performance settings
+  if (shakeCamera && preset.cameraShake && scene.cameras?.main) {
     scene.cameras.main.shake(shakeDuration, shakeIntensity);
   }
 }

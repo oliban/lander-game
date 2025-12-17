@@ -11,20 +11,30 @@ export class BootScene extends Phaser.Scene {
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    const progressBar = this.add.graphics();
+    // Dark background for contrast
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 1);
+    bg.fillRect(0, 0, width, height);
+
     const progressBox = this.add.graphics();
-    progressBox.fillStyle(0x222222, 0.8);
+    progressBox.fillStyle(0x333333, 1);
     progressBox.fillRect(width / 2 - 160, height / 2 - 25, 320, 50);
+    progressBox.lineStyle(2, 0xFFD700, 1);
+    progressBox.strokeRect(width / 2 - 160, height / 2 - 25, 320, 50);
+
+    const progressBar = this.add.graphics();
+    progressBar.setDepth(1); // Draw on top of progressBox
 
     const loadingText = this.add.text(width / 2, height / 2 - 50, 'Loading...', {
       fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '20px',
-      color: '#00ffff',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
     });
     loadingText.setOrigin(0.5);
 
     this.load.on('progress', (value: number) => {
       progressBar.clear();
-      progressBar.fillStyle(COLORS.SHUTTLE_GLOW, 1);
+      progressBar.fillStyle(0xFFD700, 1); // Bright gold
       progressBar.fillRect(width / 2 - 150, height / 2 - 15, 300 * value, 30);
     });
 
