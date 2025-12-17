@@ -1,0 +1,260 @@
+/**
+ * Touch Controls CSS
+ * Styles for mobile control panels
+ */
+
+/* Prevent browser gestures, touch highlights, and text selection */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+html,
+body {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Main app container - horizontal flex layout */
+#app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  overflow: hidden;
+  background-color: #0d1f33; /* Match panel background so no gaps show */
+}
+
+/* Control panels - fit content width, no gap with game */
+.control-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
+  gap: 8px;
+  background: linear-gradient(180deg, #1a3a5c 0%, #0d1f33 100%);
+  border: 2px solid #4a90d9;
+}
+
+.control-panel.hidden {
+  display: none !important;
+}
+
+/* Left panel - wider to fit horizontal steering buttons */
+#left-panel {
+  width: 160px !important;
+  min-width: 160px !important;
+  border-right: none;
+}
+
+/* Right panel */
+#right-panel {
+  width: 100px !important;
+  min-width: 100px !important;
+  border-left: none;
+}
+
+/* Game container - fills remaining space, no gap */
+#game-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #87ceeb;
+  min-width: 0; /* Allow shrinking */
+  overflow: hidden;
+}
+
+/* Control buttons base style */
+.control-btn {
+  width: 100% !important;
+  min-height: 60px;
+  border: 3px solid #4a90d9;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #2a4a6c, #1a3a5c);
+  color: #ffffff;
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.1s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 4px;
+}
+
+.control-btn .icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.control-btn .label {
+  font-size: 9px;
+  margin-top: 4px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Active/pressed state */
+.control-btn:active,
+.control-btn.active {
+  background: linear-gradient(145deg, #4a90d9, #3a7ac9);
+  transform: scale(0.95);
+  border-color: #6ab0f9;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Gyro toggle - special color when enabled */
+.gyro-btn {
+  flex: 0 0 auto;
+}
+
+.gyro-btn.enabled {
+  background: linear-gradient(145deg, #00c9a7, #00a388);
+  border-color: #00e9c7;
+}
+
+.gyro-btn.enabled .label::after {
+  content: ' ON';
+}
+
+/* Gear toggle - show state */
+.gear-btn {
+  flex: 0 0 auto;
+}
+
+.gear-btn.extended {
+  background: linear-gradient(145deg, #4ade80, #22c55e);
+  border-color: #86efac;
+}
+
+/* Steering buttons container - horizontal layout */
+.steering-container {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.steering-container.hidden {
+  display: none !important;
+}
+
+.steer-btn {
+  flex: 1;
+  min-height: 60px;
+  min-width: 0; /* Allow shrinking in flex row */
+}
+
+/* Right panel buttons */
+/* Bomb button (top) - smaller */
+.bomb-btn {
+  flex: 1;
+  min-height: 70px;
+  background: linear-gradient(145deg, #8b4513, #6b3510);
+  border-color: #ab6533;
+}
+
+.bomb-btn:active,
+.bomb-btn.active {
+  background: linear-gradient(145deg, #cb8553, #ab6533);
+  border-color: #dba573;
+}
+
+/* Thrust button (bottom) - larger */
+.thrust-btn {
+  flex: 2;
+  min-height: 100px;
+  background: linear-gradient(145deg, #e05030, #c04020);
+  border-color: #ff6040;
+}
+
+.thrust-btn:active,
+.thrust-btn.active {
+  background: linear-gradient(145deg, #ff8060, #ff6040);
+  border-color: #ffa080;
+}
+
+/* Portrait orientation warning overlay */
+.portrait-warning {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  color: #ffffff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  font-family: 'Arial', sans-serif;
+  font-size: 18px;
+  text-align: center;
+  padding: 20px;
+  z-index: 9999;
+}
+
+.portrait-warning .icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+@media (orientation: portrait) {
+  .portrait-warning {
+    display: flex;
+  }
+}
+
+/* Responsive adjustments - keep panels usable on all mobile screens */
+@media (max-height: 400px) {
+  /* Only reduce heights on very short screens, keep widths consistent */
+  .control-btn {
+    min-height: 50px;
+  }
+
+  .thrust-btn {
+    min-height: 80px;
+  }
+
+  .bomb-btn {
+    min-height: 55px;
+  }
+
+  .control-btn .icon {
+    font-size: 20px;
+  }
+
+  .control-btn .label {
+    font-size: 8px;
+  }
+}
+
+/* Safe area insets for notched devices - add width instead of padding */
+@supports (padding: env(safe-area-inset-left)) {
+  #left-panel {
+    padding-left: env(safe-area-inset-left);
+    width: calc(160px + env(safe-area-inset-left)) !important;
+  }
+
+  #right-panel {
+    padding-right: env(safe-area-inset-right);
+    width: calc(100px + env(safe-area-inset-right)) !important;
+  }
+}
