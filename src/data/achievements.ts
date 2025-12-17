@@ -178,6 +178,13 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: "Bounce a tombstone 3 times - hey you're Leo Messi!",
     tier: 'gold',
   },
+  {
+    id: 'darwin_award',
+    name: 'Darwin Award',
+    description: 'Kill yourself with your own bomb',
+    tier: 'bronze',
+    hidden: true,
+  },
 
   // 2-Player Combat (3)
   {

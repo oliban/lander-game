@@ -37,6 +37,8 @@ interface GameOverData {
   playerCount?: number;
   p1Kills?: number;
   p2Kills?: number;
+  // Death cause (projectile type, etc.)
+  cause?: string;
 }
 
 // Using HighScoreEntry from ScoreService
@@ -729,7 +731,13 @@ export class GameOverScene extends Phaser.Scene {
   private createCrashScreen(data: GameOverData): void {
     // Play random crash quote (use same index for audio and text)
     this.selectedCrashQuoteIndex = Math.floor(Math.random() * CRASH_QUOTES.length);
-    this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
+
+    // Play special sound for baguette death, otherwise random crash quote
+    if (data.cause === 'baguette' && this.cache.audio.exists('baguette_death')) {
+      this.sound.play('baguette_death');
+    } else {
+      this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
+    }
 
     const score = data.score || 0;
     this.currentScore = score;
@@ -778,8 +786,10 @@ export class GameOverScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5, 0.5);
 
-    // Quote (synced with audio)
-    const quote = CRASH_QUOTES[this.selectedCrashQuoteIndex];
+    // Quote (synced with audio) - special quote for baguette death
+    const quote = data.cause === 'baguette'
+      ? "\"It was a beautiful baguette, in a way. Very long. Very gold. Tremendous crust.\""
+      : CRASH_QUOTES[this.selectedCrashQuoteIndex];
     const quoteText = this.add.text(GAME_WIDTH / 2, 210, quote, {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '14px',

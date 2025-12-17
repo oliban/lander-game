@@ -230,6 +230,8 @@ export class AchievementSystem {
       this.unlock('running_on_empty');
     } else if (cause === 'lightning') {
       this.unlock('thunderstruck');
+    } else if (cause === 'self_bomb') {
+      this.unlock('darwin_award');
     }
 
     // Cumulative deaths

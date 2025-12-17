@@ -13,6 +13,7 @@ export class Bomb extends Phaser.Physics.Matter.Sprite {
   public foodType: string;
   public hasExploded: boolean = false;
   public droppedByPlayer: number; // 1 or 2
+  public createdAt: number; // Timestamp for grace period
 
   constructor(scene: Phaser.Scene, x: number, y: number, foodType: string, droppedByPlayer: number = 1) {
     const spriteKey = COLLECTIBLE_SPRITE_MAP[foodType] || 'burger';
@@ -20,6 +21,7 @@ export class Bomb extends Phaser.Physics.Matter.Sprite {
 
     this.foodType = foodType;
     this.droppedByPlayer = droppedByPlayer;
+    this.createdAt = Date.now();
 
     // Add to scene
     scene.add.existing(this);

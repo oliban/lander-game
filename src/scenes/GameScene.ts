@@ -109,6 +109,7 @@ export class GameScene extends Phaser.Scene {
 
   // Track which player died most recently
   private lastDeadPlayerIndex: number = -1;
+  private lastDeathCause: string | undefined = undefined; // Track cause of death for game over screen
   private dogfightPadIndex: number = -1; // Random starting pad for dogfight mode
 
   // Fisherboat in Atlantic
@@ -570,7 +571,7 @@ export class GameScene extends Phaser.Scene {
       onTerrainCollision: (playerNum) => this.handleTerrainCollision(playerNum),
       onLandingPadCollision: (pad, playerNum) => this.handleLandingPadCollision(pad, playerNum),
       onBoatDeckCollision: (playerNum) => this.handleBoatDeckCollision(playerNum),
-      onProjectileHit: (playerNum) => this.handleProjectileHit(playerNum),
+      onProjectileHit: (playerNum, spriteKey) => this.handleProjectileHit(playerNum, spriteKey),
       onCollectiblePickup: (collectible, playerNum) => this.handleCollectiblePickup(collectible, playerNum),
       onTombstoneBounce: (body) => this.tombstoneManager.handleBounce(body),
       onBrickWallCollision: (playerNum) => this.handleBrickWallCollision(playerNum),
@@ -1917,10 +1918,9 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private handleProjectileHit(playerNum: number = 1): void {
-    // Legacy method for backwards compatibility
+  private handleProjectileHit(playerNum: number = 1, spriteKey?: string): void {
     const player = this.getPlayer(playerNum);
-    this.handleProjectileHitOnShuttle(undefined, player.shuttle);
+    this.handleProjectileHitOnShuttle(spriteKey, player.shuttle);
   }
 
   // Generic handler for shuttle crashes in 2-player mode
@@ -2053,6 +2053,7 @@ export class GameScene extends Phaser.Scene {
 
     // Track which player died for dogfight kill tracking
     this.lastDeadPlayerIndex = playerIndex;
+    this.lastDeathCause = projectileSpriteKey;
     console.log('CRASH: Hit by projectile at', { x: shuttle.x, y: shuttle.y }, 'player:', playerNum, 'type:', projectileSpriteKey);
 
     // Generate and store death message
@@ -2315,6 +2316,7 @@ export class GameScene extends Phaser.Scene {
     playerCount?: number;
     p1Kills?: number;
     p2Kills?: number;
+    cause?: string;
   }): void {
     // Fade out music during game over transition
     this.musicManager.fadeOutAndStop(2000);
@@ -2337,6 +2339,7 @@ export class GameScene extends Phaser.Scene {
       playerCount: data.playerCount ?? this.playerCount,
       p1Kills: data.p1Kills ?? this.p1Kills,
       p2Kills: data.p2Kills ?? this.p2Kills,
+      cause: data.cause ?? this.lastDeathCause,
     };
 
     // Wait 2 seconds, then fade out over 1 second, then transition

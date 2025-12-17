@@ -109,9 +109,13 @@ export class BombManager {
       return;
     }
 
-    // Play random bomb quote
-    const bombQuoteNum = Math.floor(Math.random() * 8) + 1;
-    this.callbacks.playSoundIfNotPlaying(`bomb${bombQuoteNum}`);
+    // Play space force sound if bombing from above the screen, otherwise random bomb quote
+    if (shuttle.y < 0) {
+      this.callbacks.playSoundIfNotPlaying('space_force');
+    } else {
+      const bombQuoteNum = Math.floor(Math.random() * 8) + 1;
+      this.callbacks.playSoundIfNotPlaying(`bomb${bombQuoteNum}`);
+    }
 
     // Consume 1 from inventory
     inventory.remove(foodType as any, 1);
@@ -214,6 +218,36 @@ export class BombManager {
             const causeEmoji = victimPlayer === 1 ? 'p1_bombed' : 'p2_bombed';
             this.callbacks.setKillAlreadyTracked(true);
             this.callbacks.handleShuttleCrash(victimPlayer, `Bombed by P${killerPlayer}!`, causeEmoji);
+          }
+        }
+      }
+
+      if (bombDestroyed) continue;
+
+      // Check collision with OWN shuttle (self-bomb) - skip if within 0.5s grace period
+      const timeSinceDropped = Date.now() - bomb.createdAt;
+      if (timeSinceDropped >= 500) {
+        const ownShuttle = bomb.droppedByPlayer === 1 ? shuttle : shuttle2;
+        if (ownShuttle && ownShuttle.active && !ownShuttle.isDebugMode()) {
+          const dx = bombX - ownShuttle.x;
+          const dy = bombY - ownShuttle.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const hitRadius = 25;
+
+          if (dist < hitRadius) {
+            bomb.explode(this.scene);
+            this.bombs.splice(i, 1);
+            bombDestroyed = true;
+
+            const playerNum = bomb.droppedByPlayer;
+
+            // Play "that was clever" sound after 1 second
+            this.scene.time.delayedCall(1000, () => {
+              this.callbacks.playSound('self_bomb');
+            });
+
+            // Kill the shuttle that bombed itself
+            this.callbacks.handleShuttleCrash(playerNum, 'Self-bombed!', 'self_bomb');
           }
         }
       }
