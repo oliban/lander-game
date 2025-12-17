@@ -12,6 +12,13 @@ export interface ScoresResponse {
   category: ScoreCategory;
 }
 
+export interface AllScoresResponse {
+  alltime: HighScoreEntry[];
+  today: HighScoreEntry[];
+  week: HighScoreEntry[];
+  local: HighScoreEntry[];
+}
+
 // Local storage keys
 const LOCAL_SCORES_KEY = 'peaceShuttle_highScores';
 const PENDING_SCORES_KEY = 'peaceShuttle_pendingScores';
@@ -62,12 +69,15 @@ async function fetchWithRetry(
  * Submit a score to the server
  */
 export async function submitScore(name: string, score: number): Promise<boolean> {
+  console.log('[ScoreService] Submitting score:', { name, score });
   try {
     const response = await fetchWithRetry(API_BASE, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },  // Explicit UTF-8 for special chars
       body: JSON.stringify({ name, score }),
     });
+
+    console.log('[ScoreService] Server response:', response.status);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -81,7 +91,7 @@ export async function submitScore(name: string, score: number): Promise<boolean>
 
     return true;
   } catch (error) {
-    console.error('Failed to submit score to server:', error);
+    console.error('[ScoreService] Failed to submit score to server:', error);
 
     // Save as pending for later sync
     savePendingScore(name, score);
@@ -97,6 +107,7 @@ export async function submitScore(name: string, score: number): Promise<boolean>
  * Fetch scores from the server for a given category
  */
 export async function fetchScores(category: ScoreCategory): Promise<HighScoreEntry[]> {
+  console.log('[ScoreService] Fetching scores for category:', category);
   try {
     const response = await fetchWithRetry(`${API_BASE}/${category}`);
 
@@ -105,9 +116,10 @@ export async function fetchScores(category: ScoreCategory): Promise<HighScoreEnt
     }
 
     const data: ScoresResponse = await response.json();
+    console.log('[ScoreService] Received scores:', data.scores);
     return data.scores;
   } catch (error) {
-    console.error(`Failed to fetch ${category} scores:`, error);
+    console.error(`[ScoreService] Failed to fetch ${category} scores:`, error);
 
     // Fallback to local scores
     if (category === 'local' || category === 'alltime') {
@@ -115,6 +127,35 @@ export async function fetchScores(category: ScoreCategory): Promise<HighScoreEnt
     }
 
     return [];
+  }
+}
+
+/**
+ * Fetch ALL score categories in a single request
+ */
+export async function fetchAllScores(): Promise<AllScoresResponse> {
+  console.log('[ScoreService] Fetching all scores in single request');
+  try {
+    const response = await fetchWithRetry(`${API_BASE}/all`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data: AllScoresResponse = await response.json();
+    console.log('[ScoreService] Received all scores');
+    return data;
+  } catch (error) {
+    console.error('[ScoreService] Failed to fetch all scores:', error);
+
+    // Fallback to local scores for all categories
+    const localScores = getLocalScores();
+    return {
+      alltime: localScores,
+      today: localScores,
+      week: localScores,
+      local: localScores,
+    };
   }
 }
 
