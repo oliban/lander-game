@@ -7,6 +7,7 @@ import { createGreenButton } from '../ui/UIButton';
 import { LIST_STRIPE_COLORS } from '../ui/UIStyles';
 import { fetchAllScores, getLocalScores, syncPendingScores, ScoreCategory, CATEGORY_LABELS, CATEGORY_ORDER, HighScoreEntry } from '../services/ScoreService';
 import { PerformanceSettings, QualityLevel, QUALITY_PRESETS } from '../systems/PerformanceSettings';
+import { AudioSettings } from '../systems/AudioSettings';
 
 export class MenuScene extends Phaser.Scene {
   private currentCategory: ScoreCategory = 'alltime';
@@ -26,6 +27,8 @@ export class MenuScene extends Phaser.Scene {
   private settingsPanel: Phaser.GameObjects.Container | null = null;
   private settingsQualityLabel!: Phaser.GameObjects.Text;
   private settingsAutoLabel!: Phaser.GameObjects.Text;
+  private settingsMusicVolumeLabel!: Phaser.GameObjects.Text;
+  private settingsSpeechVolumeLabel!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -518,7 +521,7 @@ export class MenuScene extends Phaser.Scene {
 
   private createSettingsPanel(): void {
     const panelW = 300;
-    const panelH = 240;
+    const panelH = 380;
     const panelX = GAME_WIDTH / 2;
     const panelY = GAME_HEIGHT / 2;
 
@@ -542,18 +545,18 @@ export class MenuScene extends Phaser.Scene {
     panel.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
     this.settingsPanel.add(panel);
 
-    // Title
-    const title = this.add.text(0, -panelH / 2 + 20, 'GRAPHICS SETTINGS', {
-      fontSize: '18px',
+    // Graphics Title
+    const graphicsTitle = this.add.text(0, -panelH / 2 + 20, 'GRAPHICS', {
+      fontSize: '16px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontStyle: 'bold',
     });
-    title.setOrigin(0.5, 0);
-    this.settingsPanel.add(title);
+    graphicsTitle.setOrigin(0.5, 0);
+    this.settingsPanel.add(graphicsTitle);
 
     // Quality Level row
-    const qualityLabel = this.add.text(-panelW / 2 + 20, -30, 'Quality:', {
+    const qualityLabel = this.add.text(-panelW / 2 + 20, -100, 'Quality:', {
       fontSize: '16px',
       color: '#FFFFFF',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -562,7 +565,7 @@ export class MenuScene extends Phaser.Scene {
     this.settingsPanel.add(qualityLabel);
 
     // Quality navigation: ◀ Ultra ▶
-    const qualityLeftArrow = this.add.text(50, -30, '◀', {
+    const qualityLeftArrow = this.add.text(50, -100, '◀', {
       fontSize: '18px',
       color: '#4CAF50',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -575,7 +578,7 @@ export class MenuScene extends Phaser.Scene {
     qualityLeftArrow.on('pointerout', () => qualityLeftArrow.setColor('#4CAF50'));
     this.settingsPanel.add(qualityLeftArrow);
 
-    this.settingsQualityLabel = this.add.text(90, -30, QUALITY_PRESETS[PerformanceSettings.getQualityLevel()].name, {
+    this.settingsQualityLabel = this.add.text(90, -100, QUALITY_PRESETS[PerformanceSettings.getQualityLevel()].name, {
       fontSize: '16px',
       color: '#FFD700',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -584,7 +587,7 @@ export class MenuScene extends Phaser.Scene {
     this.settingsQualityLabel.setOrigin(0.5, 0.5);
     this.settingsPanel.add(this.settingsQualityLabel);
 
-    const qualityRightArrow = this.add.text(130, -30, '▶', {
+    const qualityRightArrow = this.add.text(130, -100, '▶', {
       fontSize: '18px',
       color: '#4CAF50',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -598,7 +601,7 @@ export class MenuScene extends Phaser.Scene {
     this.settingsPanel.add(qualityRightArrow);
 
     // Auto-adjust toggle row
-    const autoLabel = this.add.text(-panelW / 2 + 20, 10, 'Auto-adjust:', {
+    const autoLabel = this.add.text(-panelW / 2 + 20, -60, 'Auto-adjust:', {
       fontSize: '16px',
       color: '#FFFFFF',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -606,7 +609,7 @@ export class MenuScene extends Phaser.Scene {
     autoLabel.setOrigin(0, 0.5);
     this.settingsPanel.add(autoLabel);
 
-    this.settingsAutoLabel = this.add.text(90, 10, PerformanceSettings.isAutoAdjustEnabled() ? 'ON' : 'OFF', {
+    this.settingsAutoLabel = this.add.text(90, -60, PerformanceSettings.isAutoAdjustEnabled() ? 'ON' : 'OFF', {
       fontSize: '16px',
       color: PerformanceSettings.isAutoAdjustEnabled() ? '#4CAF50' : '#FF6666',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -617,8 +620,106 @@ export class MenuScene extends Phaser.Scene {
     this.settingsAutoLabel.on('pointerdown', () => this.toggleAutoAdjust());
     this.settingsPanel.add(this.settingsAutoLabel);
 
+    // Audio Title
+    const audioTitle = this.add.text(0, -20, 'AUDIO', {
+      fontSize: '16px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    audioTitle.setOrigin(0.5, 0);
+    this.settingsPanel.add(audioTitle);
+
+    // Music Volume row
+    const musicLabel = this.add.text(-panelW / 2 + 20, 30, 'Music:', {
+      fontSize: '16px',
+      color: '#FFFFFF',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    musicLabel.setOrigin(0, 0.5);
+    this.settingsPanel.add(musicLabel);
+
+    const musicLeftArrow = this.add.text(50, 30, '◀', {
+      fontSize: '18px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    musicLeftArrow.setOrigin(0.5, 0.5);
+    musicLeftArrow.setInteractive({ useHandCursor: true });
+    musicLeftArrow.on('pointerdown', () => this.adjustMusicVolume(-0.1));
+    musicLeftArrow.on('pointerover', () => musicLeftArrow.setColor('#66BB6A'));
+    musicLeftArrow.on('pointerout', () => musicLeftArrow.setColor('#4CAF50'));
+    this.settingsPanel.add(musicLeftArrow);
+
+    this.settingsMusicVolumeLabel = this.add.text(90, 30, `${Math.round(AudioSettings.getMusicVolume() * 100)}%`, {
+      fontSize: '16px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    this.settingsMusicVolumeLabel.setOrigin(0.5, 0.5);
+    this.settingsPanel.add(this.settingsMusicVolumeLabel);
+
+    const musicRightArrow = this.add.text(130, 30, '▶', {
+      fontSize: '18px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    musicRightArrow.setOrigin(0.5, 0.5);
+    musicRightArrow.setInteractive({ useHandCursor: true });
+    musicRightArrow.on('pointerdown', () => this.adjustMusicVolume(0.1));
+    musicRightArrow.on('pointerover', () => musicRightArrow.setColor('#66BB6A'));
+    musicRightArrow.on('pointerout', () => musicRightArrow.setColor('#4CAF50'));
+    this.settingsPanel.add(musicRightArrow);
+
+    // Speech/SFX Volume row
+    const speechLabel = this.add.text(-panelW / 2 + 20, 70, 'Speech/SFX:', {
+      fontSize: '16px',
+      color: '#FFFFFF',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    speechLabel.setOrigin(0, 0.5);
+    this.settingsPanel.add(speechLabel);
+
+    const speechLeftArrow = this.add.text(50, 70, '◀', {
+      fontSize: '18px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    speechLeftArrow.setOrigin(0.5, 0.5);
+    speechLeftArrow.setInteractive({ useHandCursor: true });
+    speechLeftArrow.on('pointerdown', () => this.adjustSpeechVolume(-0.1));
+    speechLeftArrow.on('pointerover', () => speechLeftArrow.setColor('#66BB6A'));
+    speechLeftArrow.on('pointerout', () => speechLeftArrow.setColor('#4CAF50'));
+    this.settingsPanel.add(speechLeftArrow);
+
+    this.settingsSpeechVolumeLabel = this.add.text(90, 70, `${Math.round(AudioSettings.getSpeechVolume() * 100)}%`, {
+      fontSize: '16px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    this.settingsSpeechVolumeLabel.setOrigin(0.5, 0.5);
+    this.settingsPanel.add(this.settingsSpeechVolumeLabel);
+
+    const speechRightArrow = this.add.text(130, 70, '▶', {
+      fontSize: '18px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    speechRightArrow.setOrigin(0.5, 0.5);
+    speechRightArrow.setInteractive({ useHandCursor: true });
+    speechRightArrow.on('pointerdown', () => this.adjustSpeechVolume(0.1));
+    speechRightArrow.on('pointerover', () => speechRightArrow.setColor('#66BB6A'));
+    speechRightArrow.on('pointerout', () => speechRightArrow.setColor('#4CAF50'));
+    this.settingsPanel.add(speechRightArrow);
+
     // Description text
-    const descText = this.add.text(0, 50, 'Auto-adjust lowers quality when FPS drops.\nLower quality = smoother gameplay.', {
+    const descText = this.add.text(0, 115, 'Auto-adjust lowers quality when FPS drops.\nLower quality = smoother gameplay.', {
       fontSize: '12px',
       color: '#888888',
       fontFamily: 'Arial, Helvetica, sans-serif',
@@ -640,6 +741,18 @@ export class MenuScene extends Phaser.Scene {
     closeBtn.on('pointerout', () => closeBtn.setColor('#4CAF50'));
     closeBtn.on('pointerdown', () => this.toggleSettingsPanel());
     this.settingsPanel.add(closeBtn);
+  }
+
+  private adjustMusicVolume(delta: number): void {
+    const newVolume = AudioSettings.getMusicVolume() + delta;
+    AudioSettings.setMusicVolume(newVolume);
+    this.settingsMusicVolumeLabel.setText(`${Math.round(AudioSettings.getMusicVolume() * 100)}%`);
+  }
+
+  private adjustSpeechVolume(delta: number): void {
+    const newVolume = AudioSettings.getSpeechVolume() + delta;
+    AudioSettings.setSpeechVolume(newVolume);
+    this.settingsSpeechVolumeLabel.setText(`${Math.round(AudioSettings.getSpeechVolume() * 100)}%`);
   }
 
   private cycleQuality(direction: number): void {
