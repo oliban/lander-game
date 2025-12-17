@@ -1176,10 +1176,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Check if we're over the Atlantic Ocean - always crash in water!
-    // But NOT if we're near a landing pad or on the fishing boat
+    // But NOT if we're near a landing pad, on the fishing boat, or near the brick walls
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
-    const isOverWater = shuttle.x >= atlanticStart && shuttle.x < atlanticEnd;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
+
+    // Don't trigger water death if near the brick walls at ocean boundaries
+    const wallTolerance = 20; // Wall width (12) + buffer for physics imprecision
+    const nearLeftWall = Math.abs(shuttle.x - atlanticStart) < wallTolerance;
+    const nearRightWall = Math.abs(shuttle.x - atlanticEnd) < wallTolerance;
+    const isOverWater = shuttle.x >= atlanticStart && shuttle.x < atlanticEnd && !nearLeftWall && !nearRightWall;
 
     // Check if near a landing pad (don't splash if on a pad)
     const nearLandingPad = this.landingPads.some(pad => {

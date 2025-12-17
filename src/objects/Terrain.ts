@@ -161,7 +161,7 @@ export class Terrain {
 
     // Create flat plateau areas for buildings (not in Atlantic Ocean or Switzerland)
     const oceanStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const oceanEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const oceanEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
     const switzerlandStartX = COUNTRIES.find(c => c.name === 'Switzerland')?.startX ?? 10000;
     const switzerlandEndX = COUNTRIES.find(c => c.name === 'Germany')?.startX ?? 12000;
     const plateauWidth = 300; // Width of flat area in pixels
@@ -227,7 +227,7 @@ export class Terrain {
 
     // Make Atlantic Ocean completely flat
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
     const oceanHeight = GAME_HEIGHT * 0.75; // Flat ocean level
 
     for (let i = 0; i < heights.length; i++) {
@@ -288,7 +288,7 @@ export class Terrain {
 
   private createBrickWallBodies(): void {
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
     const oceanHeight = GAME_HEIGHT * 0.75;
 
     // Get terrain heights at ocean edges (go far enough to get actual land, not flattened ocean)
@@ -863,7 +863,7 @@ export class Terrain {
     this.oceanGraphics.clear();
 
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
     const oceanHeight = GAME_HEIGHT * 0.75;
 
     // Helper to tint a color towards dark brown/black based on pollution level
@@ -906,7 +906,7 @@ export class Terrain {
     this.oceanGraphics.clear();
 
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
     const oceanHeight = GAME_HEIGHT * 0.75;
 
     // Helper to tint a color towards dark brown/black based on pollution level
