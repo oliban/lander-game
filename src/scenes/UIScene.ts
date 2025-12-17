@@ -11,6 +11,7 @@ interface UISceneData {
   fuelSystem: FuelSystem;
   inventorySystem: InventorySystem;
   getShuttleVelocity: () => { x: number; y: number; total: number };
+  getShuttleAltitude: () => number;
   getProgress: () => number;
   getCurrentCountry: () => { name: string; color: number };
   getLegsExtended: () => boolean;
@@ -34,6 +35,7 @@ export class UIScene extends Phaser.Scene {
   private fuelSystem!: FuelSystem;
   private inventorySystem!: InventorySystem;
   private getShuttleVelocity!: () => { x: number; y: number; total: number };
+  private getShuttleAltitude!: () => number;
   private getProgress!: () => number;
   private getLegsExtended!: () => boolean;
   private getElapsedTime!: () => number;
@@ -56,6 +58,10 @@ export class UIScene extends Phaser.Scene {
   private speedText!: Phaser.GameObjects.Text;
   private speedWarningLeft!: Phaser.GameObjects.Text;
   private speedWarningRight!: Phaser.GameObjects.Text;
+  // Altimeter
+  private altimeterBg!: Phaser.GameObjects.Graphics;
+  private altimeterText!: Phaser.GameObjects.Text;
+  private altimeterLabel!: Phaser.GameObjects.Text;
   private inventoryContainer!: Phaser.GameObjects.Container;
   private p2InventoryContainer: Phaser.GameObjects.Container | null = null;
   private progressBar!: Phaser.GameObjects.Graphics;
@@ -93,6 +99,7 @@ export class UIScene extends Phaser.Scene {
     this.fuelSystem = data.fuelSystem;
     this.inventorySystem = data.inventorySystem;
     this.getShuttleVelocity = data.getShuttleVelocity;
+    this.getShuttleAltitude = data.getShuttleAltitude;
     this.getProgress = data.getProgress;
     this.getLegsExtended = data.getLegsExtended;
     this.getElapsedTime = data.getElapsedTime;
@@ -123,6 +130,7 @@ export class UIScene extends Phaser.Scene {
 
     this.createFuelGauge();
     this.createSpeedometer();
+    this.createAltimeter();
     this.createTimer();
     this.createScoreCounter();
     this.createInventoryDisplay();
@@ -359,6 +367,61 @@ export class UIScene extends Phaser.Scene {
     const isDangerous = speed > MAX_SAFE_LANDING_VELOCITY * 2;
     this.speedWarningLeft.setVisible(isDangerous);
     this.speedWarningRight.setVisible(isDangerous);
+  }
+
+  private createAltimeter(): void {
+    const x = 44; // Same x as speedometer
+    const y = 410; // Below speedometer
+
+    // Background box
+    this.altimeterBg = this.add.graphics();
+    this.altimeterBg.fillStyle(0xFFFFFF, 0.9);
+    this.altimeterBg.fillRoundedRect(x - 35, y - 10, 70, 36, 6);
+    this.altimeterBg.lineStyle(2, 0x333333);
+    this.altimeterBg.strokeRoundedRect(x - 35, y - 10, 70, 36, 6);
+
+    // Label
+    this.altimeterLabel = this.add.text(x, y - 4, 'ALT', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '9px',
+      color: '#666666',
+      fontStyle: 'bold',
+    });
+    this.altimeterLabel.setOrigin(0.5, 0);
+
+    // Altitude value
+    this.altimeterText = this.add.text(x, y + 10, '0', {
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '13px',
+      color: '#333333',
+      fontStyle: 'bold',
+    });
+    this.altimeterText.setOrigin(0.5, 0);
+  }
+
+  private updateAltimeter(): void {
+    // Only show altimeter in debug mode
+    const showAltimeter = this.isDebugMode();
+    this.altimeterBg.setVisible(showAltimeter);
+    this.altimeterText.setVisible(showAltimeter);
+    this.altimeterLabel.setVisible(showAltimeter);
+
+    if (!showAltimeter) return;
+
+    const altitude = this.getShuttleAltitude();
+
+    // Color based on altitude (higher = more purple/space-like)
+    let textColor = '#333333';
+    if (altitude > 1000) {
+      textColor = '#4B0082'; // Indigo for high altitude
+    } else if (altitude > 500) {
+      textColor = '#6A5ACD'; // Slate blue
+    } else if (altitude > 0) {
+      textColor = '#4169E1'; // Royal blue
+    }
+
+    this.altimeterText.setColor(textColor);
+    this.altimeterText.setText(Math.floor(altitude).toString());
   }
 
   private updateFuelBar(fuel: number, max: number): void {
@@ -1102,5 +1165,6 @@ export class UIScene extends Phaser.Scene {
     this.updateTimer();
     this.updateMedalIndicator();
     this.updateSpeedometer();
+    this.updateAltimeter();
   }
 }
