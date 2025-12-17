@@ -807,6 +807,9 @@ export class GameOverScene extends Phaser.Scene {
         color: '#FFD700',
         fontStyle: 'bold',
       }).setOrigin(0.5, 0.5);
+
+      // Celebration confetti for space victory!
+      this.createCelebrationParticles();
     } else {
       // Normal crash: Original layout
       const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
