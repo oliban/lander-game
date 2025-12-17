@@ -320,8 +320,8 @@ describe('MenuScene', () => {
 
       expect(mockScene.add.graphics).toHaveBeenCalled();
       const graphics = mockScene.createdGraphics[0];
-      expect(graphics.fillStyleCalls[0]).toEqual({ color: 0x000000, alpha: 0.6 });
-      expect(graphics.lineStyleCalls[0]).toEqual({ width: 2, color: 0xFFD700, alpha: 0.3 });
+      expect(graphics.fillStyleCalls[0]).toEqual({ color: 0x0d1b2a, alpha: 0.85 });
+      expect(graphics.lineStyleCalls[0]).toEqual({ width: 1, color: 0x1b3a5c, alpha: 0.6 });
     });
   });
 

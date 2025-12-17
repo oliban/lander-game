@@ -42,10 +42,12 @@ export class MenuScene extends Phaser.Scene {
     const titleArt = this.add.image(GAME_WIDTH / 2, 150, 'title-art');
     titleArt.setScale(0.45);
 
-    // Main title panel - dark box for contrast
+    // Main title panel - dark blue for consistency
     const titlePanel = this.add.graphics();
-    titlePanel.fillStyle(0x000000, 0.7);
+    titlePanel.fillStyle(0x0d1b2a, 0.85);
     titlePanel.fillRoundedRect(GAME_WIDTH / 2 - 250, 290, 500, 90, 12);
+    titlePanel.lineStyle(1, 0x1b3a5c, 0.5);
+    titlePanel.strokeRoundedRect(GAME_WIDTH / 2 - 250, 290, 500, 90, 12);
 
     // Title - bright gold on dark
     const title = this.add.text(GAME_WIDTH / 2, 320, 'PEACE SHUTTLE', {
@@ -81,10 +83,12 @@ export class MenuScene extends Phaser.Scene {
     ];
     const selectedQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
-    // Quote panel with dark background for readability
+    // Quote panel with dark blue background for consistency
     const quotePanel = this.add.graphics();
-    quotePanel.fillStyle(0x000000, 0.85);
+    quotePanel.fillStyle(0x0d1b2a, 0.9);
     quotePanel.fillRoundedRect(GAME_WIDTH / 2 - 320, 390, 640, 40, 8);
+    quotePanel.lineStyle(1, 0x1b3a5c, 0.5);
+    quotePanel.strokeRoundedRect(GAME_WIDTH / 2 - 320, 390, 640, 40, 8);
     quotePanel.setDepth(5);
 
     const quoteText = this.add.text(GAME_WIDTH / 2, 410, selectedQuote, {
@@ -402,9 +406,9 @@ export class MenuScene extends Phaser.Scene {
 
   private createPanelBackground(panelX: number, panelY: number, panelW: number, panelH: number): Phaser.GameObjects.Graphics {
     const panel = this.add.graphics();
-    panel.fillStyle(0x000000, 0.6);
+    panel.fillStyle(0x0d1b2a, 0.85);
     panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
-    panel.lineStyle(2, 0xFFD700, 0.3);
+    panel.lineStyle(1, 0x1b3a5c, 0.6);
     panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
     return panel;
   }
@@ -501,11 +505,11 @@ export class MenuScene extends Phaser.Scene {
     backdrop.on('pointerdown', () => this.toggleSettingsPanel());
     this.settingsPanel.add(backdrop);
 
-    // Panel background
+    // Panel background - consistent dark blue
     const panel = this.add.graphics();
-    panel.fillStyle(0x1a1a2e, 0.95);
+    panel.fillStyle(0x0d1b2a, 0.98);
     panel.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-    panel.lineStyle(2, 0xFFD700, 0.5);
+    panel.lineStyle(2, 0x1b3a5c, 0.8);
     panel.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
     this.settingsPanel.add(panel);
 
