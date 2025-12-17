@@ -814,10 +814,14 @@ export class GameOverScene extends Phaser.Scene {
 
       // Celebration confetti and fanfare for space victory!
       this.createCelebrationParticles();
+      console.log('[GameOverScene] Attempting to play fanfare...');
+      console.log('[GameOverScene] Audio exists:', this.cache.audio.exists('fanfare'));
+      console.log('[GameOverScene] Sound manager:', this.sound);
       if (this.cache.audio.exists('fanfare')) {
+        console.log('[GameOverScene] Playing fanfare now!');
         this.sound.play('fanfare', { volume: 0.8 });
       } else {
-        console.error('[GameOverScene] Fanfare audio not found!');
+        console.error('[GameOverScene] Fanfare audio not found in cache!');
       }
     } else {
       // Normal crash: Original layout
