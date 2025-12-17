@@ -814,7 +814,11 @@ export class GameOverScene extends Phaser.Scene {
 
       // Celebration confetti and fanfare for space victory!
       this.createCelebrationParticles();
-      this.sound.play('fanfare', { volume: 0.8 });
+      if (this.cache.audio.exists('fanfare')) {
+        this.sound.play('fanfare', { volume: 0.8 });
+      } else {
+        console.error('[GameOverScene] Fanfare audio not found!');
+      }
     } else {
       // Normal crash: Original layout
       const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
