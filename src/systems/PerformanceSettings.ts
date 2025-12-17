@@ -203,6 +203,10 @@ class PerformanceSettingsManager {
   private maxFpsHistory: number = 60; // ~1 second of samples at 60fps
   private listeners: Set<() => void> = new Set();
 
+  // Warmup period - ignore FPS during scene initialization
+  private warmupStartTime: number = 0;
+  private warmupDuration: number = 5000; // 5 seconds warmup after scene start
+
   // Auto-adjustment thresholds
   private downgradeThreshold: number = 30; // FPS below this triggers downgrade
   private upgradeThreshold: number = 45; // FPS above this allows upgrade
@@ -309,9 +313,26 @@ class PerformanceSettingsManager {
   }
 
   /**
+   * Call this when a new scene starts to reset warmup timer.
+   * This prevents low FPS during scene initialization from triggering downgrades.
+   */
+  resetWarmup(): void {
+    this.warmupStartTime = Date.now();
+    this.fpsHistory = []; // Clear old FPS data
+    this.lastAdjustmentTime = 0;
+    console.log('[PERF] Warmup started - ignoring FPS for 5 seconds');
+  }
+
+  /**
    * Call this every frame with the current FPS for auto-adjustment
    */
   updateFPS(currentFPS: number): void {
+    // Skip FPS tracking during warmup period (scene initialization)
+    const now = Date.now();
+    if (now - this.warmupStartTime < this.warmupDuration) {
+      return; // Still in warmup, ignore FPS data
+    }
+
     // Track FPS history
     this.fpsHistory.push(currentFPS);
     if (this.fpsHistory.length > this.maxFpsHistory) {
@@ -324,8 +345,7 @@ class PerformanceSettingsManager {
     // Wait for enough samples
     if (this.fpsHistory.length < this.maxFpsHistory) return;
 
-    // Check cooldown
-    const now = Date.now();
+    // Check cooldown (reuse 'now' from above)
     if (now - this.lastAdjustmentTime < this.adjustmentCooldown) return;
 
     // Calculate average FPS

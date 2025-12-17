@@ -190,6 +190,9 @@ export class GameScene extends Phaser.Scene {
   create(data?: { playerCount?: number; gameMode?: GameMode; p1Kills?: number; p2Kills?: number; dogfightPadIndex?: number }): void {
     this.gameState = 'playing';
     this.gameStartTime = Date.now(); // Use Date.now() for reliable timing across scene restarts
+
+    // Reset performance settings warmup to avoid quality cascade during scene initialization
+    PerformanceSettings.resetWarmup();
     this.playerCount = data?.playerCount ?? 1;
     this.gameMode = data?.gameMode ?? 'normal';
 
