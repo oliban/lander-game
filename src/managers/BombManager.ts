@@ -14,6 +14,7 @@ import { Shark } from '../objects/Shark';
 import { MedalHouse } from '../objects/MedalHouse';
 import { BOMB_DROPPABLE_TYPES, COUNTRIES, GAME_HEIGHT, DOGFIGHT_CONFIG } from '../constants';
 import { ScorchMarkManager } from './ScorchMarkManager';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 export interface BombCallbacks {
   // Scene methods
@@ -73,6 +74,9 @@ export class BombManager {
   // Water bounds (cached)
   private atlanticStart: number;
   private atlanticEnd: number;
+
+  // Performance optimization - throttle collision checks
+  private lastCollisionCheckTime: number = 0;
 
   constructor(scene: Phaser.Scene, callbacks: BombCallbacks) {
     this.scene = scene;
@@ -216,71 +220,91 @@ export class BombManager {
 
       if (bombDestroyed) continue;
 
-      // Check collision with buildings
-      bombDestroyed = this.checkDecorationCollisions(bomb, bombX, bombY, decorations);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with cannons
-      bombDestroyed = this.checkCannonCollisions(bomb, bombX, bombY, cannons);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with landing pads
-      bombDestroyed = this.checkLandingPadCollisions(bomb, bombX, bombY, landingPads);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with biplanes
-      bombDestroyed = this.checkBiplaneCollisions(bomb, bombX, bombY, biplanes);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with golf cart
-      bombDestroyed = this.checkGolfCartCollision(bomb, bombX, bombY, golfCart);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with fisher boat
-      bombDestroyed = this.checkFisherBoatCollision(bomb, bombX, bombY, fisherBoat);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with oil towers
-      bombDestroyed = this.checkOilTowerCollisions(bomb, bombX, bombY, oilTowers);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with Greenland ice
-      bombDestroyed = this.checkGreenlandIceCollision(bomb, bombX, bombY, greenlandIce);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with sharks
-      bombDestroyed = this.checkSharkCollisions(bomb, bombX, bombY, sharks);
-      if (bombDestroyed) {
-        this.bombs.splice(i, 1);
-        continue;
-      }
-
-      // Check collision with terrain
+      // Performance optimization: Get terrain height and skip expensive collision checks
+      // for bombs that are still high in the air (nothing to hit yet)
       const terrainY = this.callbacks.getTerrainHeightAt(bombX);
+      const heightAboveTerrain = terrainY - bombY;
+
+      // Only check ground-based collisions when bomb is close to ground level
+      // Most buildings are ~200px tall at most, so check when within 250px of terrain
+      const shouldCheckGroundCollisions = heightAboveTerrain < 250;
+
+      // Performance: Check collision throttle interval for expensive object checks
+      const now = Date.now();
+      const collisionInterval = PerformanceSettings.getPreset().collisionCheckInterval;
+      const shouldDoFullCollisionCheck = collisionInterval === 0 ||
+        (now - this.lastCollisionCheckTime >= collisionInterval);
+
+      if (shouldCheckGroundCollisions && shouldDoFullCollisionCheck) {
+        // Check collision with buildings
+        bombDestroyed = this.checkDecorationCollisions(bomb, bombX, bombY, decorations);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with cannons
+        bombDestroyed = this.checkCannonCollisions(bomb, bombX, bombY, cannons);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with landing pads
+        bombDestroyed = this.checkLandingPadCollisions(bomb, bombX, bombY, landingPads);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with golf cart
+        bombDestroyed = this.checkGolfCartCollision(bomb, bombX, bombY, golfCart);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with fisher boat
+        bombDestroyed = this.checkFisherBoatCollision(bomb, bombX, bombY, fisherBoat);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with oil towers
+        bombDestroyed = this.checkOilTowerCollisions(bomb, bombX, bombY, oilTowers);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with Greenland ice
+        bombDestroyed = this.checkGreenlandIceCollision(bomb, bombX, bombY, greenlandIce);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        // Check collision with sharks (in water)
+        bombDestroyed = this.checkSharkCollisions(bomb, bombX, bombY, sharks);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+
+        this.lastCollisionCheckTime = now;
+      }
+
+      // Biplanes fly in the air, so check them regardless of height
+      if (shouldDoFullCollisionCheck) {
+        bombDestroyed = this.checkBiplaneCollisions(bomb, bombX, bombY, biplanes);
+        if (bombDestroyed) {
+          this.bombs.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Check collision with terrain - always check this (terrainY already calculated above)
       if (bombY >= terrainY - 5) {
         const isOverWater = bombX >= this.atlanticStart && bombX < this.atlanticEnd;
 

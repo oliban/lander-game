@@ -6,6 +6,7 @@ import { COLLECTIBLE_TYPES } from '../constants';
 import { createGreenButton } from '../ui/UIButton';
 import { LIST_STRIPE_COLORS } from '../ui/UIStyles';
 import { fetchScores, getLocalScores, syncPendingScores, ScoreCategory, CATEGORY_LABELS, CATEGORY_ORDER, HighScoreEntry } from '../services/ScoreService';
+import { PerformanceSettings, QualityLevel, QUALITY_PRESETS } from '../systems/PerformanceSettings';
 
 export class MenuScene extends Phaser.Scene {
   private currentCategory: ScoreCategory = 'alltime';
@@ -14,6 +15,11 @@ export class MenuScene extends Phaser.Scene {
   private leftArrow!: Phaser.GameObjects.Text;
   private rightArrow!: Phaser.GameObjects.Text;
   private loadingText!: Phaser.GameObjects.Text;
+
+  // Settings panel elements
+  private settingsPanel: Phaser.GameObjects.Container | null = null;
+  private settingsQualityLabel!: Phaser.GameObjects.Text;
+  private settingsAutoLabel!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -36,10 +42,12 @@ export class MenuScene extends Phaser.Scene {
     const titleArt = this.add.image(GAME_WIDTH / 2, 150, 'title-art');
     titleArt.setScale(0.45);
 
-    // Main title panel - dark box for contrast
+    // Main title panel - dark blue for consistency
     const titlePanel = this.add.graphics();
-    titlePanel.fillStyle(0x000000, 0.7);
+    titlePanel.fillStyle(0x0d1b2a, 0.85);
     titlePanel.fillRoundedRect(GAME_WIDTH / 2 - 250, 290, 500, 90, 12);
+    titlePanel.lineStyle(1, 0x1b3a5c, 0.5);
+    titlePanel.strokeRoundedRect(GAME_WIDTH / 2 - 250, 290, 500, 90, 12);
 
     // Title - bright gold on dark
     const title = this.add.text(GAME_WIDTH / 2, 320, 'PEACE SHUTTLE', {
@@ -75,10 +83,12 @@ export class MenuScene extends Phaser.Scene {
     ];
     const selectedQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
-    // Quote panel with dark background for readability
+    // Quote panel with dark blue background for consistency
     const quotePanel = this.add.graphics();
-    quotePanel.fillStyle(0x000000, 0.85);
+    quotePanel.fillStyle(0x0d1b2a, 0.9);
     quotePanel.fillRoundedRect(GAME_WIDTH / 2 - 320, 390, 640, 40, 8);
+    quotePanel.lineStyle(1, 0x1b3a5c, 0.5);
+    quotePanel.strokeRoundedRect(GAME_WIDTH / 2 - 320, 390, 640, 40, 8);
     quotePanel.setDepth(5);
 
     const quoteText = this.add.text(GAME_WIDTH / 2, 410, selectedQuote, {
@@ -89,6 +99,9 @@ export class MenuScene extends Phaser.Scene {
     });
     quoteText.setOrigin(0.5, 0.5);
     quoteText.setDepth(6);
+
+    // Settings button (top-right corner)
+    this.createSettingsButton();
 
     // Bottom section: 3 panels in a row (removed controls panel)
     const panelY = 445;
@@ -393,9 +406,9 @@ export class MenuScene extends Phaser.Scene {
 
   private createPanelBackground(panelX: number, panelY: number, panelW: number, panelH: number): Phaser.GameObjects.Graphics {
     const panel = this.add.graphics();
-    panel.fillStyle(0x000000, 0.6);
+    panel.fillStyle(0x0d1b2a, 0.85);
     panel.fillRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
-    panel.lineStyle(2, 0xFFD700, 0.3);
+    panel.lineStyle(1, 0x1b3a5c, 0.6);
     panel.strokeRoundedRect(panelX - panelW / 2, panelY, panelW, panelH, 8);
     return panel;
   }
@@ -447,6 +460,174 @@ export class MenuScene extends Phaser.Scene {
     // Highlight (brighter, offset up)
     graphics.fillStyle(0xFFFFFF, 0.1);
     graphics.fillCircle(x + 5 * scale, y - 5 * scale, 15 * scale);
+  }
+
+  private createSettingsButton(): void {
+    // Settings gear button in top-right corner
+    const settingsBtn = this.add.text(GAME_WIDTH - 20, 20, '⚙', {
+      fontSize: '28px',
+      color: '#888888',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    settingsBtn.setOrigin(1, 0);
+    settingsBtn.setInteractive({ useHandCursor: true });
+    settingsBtn.setDepth(100);
+
+    settingsBtn.on('pointerover', () => settingsBtn.setColor('#FFD700'));
+    settingsBtn.on('pointerout', () => settingsBtn.setColor('#888888'));
+    settingsBtn.on('pointerdown', () => this.toggleSettingsPanel());
+  }
+
+  private toggleSettingsPanel(): void {
+    if (this.settingsPanel) {
+      this.settingsPanel.destroy();
+      this.settingsPanel = null;
+    } else {
+      this.createSettingsPanel();
+    }
+  }
+
+  private createSettingsPanel(): void {
+    const panelW = 300;
+    const panelH = 240;
+    const panelX = GAME_WIDTH / 2;
+    const panelY = GAME_HEIGHT / 2;
+
+    // Container for all settings elements
+    this.settingsPanel = this.add.container(panelX, panelY);
+    this.settingsPanel.setDepth(1000);
+
+    // Backdrop (semi-transparent overlay)
+    const backdrop = this.add.graphics();
+    backdrop.fillStyle(0x000000, 0.7);
+    backdrop.fillRect(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    backdrop.setInteractive(new Phaser.Geom.Rectangle(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT), Phaser.Geom.Rectangle.Contains);
+    backdrop.on('pointerdown', () => this.toggleSettingsPanel());
+    this.settingsPanel.add(backdrop);
+
+    // Panel background - consistent dark blue
+    const panel = this.add.graphics();
+    panel.fillStyle(0x0d1b2a, 0.98);
+    panel.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
+    panel.lineStyle(2, 0x1b3a5c, 0.8);
+    panel.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
+    this.settingsPanel.add(panel);
+
+    // Title
+    const title = this.add.text(0, -panelH / 2 + 20, 'GRAPHICS SETTINGS', {
+      fontSize: '18px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    title.setOrigin(0.5, 0);
+    this.settingsPanel.add(title);
+
+    // Quality Level row
+    const qualityLabel = this.add.text(-panelW / 2 + 20, -30, 'Quality:', {
+      fontSize: '16px',
+      color: '#FFFFFF',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    qualityLabel.setOrigin(0, 0.5);
+    this.settingsPanel.add(qualityLabel);
+
+    // Quality navigation: ◀ Ultra ▶
+    const qualityLeftArrow = this.add.text(50, -30, '◀', {
+      fontSize: '18px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    qualityLeftArrow.setOrigin(0.5, 0.5);
+    qualityLeftArrow.setInteractive({ useHandCursor: true });
+    qualityLeftArrow.on('pointerdown', () => this.cycleQuality(-1));
+    qualityLeftArrow.on('pointerover', () => qualityLeftArrow.setColor('#66BB6A'));
+    qualityLeftArrow.on('pointerout', () => qualityLeftArrow.setColor('#4CAF50'));
+    this.settingsPanel.add(qualityLeftArrow);
+
+    this.settingsQualityLabel = this.add.text(90, -30, QUALITY_PRESETS[PerformanceSettings.getQualityLevel()].name, {
+      fontSize: '16px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    this.settingsQualityLabel.setOrigin(0.5, 0.5);
+    this.settingsPanel.add(this.settingsQualityLabel);
+
+    const qualityRightArrow = this.add.text(130, -30, '▶', {
+      fontSize: '18px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    qualityRightArrow.setOrigin(0.5, 0.5);
+    qualityRightArrow.setInteractive({ useHandCursor: true });
+    qualityRightArrow.on('pointerdown', () => this.cycleQuality(1));
+    qualityRightArrow.on('pointerover', () => qualityRightArrow.setColor('#66BB6A'));
+    qualityRightArrow.on('pointerout', () => qualityRightArrow.setColor('#4CAF50'));
+    this.settingsPanel.add(qualityRightArrow);
+
+    // Auto-adjust toggle row
+    const autoLabel = this.add.text(-panelW / 2 + 20, 10, 'Auto-adjust:', {
+      fontSize: '16px',
+      color: '#FFFFFF',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+    });
+    autoLabel.setOrigin(0, 0.5);
+    this.settingsPanel.add(autoLabel);
+
+    this.settingsAutoLabel = this.add.text(90, 10, PerformanceSettings.isAutoAdjustEnabled() ? 'ON' : 'OFF', {
+      fontSize: '16px',
+      color: PerformanceSettings.isAutoAdjustEnabled() ? '#4CAF50' : '#FF6666',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    this.settingsAutoLabel.setOrigin(0.5, 0.5);
+    this.settingsAutoLabel.setInteractive({ useHandCursor: true });
+    this.settingsAutoLabel.on('pointerdown', () => this.toggleAutoAdjust());
+    this.settingsPanel.add(this.settingsAutoLabel);
+
+    // Description text
+    const descText = this.add.text(0, 50, 'Auto-adjust lowers quality when FPS drops.\nLower quality = smoother gameplay.', {
+      fontSize: '12px',
+      color: '#888888',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      align: 'center',
+    });
+    descText.setOrigin(0.5, 0);
+    this.settingsPanel.add(descText);
+
+    // Close button
+    const closeBtn = this.add.text(0, panelH / 2 - 25, '[ CLOSE ]', {
+      fontSize: '14px',
+      color: '#4CAF50',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    closeBtn.setOrigin(0.5, 0.5);
+    closeBtn.setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerover', () => closeBtn.setColor('#66BB6A'));
+    closeBtn.on('pointerout', () => closeBtn.setColor('#4CAF50'));
+    closeBtn.on('pointerdown', () => this.toggleSettingsPanel());
+    this.settingsPanel.add(closeBtn);
+  }
+
+  private cycleQuality(direction: number): void {
+    const levels = PerformanceSettings.getAvailableLevels();
+    const currentIndex = levels.indexOf(PerformanceSettings.getQualityLevel());
+    const newIndex = (currentIndex + direction + levels.length) % levels.length;
+    const newLevel = levels[newIndex];
+
+    PerformanceSettings.setQualityLevel(newLevel, true);
+    this.settingsQualityLabel.setText(QUALITY_PRESETS[newLevel].name);
+  }
+
+  private toggleAutoAdjust(): void {
+    const newValue = !PerformanceSettings.isAutoAdjustEnabled();
+    PerformanceSettings.setAutoAdjust(newValue);
+    this.settingsAutoLabel.setText(newValue ? 'ON' : 'OFF');
+    this.settingsAutoLabel.setColor(newValue ? '#4CAF50' : '#FF6666');
   }
 
 }

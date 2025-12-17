@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 /**
  * Configuration for creating bubble particles
@@ -200,6 +201,12 @@ export function createSplash(
   y: number,
   config: SplashConfig = {}
 ): Phaser.GameObjects.Graphics[] {
+  // Check performance settings - skip splash if disabled
+  const preset = PerformanceSettings.getPreset();
+  if (!preset.waterSplash) {
+    return [];
+  }
+
   const {
     count = 10,
     minRadius = 3,
@@ -216,9 +223,12 @@ export function createSplash(
     depth = 99,
   } = config;
 
+  // Apply particle multiplier from performance settings
+  const adjustedCount = Math.max(1, Math.floor(count * preset.particleMultiplier));
+
   const droplets: Phaser.GameObjects.Graphics[] = [];
 
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < adjustedCount; i++) {
     const splashAngle = -Math.PI / 2 + (Math.random() - 0.5) * angleSpread;
     const splashSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed);
 

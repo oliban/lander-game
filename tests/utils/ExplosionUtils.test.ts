@@ -1,4 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Mock PerformanceSettings to return predictable values for tests
+vi.mock('../../src/systems/PerformanceSettings', () => ({
+  PerformanceSettings: {
+    getPreset: vi.fn(() => ({
+      explosionDebris: true,
+      explosionDebrisCount: 0, // 0 means use config value, not override
+      explosionSmoke: true,
+      cameraShake: true,
+    })),
+  },
+}));
+
 import {
   createExplosionFlash,
   createExplosionDebris,

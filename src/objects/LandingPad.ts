@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { COLORS } from '../constants';
 import { FlagRenderer } from '../utils/FlagRenderer';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 export class LandingPad {
   private padScene: Phaser.Scene;
@@ -9,6 +10,8 @@ export class LandingPad {
   private matterBody: MatterJS.BodyType;
   private peaceMedalGraphics: Phaser.GameObjects.Graphics | null = null;
   private windStrength: number = 0;
+  private _visible: boolean = true;
+  private textObjects: Phaser.GameObjects.Text[] = [];
 
   public x: number;
   public y: number;
@@ -125,6 +128,7 @@ export class LandingPad {
       fontStyle: 'bold',
     });
     textShadow.setOrigin(0.5, 0);
+    this.textObjects.push(textShadow);
 
     const textColor = this.isFinalDestination ? '#CC0000' : '#2E7D32';
     const text = this.padScene.add.text(this.x, this.y + 15, this.name, {
@@ -134,6 +138,7 @@ export class LandingPad {
       fontStyle: 'bold',
     });
     text.setOrigin(0.5, 0);
+    this.textObjects.push(text);
   }
 
   private drawCountryFlag(): void {
@@ -179,10 +184,34 @@ export class LandingPad {
    * Update wind strength and redraw flag if changed significantly
    */
   updateWind(windStrength: number): void {
+    // Skip flag animation if disabled for performance or if not visible (culled)
+    if (!PerformanceSettings.getPreset().flagAnimations) return;
+    if (!this._visible) return;
+
     if (Math.abs(windStrength - this.windStrength) > 0.05) {
       this.windStrength = windStrength;
       this.flagGraphics.clear();
       this.drawCountryFlag();
+    }
+  }
+
+  /**
+   * Set visibility of all graphics associated with this landing pad.
+   * Used for draw distance culling to improve performance.
+   */
+  setVisible(visible: boolean): void {
+    if (this._visible === visible) return;
+    this._visible = visible;
+
+    this.graphics.setVisible(visible);
+    this.flagGraphics.setVisible(visible);
+
+    for (const text of this.textObjects) {
+      text.setVisible(visible);
+    }
+
+    if (this.peaceMedalGraphics) {
+      this.peaceMedalGraphics.setVisible(visible);
     }
   }
 
@@ -419,6 +448,10 @@ export class LandingPad {
     if (this.peaceMedalGraphics) {
       this.peaceMedalGraphics.destroy();
     }
+    for (const text of this.textObjects) {
+      text.destroy();
+    }
+    this.textObjects = [];
     const matterScene = this.padScene as Phaser.Scene & { matter: Phaser.Physics.Matter.MatterPhysics };
     matterScene.matter.world.remove(this.matterBody);
   }
