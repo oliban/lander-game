@@ -599,6 +599,11 @@ export class GameScene extends Phaser.Scene {
       fuelSystem: this.players[0].fuelSystem,
       inventorySystem: this.players[0].inventorySystem,
       getShuttleVelocity: () => this.players[0].shuttle?.getVelocity() ?? { x: 0, y: 0, total: 0 },
+      getShuttleAltitude: () => {
+        const groundLevel = 500; // Approximate terrain level (GAME_HEIGHT * 0.7 ≈ 504)
+        const shuttleY = this.players[0].shuttle?.y ?? groundLevel;
+        return Math.max(0, groundLevel - shuttleY);
+      },
       getProgress: () => this.getProgress(),
       getCurrentCountry: () => this.getCurrentCountry(),
       getLegsExtended: () => this.players[0].shuttle?.areLandingLegsExtended() ?? false,
@@ -2874,9 +2879,18 @@ export class GameScene extends Phaser.Scene {
 
     const VOID_LEFT = WORLD_START_X - 200;  // Too far left
     const VOID_RIGHT = WORLD_WIDTH + 200;   // Too far right
+    const GROUND_LEVEL = 500;  // Reference point for altitude calculation
+    const SPACE_ALTITUDE = 12500;  // Altitude threshold for "in orbit" death (12.5km into space!)
 
     for (const shuttle of this.shuttles) {
       if (!shuttle.active) continue;
+
+      // Check for space altitude (flying too high)
+      const altitude = GROUND_LEVEL - shuttle.y;
+      if (altitude > SPACE_ALTITUDE) {
+        this.handleSpaceDeath(shuttle);
+        continue;
+      }
 
       // Only kill for flying too far left or right - flying high is allowed
       const isOutOfBounds =
@@ -2901,6 +2915,52 @@ export class GameScene extends Phaser.Scene {
         this.checkGameOverAfterCrash();
       }
     }
+  }
+
+  /**
+   * Handle special "space death" when player flies above 1200 meters altitude.
+   * This is treated as a humorous "victory" - sending Trump to space!
+   */
+  private handleSpaceDeath(shuttle: Shuttle): void {
+    const playerIndex = shuttle.getPlayerIndex();
+    const playerNum = playerIndex + 1;
+    const altitude = 500 - shuttle.y;
+
+    console.log(`[SPACE] P${playerNum} reached orbit! | Altitude: ${altitude.toFixed(0)} | Position: (${shuttle.x.toFixed(0)}, ${shuttle.y.toFixed(0)})`);
+
+    // Track which player died
+    this.lastDeadPlayerIndex = playerIndex;
+
+    // Set special death message
+    this.getPlayer(playerNum).deathMessage = 'You won the game! Congratulations!';
+
+    // Unlock the "In Orbit" achievement
+    this.achievementSystem.unlock('in_orbit');
+
+    // Play space force sound
+    this.sound.play('space_force');
+
+    // Set game state to crashed
+    this.gameState = 'crashed';
+    this.lastDeathCause = 'space';
+
+    // Spawn tombstone at shuttle location
+    this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, 'space');
+
+    // Make shuttle disappear (float away into space rather than explode)
+    shuttle.setActive(false);
+    shuttle.setVisible(false);
+
+    // Transition to game over with special "victory" message
+    this.transitionToGameOver({
+      victory: false, // It's technically a death, but GameOverScene will handle it specially
+      message: 'You won the game! Congratulations!\n\nTrump will now perform very important work in space.\nMaking the galaxy great again!',
+      score: this.destructionScore,
+      debugModeUsed: shuttle.wasDebugModeUsed(),
+      destroyedBuildings: this.destroyedBuildings,
+      noShake: true,
+      cause: 'space',
+    });
   }
 
   /**
