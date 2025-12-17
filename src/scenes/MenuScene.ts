@@ -5,7 +5,7 @@ import { getCollectionSystem } from '../systems/CollectionSystem';
 import { COLLECTIBLE_TYPES } from '../constants';
 import { createGreenButton } from '../ui/UIButton';
 import { LIST_STRIPE_COLORS } from '../ui/UIStyles';
-import { fetchScores, getLocalScores, syncPendingScores, ScoreCategory, CATEGORY_LABELS, CATEGORY_ORDER, HighScoreEntry } from '../services/ScoreService';
+import { fetchAllScores, getLocalScores, syncPendingScores, ScoreCategory, CATEGORY_LABELS, CATEGORY_ORDER, HighScoreEntry } from '../services/ScoreService';
 import { PerformanceSettings, QualityLevel, QUALITY_PRESETS } from '../systems/PerformanceSettings';
 
 export class MenuScene extends Phaser.Scene {
@@ -15,6 +15,12 @@ export class MenuScene extends Phaser.Scene {
   private leftArrow!: Phaser.GameObjects.Text;
   private rightArrow!: Phaser.GameObjects.Text;
   private loadingText!: Phaser.GameObjects.Text;
+
+  // Cache for all score categories (loaded once on page load)
+  private scoreCache: Partial<Record<ScoreCategory, HighScoreEntry[]>> = {};
+  private scoresLoaded: boolean = false;
+  private cacheTimestamp: number = 0;
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   // Settings panel elements
   private settingsPanel: Phaser.GameObjects.Container | null = null;
@@ -184,9 +190,10 @@ export class MenuScene extends Phaser.Scene {
       this.scoreTexts.push(scoreText);
     }
 
-    // Sync pending scores and load initial scores
-    syncPendingScores().catch(console.error);
-    this.loadScores();
+    // Sync pending scores THEN load ALL scores once (cached)
+    syncPendingScores()
+      .catch(console.error)
+      .finally(() => this.loadAllScores());
 
     // ACHIEVEMENTS panel (center)
     this.createAchievementsPanel(GAME_WIDTH / 2, panelY, panelW, panelH);
@@ -358,30 +365,49 @@ export class MenuScene extends Phaser.Scene {
     const newIndex = (currentIndex + direction + CATEGORY_ORDER.length) % CATEGORY_ORDER.length;
     this.currentCategory = CATEGORY_ORDER[newIndex];
     this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory]);
-    this.loadScores();
+    // Use cached scores instead of fetching
+    this.displayScoresFromCache();
   }
 
-  private async loadScores(): Promise<void> {
-    // Show loading state
-    this.loadingText.setVisible(true);
-    this.scoreTexts.forEach(text => text.setText(''));
+  /**
+   * Load all score categories once on page load (single API request)
+   */
+  private async loadAllScores(): Promise<void> {
+    // Check if cache is still valid (within TTL)
+    const now = Date.now();
+    if (this.scoresLoaded && (now - this.cacheTimestamp) < MenuScene.CACHE_TTL_MS) {
+      this.displayScoresFromCache();
+      return;
+    }
 
+    // Show local scores immediately for current category
+    this.displayScoresFromCache();
+
+    // Fetch all categories in ONE request
+    const allScores = await fetchAllScores();
+
+    // Cache the results with timestamp
+    this.scoreCache = allScores;
+    this.scoresLoaded = true;
+    this.cacheTimestamp = now;
+
+    // Update display with cached data for current category
+    this.displayScoresFromCache();
+  }
+
+  /**
+   * Display scores from cache (no API request)
+   */
+  private displayScoresFromCache(): void {
     // Random animals for positions 4 and 5
     const animals = ['🐸', '🦊', '🐼', '🐨', '🦁', '🐯', '🐮', '🐷', '🐵', '🦄', '🐔', '🐧', '🐻', '🐶', '🐱'];
     const randomAnimal = () => animals[Math.floor(Math.random() * animals.length)];
     const medals = ['🥇', '🥈', '🥉', randomAnimal(), randomAnimal()];
 
-    try {
-      const scores = await fetchScores(this.currentCategory);
-      this.loadingText.setVisible(false);
-      this.updateScoreDisplay(scores, medals);
-    } catch (error) {
-      console.error('Failed to fetch scores:', error);
-      // Fallback to local scores
-      const localScores = getLocalScores();
-      this.loadingText.setVisible(false);
-      this.updateScoreDisplay(localScores, medals);
-    }
+    // Use cached scores if available, otherwise use local scores
+    const scores = this.scoreCache[this.currentCategory] || getLocalScores();
+    this.loadingText.setVisible(false);
+    this.updateScoreDisplay(scores, medals);
   }
 
   private updateScoreDisplay(scores: HighScoreEntry[], medals: string[]): void {

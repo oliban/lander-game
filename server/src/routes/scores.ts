@@ -14,8 +14,8 @@ function validateName(name: unknown): string | null {
   if (typeof name !== 'string') return null;
   const trimmed = name.trim();
   if (trimmed.length === 0 || trimmed.length > 12) return null;
-  // Only allow alphanumeric, spaces, and basic punctuation
-  if (!/^[a-zA-Z0-9\s._-]+$/.test(trimmed)) return null;
+  // Allow alphanumeric, spaces, basic punctuation, and common international characters (Swedish, German, etc.)
+  if (!/^[\p{L}\p{N}\s._-]+$/u.test(trimmed)) return null;
   return trimmed;
 }
 
@@ -73,6 +73,25 @@ router.post('/', (req: Request, res: Response) => {
       return res.status(503).json({ error: 'Database busy, please retry' });
     }
     res.status(500).json({ error: 'Failed to save score' });
+  }
+});
+
+// GET /scores/all - All score categories in one request
+router.get('/all', (req: Request, res: Response) => {
+  try {
+    const ipAddress = getClientIp(req);
+    res.json({
+      alltime: getTopScoresAllTime(10),
+      today: getTopScoresToday(10),
+      week: getTopScoresThisWeek(10),
+      local: getTopScoresByIp(ipAddress, 10),
+    });
+  } catch (error: any) {
+    console.error('Error fetching all scores:', error);
+    if (error.code === 'SQLITE_BUSY') {
+      return res.status(503).json({ error: 'Database busy, please retry' });
+    }
+    res.status(500).json({ error: 'Failed to fetch scores' });
   }
 });
 
