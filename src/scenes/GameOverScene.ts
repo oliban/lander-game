@@ -196,6 +196,12 @@ export class GameOverScene extends Phaser.Scene {
     this.selectedVictoryQuoteIndex = Math.floor(Math.random() * VICTORY_QUOTES.length);
     this.sound.play(`victory${this.selectedVictoryQuoteIndex + 1}`);
 
+    // Play fanfare and show confetti for victory!
+    this.createCelebrationParticles();
+    if (this.cache.audio.exists('fanfare')) {
+      this.sound.play('fanfare', { volume: 0.8 });
+    }
+
     // Calculate score first
     const scoreDetails = this.calculateScore(data);
     const finalScore = scoreDetails.total + (data.score || 0); // Add destruction score
@@ -814,14 +820,8 @@ export class GameOverScene extends Phaser.Scene {
 
       // Celebration confetti and fanfare for space victory!
       this.createCelebrationParticles();
-      console.log('[GameOverScene] Attempting to play fanfare...');
-      console.log('[GameOverScene] Audio exists:', this.cache.audio.exists('fanfare'));
-      console.log('[GameOverScene] Sound manager:', this.sound);
       if (this.cache.audio.exists('fanfare')) {
-        console.log('[GameOverScene] Playing fanfare now!');
         this.sound.play('fanfare', { volume: 0.8 });
-      } else {
-        console.error('[GameOverScene] Fanfare audio not found in cache!');
       }
     } else {
       // Normal crash: Original layout
