@@ -915,22 +915,22 @@ export class GameOverScene extends Phaser.Scene {
 
     for (let i = 0; i < 30; i++) {
       this.time.delayedCall(i * 100, () => {
-        const x = Math.random() * GAME_WIDTH;
-        const confetti = this.add.graphics();
+        const startX = Math.random() * GAME_WIDTH;
         const color = colors[Math.floor(Math.random() * colors.length)];
-        confetti.fillStyle(color, 1);
 
-        // Random shape - rectangle or circle
+        // Use a simple rectangle sprite instead of graphics for proper tweening
+        const confetti = this.add.rectangle(startX, -20, 10, 15, color);
+        confetti.setOrigin(0.5, 0.5);
+
+        // Random shape - make some circular by adjusting corner radius look
         if (Math.random() > 0.5) {
-          confetti.fillRect(x, -20, 10, 15);
-        } else {
-          confetti.fillCircle(x, -10, 6);
+          confetti.setSize(12, 12);
         }
 
         this.tweens.add({
           targets: confetti,
           y: GAME_HEIGHT + 50,
-          x: x + (Math.random() - 0.5) * 200,
+          x: startX + (Math.random() - 0.5) * 200,
           angle: Math.random() * 720,
           duration: 2000 + Math.random() * 1000,
           ease: 'Sine.easeIn',
