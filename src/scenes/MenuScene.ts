@@ -19,6 +19,8 @@ export class MenuScene extends Phaser.Scene {
   // Cache for all score categories (loaded once on page load)
   private scoreCache: Partial<Record<ScoreCategory, HighScoreEntry[]>> = {};
   private scoresLoaded: boolean = false;
+  private cacheTimestamp: number = 0;
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   // Settings panel elements
   private settingsPanel: Phaser.GameObjects.Container | null = null;
@@ -371,15 +373,23 @@ export class MenuScene extends Phaser.Scene {
    * Load all score categories once on page load (single API request)
    */
   private async loadAllScores(): Promise<void> {
+    // Check if cache is still valid (within TTL)
+    const now = Date.now();
+    if (this.scoresLoaded && (now - this.cacheTimestamp) < MenuScene.CACHE_TTL_MS) {
+      this.displayScoresFromCache();
+      return;
+    }
+
     // Show local scores immediately for current category
     this.displayScoresFromCache();
 
     // Fetch all categories in ONE request
     const allScores = await fetchAllScores();
 
-    // Cache the results
+    // Cache the results with timestamp
     this.scoreCache = allScores;
     this.scoresLoaded = true;
+    this.cacheTimestamp = now;
 
     // Update display with cached data for current category
     this.displayScoresFromCache();

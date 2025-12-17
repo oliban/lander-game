@@ -85,6 +85,8 @@ export class GameOverScene extends Phaser.Scene {
   private displayedScores: HighScoreEntry[] = [];
   // Cache for all score categories (loaded once)
   private scoreCache: Partial<Record<ScoreCategory, HighScoreEntry[]>> = {};
+  private cacheTimestamp: number = 0;
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
   private scoreDisplayElements: Phaser.GameObjects.GameObject[] = [];
   private categoryLabel!: Phaser.GameObjects.Text;
   private isLoadingScores: boolean = false;
@@ -1225,13 +1227,18 @@ export class GameOverScene extends Phaser.Scene {
    * Load all scores once and cache them
    */
   private async loadAllScoresOnce(): Promise<void> {
-    if (Object.keys(this.scoreCache).length > 0) {
-      return; // Already loaded
+    // Check if cache is still valid (within TTL)
+    const now = Date.now();
+    const cacheValid = Object.keys(this.scoreCache).length > 0 &&
+                       (now - this.cacheTimestamp) < GameOverScene.CACHE_TTL_MS;
+    if (cacheValid) {
+      return; // Cache still valid
     }
     this.isLoadingScores = true;
     try {
       const allScores = await fetchAllScores();
       this.scoreCache = allScores;
+      this.cacheTimestamp = now;
     } catch (error) {
       console.error('Failed to fetch scores from API:', error);
       // Fallback to local scores
@@ -1242,6 +1249,7 @@ export class GameOverScene extends Phaser.Scene {
         week: localScores,
         local: localScores,
       };
+      this.cacheTimestamp = now;
     } finally {
       this.isLoadingScores = false;
     }
