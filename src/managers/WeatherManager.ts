@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COUNTRIES } from '../constants';
 import { Terrain } from '../objects/Terrain';
 import { Shuttle } from '../objects/Shuttle';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 export type WeatherState = 'clear' | 'cloudy' | 'stormy' | 'unstable';
 export type RainIntensity = 'none' | 'light' | 'medium' | 'heavy';
@@ -96,6 +97,18 @@ export class WeatherManager {
     this.rainGraphics = null;
     this.windDebrisGraphics = null;
 
+    // Check performance settings for weather
+    const preset = PerformanceSettings.getPreset();
+
+    // If weather is disabled, force clear weather
+    if (preset.weather === 'off') {
+      this.weatherState = 'clear';
+      this.rainIntensity = 'none';
+      console.log('[Weather] CLEAR (weather effects disabled for performance)');
+      this.createClouds();
+      return;
+    }
+
     // Initialize weather state (50% unstable, 25% clear, 15% cloudy, 10% stormy)
     const weatherRoll = Math.random();
     if (weatherRoll < 0.50) {
@@ -106,6 +119,14 @@ export class WeatherManager {
       this.weatherState = 'cloudy';
     } else {
       this.weatherState = 'clear';
+    }
+
+    // In 'light' weather mode, reduce intensity
+    if (preset.weather === 'light') {
+      if (this.weatherState === 'stormy') {
+        this.weatherState = 'cloudy';
+        console.log('[Weather] Reduced to CLOUDY (light weather mode)');
+      }
     }
 
     // Initialize unstable weather timing
@@ -340,11 +361,55 @@ export class WeatherManager {
   }
 
   update(time: number, shuttles: Shuttle[]): void {
+    // Check if weather is disabled mid-game by performance settings
+    const preset = PerformanceSettings.getPreset();
+    if (preset.weather === 'off') {
+      this.disableAllWeatherEffects();
+      return;
+    }
+
     this.checkLightningStrikes(time, shuttles);
     this.updateUnstableWeather(time);
     this.updateWind(time);
     this.updateWindDebris();
     this.updateRain();
+  }
+
+  /**
+   * Disables all weather effects when performance settings change mid-game
+   */
+  private disableAllWeatherEffects(): void {
+    // Stop rain emitter
+    if (this.rainEmitter) {
+      this.rainEmitter.stop();
+    }
+
+    // Clear rain graphics
+    if (this.rainGraphics) {
+      this.rainGraphics.clear();
+    }
+
+    // Clear wind debris
+    if (this.windDebrisGraphics) {
+      this.windDebrisGraphics.clear();
+    }
+
+    // Clear lightning
+    if (this.lightningGraphics) {
+      this.lightningGraphics.clear();
+    }
+
+    // Hide cloud graphics (don't destroy, just make invisible)
+    if (this.cloudGraphics) {
+      this.cloudGraphics.setVisible(false);
+    }
+
+    // Clear rain drops and splashes
+    this.rainDrops = [];
+    this.rainSplashes = [];
+
+    // Clear pending lightning
+    this.pendingLightningStrike = null;
   }
 
   private updateUnstableWeather(time: number): void {
@@ -436,6 +501,15 @@ export class WeatherManager {
   }
 
   private updateWindDebris(): void {
+    // Check performance settings
+    const preset = PerformanceSettings.getPreset();
+    if (!preset.windDebris) {
+      if (this.windDebrisGraphics) {
+        this.windDebrisGraphics.clear();
+      }
+      return;
+    }
+
     if (Math.abs(this.windStrength) < 0.1) {
       if (this.windDebrisGraphics) {
         this.windDebrisGraphics.clear();
@@ -528,6 +602,10 @@ export class WeatherManager {
   }
 
   private spawnRainSplashes(): void {
+    // Check performance settings - skip rain splashes if disabled
+    const preset = PerformanceSettings.getPreset();
+    if (!preset.rainSplash) return;
+
     const cameraX = this.scene.cameras.main.scrollX;
     const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
     const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;

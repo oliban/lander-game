@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, WORLD_START_X, COUNTRIES } from '../constants';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 interface ScorchMarkData {
   x: number;
@@ -102,11 +103,16 @@ export class ScorchMarkManager {
   private updateScorchMarks(time: number): void {
     if (!this.scorchTexture) return;
 
+    // Check performance settings - skip if scorch marks disabled
+    const preset = PerformanceSettings.getPreset();
+    if (!preset.scorchMarks) return;
+
     const thrustInfo = this.callbacks.getShuttleThrustInfo();
     if (!thrustInfo.isThrusting) return;
 
-    // Only create scorch marks every 50ms to avoid too many draws
-    if (time - this.lastScorchTime < 50) return;
+    // Use performance setting for raycast interval (default 50ms, longer at lower quality)
+    const raycastInterval = preset.scorchRaycastInterval;
+    if (time - this.lastScorchTime < raycastInterval) return;
     this.lastScorchTime = time;
 
     const thrustPos = thrustInfo.position;
@@ -175,8 +181,12 @@ export class ScorchMarkManager {
 
     const thrustInfo = this.callbacks.getShuttleThrustInfo();
 
+    // Use performance settings for max scorch marks (fallback to default if 0)
+    const preset = PerformanceSettings.getPreset();
+    const maxScorchMarks = preset.maxScorchMarks > 0 ? preset.maxScorchMarks : ScorchMarkManager.MAX_SCORCH_MARKS;
+
     // Only enforce hard limit as emergency fallback
-    if (existingSeed === undefined && this.scorchMarkData.length >= ScorchMarkManager.MAX_SCORCH_MARKS) {
+    if (existingSeed === undefined && this.scorchMarkData.length >= maxScorchMarks) {
       const playerX = thrustInfo.shuttleX;
       this.scorchMarkData.sort((a, b) => {
         const distA = Math.abs(a.x - playerX);
@@ -184,7 +194,7 @@ export class ScorchMarkManager {
         return distB - distA; // Furthest first
       });
       // Remove the 20% furthest from player
-      const removeCount = Math.max(1, Math.floor(ScorchMarkManager.MAX_SCORCH_MARKS * 0.2));
+      const removeCount = Math.max(1, Math.floor(maxScorchMarks * 0.2));
       this.scorchMarkData.splice(0, removeCount);
       this.redrawAllScorchMarks();
     }

@@ -18,6 +18,7 @@ import { getAchievementSystem, AchievementSystem } from '../systems/AchievementS
 import { getCollectionSystem } from '../systems/CollectionSystem';
 import { MusicManager } from '../systems/MusicManager';
 import { PlayerState } from '../systems/PlayerState';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 import { WeatherManager } from '../managers/WeatherManager';
 import { ScorchMarkManager } from '../managers/ScorchMarkManager';
 import { TombstoneManager } from '../managers/TombstoneManager';
@@ -167,6 +168,10 @@ export class GameScene extends Phaser.Scene {
 
   // Weather system (managed by WeatherManager)
   private weatherManager!: WeatherManager;
+
+  // Performance settings change listener
+  private performanceSettingsListener: (() => void) | null = null;
+  private lastQualityLevel: string = '';
 
   constructor() {
     super({ key: 'GameScene' });
@@ -664,7 +669,33 @@ export class GameScene extends Phaser.Scene {
       if (this.weatherManager) {
         this.weatherManager.destroy();
       }
+      // Remove performance settings listener
+      if (this.performanceSettingsListener) {
+        PerformanceSettings.removeListener(this.performanceSettingsListener);
+        this.performanceSettingsListener = null;
+      }
     });
+
+    // Set up performance settings listener for toast notifications and decoration hiding
+    this.lastQualityLevel = PerformanceSettings.getPreset().name;
+    this.performanceSettingsListener = () => {
+      const preset = PerformanceSettings.getPreset();
+      const newLevel = preset.name;
+      if (newLevel !== this.lastQualityLevel) {
+        this.showQualityChangeToast(newLevel);
+        this.lastQualityLevel = newLevel;
+
+        // Hide/show decorations based on performance settings
+        this.decorations.forEach(d => d.setVisible(preset.decorations));
+      }
+    };
+    PerformanceSettings.addListener(this.performanceSettingsListener);
+
+    // Apply initial decoration visibility based on current settings
+    const initialPreset = PerformanceSettings.getPreset();
+    if (!initialPreset.decorations) {
+      this.decorations.forEach(d => d.setVisible(false));
+    }
   }
 
   private createStarfield(): void {
@@ -754,6 +785,9 @@ export class GameScene extends Phaser.Scene {
    * Creates a vertical gradient - darker at top (space), lighter at bottom (atmosphere)
    */
   private updateAltitudeOverlay(): void {
+    // Performance: Skip expensive gradient rendering at low quality
+    const altitudeOverlayEnabled = PerformanceSettings.getPreset().altitudeOverlay;
+
     const cam = this.cameras.main;
 
     // Ground level is around Y=500, max height is Y=-2500
@@ -765,33 +799,36 @@ export class GameScene extends Phaser.Scene {
 
     this.altitudeOverlay.clear();
 
-    if (altitudeFactor > 0) {
-      const maxAlpha = 0.65;
-      const baseAlpha = altitudeFactor * altitudeFactor * maxAlpha;
+    // Skip drawing if disabled or at ground level
+    if (!altitudeOverlayEnabled || altitudeFactor <= 0) {
+      return;
+    }
 
-      // Draw vertical gradient - darker at top, lighter at bottom
-      // Use enough strips for smooth transition (1 strip per 4 pixels)
-      const stripHeight = 4;
-      const numStrips = Math.ceil(GAME_HEIGHT / stripHeight);
+    const maxAlpha = 0.65;
+    const baseAlpha = altitudeFactor * altitudeFactor * maxAlpha;
 
-      for (let i = 0; i < numStrips; i++) {
-        const y = i * stripHeight;
-        // Position in screen (0 = top, 1 = bottom)
-        const screenPos = y / GAME_HEIGHT;
+    // Draw vertical gradient - darker at top, lighter at bottom
+    // Use enough strips for smooth transition (1 strip per 4 pixels)
+    const stripHeight = 4;
+    const numStrips = Math.ceil(GAME_HEIGHT / stripHeight);
 
-        // Gradient: top of screen is 100% of base alpha, bottom is 20%
-        const gradientFactor = 1 - screenPos * 0.8;
-        const alpha = baseAlpha * gradientFactor;
+    for (let i = 0; i < numStrips; i++) {
+      const y = i * stripHeight;
+      // Position in screen (0 = top, 1 = bottom)
+      const screenPos = y / GAME_HEIGHT;
 
-        this.altitudeOverlay.fillStyle(0x0a0a1a, alpha);
-        this.altitudeOverlay.fillRect(0, y, GAME_WIDTH, stripHeight);
-      }
+      // Gradient: top of screen is 100% of base alpha, bottom is 20%
+      const gradientFactor = 1 - screenPos * 0.8;
+      const alpha = baseAlpha * gradientFactor;
 
-      // Add stars when high enough
-      if (altitudeFactor > 0.2) {
-        const starAlpha = (altitudeFactor - 0.2) / 0.8;
-        this.drawHighAltitudeStars(starAlpha);
-      }
+      this.altitudeOverlay.fillStyle(0x0a0a1a, alpha);
+      this.altitudeOverlay.fillRect(0, y, GAME_WIDTH, stripHeight);
+    }
+
+    // Add stars when high enough
+    if (altitudeFactor > 0.2) {
+      const starAlpha = (altitudeFactor - 0.2) / 0.8;
+      this.drawHighAltitudeStars(starAlpha);
     }
   }
 
@@ -818,6 +855,46 @@ export class GameScene extends Phaser.Scene {
       this.altitudeOverlay.fillStyle(0xffffff, starAlpha);
       this.altitudeOverlay.fillCircle(star.x, star.y, size);
     }
+  }
+
+  /**
+   * Cull off-screen objects to improve performance.
+   * Objects far from the camera are hidden with setVisible(false).
+   * Phaser skips rendering invisible objects entirely.
+   */
+  private updateVisibilityCulling(): void {
+    const cam = this.cameras.main;
+    const margin = 800; // Hide objects more than this distance from screen edge
+
+    const leftEdge = cam.scrollX - margin;
+    const rightEdge = cam.scrollX + GAME_WIDTH + margin;
+
+    // Cull decorations (buildings, landmarks)
+    for (const decoration of this.decorations) {
+      const visible = decoration.x > leftEdge && decoration.x < rightEdge;
+      decoration.setVisible(visible);
+    }
+
+    // Cull cannons (container with flag, base, barrel)
+    for (const cannon of this.cannons) {
+      const visible = cannon.x > leftEdge && cannon.x < rightEdge;
+      cannon.setVisible(visible);
+    }
+
+    // Cull landing pads (graphics + flag + text)
+    for (const pad of this.landingPads) {
+      const visible = pad.x > leftEdge && pad.x < rightEdge;
+      pad.setVisible(visible);
+    }
+
+    // Cull oil towers (graphics + particle emitter)
+    for (const tower of this.oilTowers) {
+      const visible = tower.x > leftEdge && tower.x < rightEdge;
+      tower.setVisible(visible);
+    }
+
+    // Cull terrain chunks (the big optimization!)
+    this.terrain.updateChunkVisibility(cam.scrollX, GAME_WIDTH);
   }
 
   /**
@@ -877,6 +954,9 @@ export class GameScene extends Phaser.Scene {
    * Update speed trails - emit smoke trails for all players when not thrusting
    */
   private updateSpeedLines(): void {
+    // Skip if speed trails disabled for performance
+    if (!PerformanceSettings.getPreset().speedTrails) return;
+
     // Process smoke trails for all active players
     for (const player of this.players) {
       if (!player?.shuttle?.body) continue;
@@ -1027,6 +1107,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createCannons(): void {
+    // Apply cannon multiplier from performance settings
+    const cannonMultiplier = PerformanceSettings.getPreset().cannonMultiplier;
+
     // Place cannons based on country cannon density
     for (const country of COUNTRIES) {
       if (country.cannonDensity <= 0) continue;
@@ -1034,9 +1117,10 @@ export class GameScene extends Phaser.Scene {
       const nextCountry = COUNTRIES[COUNTRIES.indexOf(country) + 1];
       const endX = nextCountry ? nextCountry.startX : WORLD_WIDTH;
 
-      // Calculate number of cannons - ensure minimum of 3 so they don't all get filtered by landing pads
+      // Calculate number of cannons - ensure minimum of 2 for gameplay, apply performance multiplier
       const countryWidth = endX - country.startX;
-      const numCannons = Math.max(3, Math.floor(countryWidth * country.cannonDensity / 500));
+      const baseNumCannons = Math.floor(countryWidth * country.cannonDensity / 500);
+      const numCannons = Math.max(2, Math.floor(baseNumCannons * cannonMultiplier));
 
       for (let i = 0; i < numCannons; i++) {
         // Add some randomization to avoid cannons landing exactly on landing pads
@@ -2388,6 +2472,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number): void {
+    // Cull off-screen objects first (before processing updates)
+    // This hides objects far from camera to reduce rendering overhead
+    this.updateVisibilityCulling();
+
     // Always update these even when crashed (for death animation)
     // Update terrain (for animated ocean waves) - pass pollution level for wave tinting
     this.terrain.update(this.scorchMarkManager.getWaterPollutionLevel());
@@ -2570,6 +2658,11 @@ export class GameScene extends Phaser.Scene {
       const now = Date.now();
       const gameTime = now - this.gameStartTime;
 
+      // Feed FPS to performance settings for auto-adjustment
+      if (fps > 0) {
+        PerformanceSettings.updateFPS(fps);
+      }
+
       // Establish FPS baseline after 20 seconds of gameplay (letting FPS fully settle)
       if (fps > 0) {
         if (this.fpsBaseline === 0) {
@@ -2601,81 +2694,84 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      // Count particles from all particle emitters
-      let particleCount = 0;
-      this.children.list.forEach(child => {
-        if (child.type === 'ParticleEmitter') {
-          particleCount += (child as Phaser.GameObjects.Particles.ParticleEmitter).getAliveParticleCount();
-        }
-      });
-
-      // Count textures in memory
-      const textureCount = Object.keys(this.textures.list).length;
-
-      // Count pending time events (Phaser stores them in _pendingInsertion and _active)
-      const timeEventCount = (this.time as any)._pendingInsertion?.length + (this.time as any)._active?.length || 0;
-
-      // Sum chemtrail particles from all shuttles
-      let totalChemtrails = 0;
-      for (const shuttle of this.shuttles) {
-        totalChemtrails += shuttle.getChemtrailParticleCount();
-      }
-      // Count splash particles
-      const splashParticles = this.weatherManager.getSplashParticleCount();
-      // Count graphics objects in scene
-      const graphicsCount = this.children.list.filter(c => c.type === 'Graphics').length;
-      // Count all scene children
-      const totalChildren = this.children.list.length;
-      // Count tweens
-      const tweenCount = this.tweens.getTweens().length;
-      // Count oil spurt graphics from oil towers
-      let oilSpurts = 0;
-      for (const tower of this.oilTowers) {
-        oilSpurts += (tower as any).oilSpurts?.length || 0;
-      }
-
-      // Log detailed graphics breakdown every 5 seconds
-      if (Math.floor(gameTime / 5000) !== Math.floor((gameTime - this.game.loop.delta) / 5000)) {
-        // Count graphics by depth to identify what they are
-        const depthCounts: Record<number, number> = {};
-        const graphicsList = this.children.list.filter(c => c.type === 'Graphics') as Phaser.GameObjects.Graphics[];
-        graphicsList.forEach(g => {
-          const depth = g.depth;
-          depthCounts[depth] = (depthCounts[depth] || 0) + 1;
+      // Only run expensive debug counting if debug text is visible
+      if (this.debugText.visible) {
+        // Count particles from all particle emitters
+        let particleCount = 0;
+        this.children.list.forEach(child => {
+          if (child.type === 'ParticleEmitter') {
+            particleCount += (child as Phaser.GameObjects.Particles.ParticleEmitter).getAliveParticleCount();
+          }
         });
 
-        // Show depths with count >= 2 (the important ones)
-        const bigGroups = Object.entries(depthCounts)
-          .filter(([, c]) => c >= 2)
-          .sort((a, b) => Number(b[1]) - Number(a[1])) // sort by count desc
-          .map(([d, c]) => `d${d}:${c}`)
-          .join(' ');
+        // Count textures in memory
+        const textureCount = Object.keys(this.textures.list).length;
 
-        // Count by known depths (from code inspection)
-        const sceneGraphics = graphicsList.filter(g => g.depth < 0).length; // negative depths = scene-level
-        const objectGraphics = graphicsList.filter(g => g.depth >= 0 && g.depth < 100).length; // normal objects
-        const uiGraphics = graphicsList.filter(g => g.depth >= 100).length; // UI layer
+        // Count pending time events (Phaser stores them in _pendingInsertion and _active)
+        const timeEventCount = (this.time as any)._pendingInsertion?.length + (this.time as any)._active?.length || 0;
 
-        console.log(`[GFX] Total:${graphicsCount} Scene:${sceneGraphics} Objects:${objectGraphics} UI:${uiGraphics} | Big groups: ${bigGroups}`);
-        console.log(`[GFX EXPECTED] Pads:${this.landingPads.length}×2=${this.landingPads.length * 2} Cannons:${this.cannons.length}×3=${this.cannons.length * 3} Sharks:${this.sharks.length} Oil:${this.oilTowers.length}`);
+        // Sum chemtrail particles from all shuttles
+        let totalChemtrails = 0;
+        for (const shuttle of this.shuttles) {
+          totalChemtrails += shuttle.getChemtrailParticleCount();
+        }
+        // Count splash particles
+        const splashParticles = this.weatherManager.getSplashParticleCount();
+        // Count graphics objects in scene
+        const graphicsCount = this.children.list.filter(c => c.type === 'Graphics').length;
+        // Count all scene children
+        const totalChildren = this.children.list.length;
+        // Count tweens
+        const tweenCount = this.tweens.getTweens().length;
+        // Count oil spurt graphics from oil towers
+        let oilSpurts = 0;
+        for (const tower of this.oilTowers) {
+          oilSpurts += (tower as any).oilSpurts?.length || 0;
+        }
+
+        // Log detailed graphics breakdown every 5 seconds
+        if (Math.floor(gameTime / 5000) !== Math.floor((gameTime - this.game.loop.delta) / 5000)) {
+          // Count graphics by depth to identify what they are
+          const depthCounts: Record<number, number> = {};
+          const graphicsList = this.children.list.filter(c => c.type === 'Graphics') as Phaser.GameObjects.Graphics[];
+          graphicsList.forEach(g => {
+            const depth = g.depth;
+            depthCounts[depth] = (depthCounts[depth] || 0) + 1;
+          });
+
+          // Show depths with count >= 2 (the important ones)
+          const bigGroups = Object.entries(depthCounts)
+            .filter(([, c]) => c >= 2)
+            .sort((a, b) => Number(b[1]) - Number(a[1])) // sort by count desc
+            .map(([d, c]) => `d${d}:${c}`)
+            .join(' ');
+
+          // Count by known depths (from code inspection)
+          const sceneGraphics = graphicsList.filter(g => g.depth < 0).length; // negative depths = scene-level
+          const objectGraphics = graphicsList.filter(g => g.depth >= 0 && g.depth < 100).length; // normal objects
+          const uiGraphics = graphicsList.filter(g => g.depth >= 100).length; // UI layer
+
+          console.log(`[GFX] Total:${graphicsCount} Scene:${sceneGraphics} Objects:${objectGraphics} UI:${uiGraphics} | Big groups: ${bigGroups}`);
+          console.log(`[GFX EXPECTED] Pads:${this.landingPads.length}×2=${this.landingPads.length * 2} Cannons:${this.cannons.length}×3=${this.cannons.length * 3} Sharks:${this.sharks.length} Oil:${this.oilTowers.length}`);
+        }
+
+        // Show baseline status in display
+        const baselineStr = this.fpsBaseline > 0
+          ? `base:${this.fpsBaseline}`
+          : `calibrating ${Math.max(0, Math.ceil((10000 - gameTime) / 1000))}s...`;
+
+        this.debugText.setText(
+          `FPS: ${fps} (${baselineStr} min:${this.fpsMin})\n` +
+          `Particles: ${particleCount}\n` +
+          `Debris: ${this.debrisSprites.length}\n` +
+          `Textures: ${textureCount}\n` +
+          `TimeEvents: ${timeEventCount}\n` +
+          `Graphics: ${graphicsCount}\n` +
+          `Children: ${totalChildren}\n` +
+          `Tweens: ${tweenCount}\n` +
+          `Bombs: ${this.bombManager.getBombCount()}`
+        );
       }
-
-      // Show baseline status in display
-      const baselineStr = this.fpsBaseline > 0
-        ? `base:${this.fpsBaseline}`
-        : `calibrating ${Math.max(0, Math.ceil((10000 - gameTime) / 1000))}s...`;
-
-      this.debugText.setText(
-        `FPS: ${fps} (${baselineStr} min:${this.fpsMin})\n` +
-        `Particles: ${particleCount}\n` +
-        `Debris: ${this.debrisSprites.length}\n` +
-        `Textures: ${textureCount}\n` +
-        `TimeEvents: ${timeEventCount}\n` +
-        `Graphics: ${graphicsCount}\n` +
-        `Children: ${totalChildren}\n` +
-        `Tweens: ${tweenCount}\n` +
-        `Bombs: ${this.bombManager.getBombCount()}`
-      );
     }
 
     // Check for sitting duck (out of fuel on ground)
@@ -2957,6 +3053,53 @@ export class GameScene extends Phaser.Scene {
       alpha: 0,
       duration: 3000,
       onComplete: () => container.destroy(),
+    });
+  }
+
+  /**
+   * Shows a toast notification when graphics quality changes
+   */
+  private showQualityChangeToast(newQuality: string): void {
+    // Create toast container at top of screen
+    const toast = this.add.container(GAME_WIDTH / 2, 50);
+    toast.setScrollFactor(0);
+    toast.setDepth(10000);
+    toast.setAlpha(0);
+
+    // Background
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.8);
+    bg.fillRoundedRect(-120, -20, 240, 40, 8);
+    toast.add(bg);
+
+    // Text - indicate if auto-adjusted
+    const isAuto = PerformanceSettings.isAutoAdjustEnabled();
+    const message = isAuto ? `Auto-adjusted: ${newQuality}` : `Quality: ${newQuality}`;
+    const text = this.add.text(0, 0, message, {
+      fontSize: '16px',
+      color: '#FFD700',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0.5, 0.5);
+    toast.add(text);
+
+    // Animate in
+    this.tweens.add({
+      targets: toast,
+      alpha: 1,
+      duration: 200,
+      onComplete: () => {
+        // Hold for a moment, then fade out
+        this.time.delayedCall(1500, () => {
+          this.tweens.add({
+            targets: toast,
+            alpha: 0,
+            duration: 300,
+            onComplete: () => toast.destroy(),
+          });
+        });
+      },
     });
   }
 }

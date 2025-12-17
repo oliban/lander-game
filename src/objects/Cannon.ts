@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CANNON_FIRE_RATE, PROJECTILE_SPEED } from '../constants';
 import { createExplosion } from '../utils/ExplosionUtils';
 import { FlagRenderer } from '../utils/FlagRenderer';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 // Country-specific projectile sprite keys
 // Map countries to arrays of possible projectile sprites (randomly selected when firing)
@@ -141,7 +142,8 @@ export class Cannon extends Phaser.GameObjects.Container {
 
   update(time: number, windStrength: number = 0): void {
     // Update wind and redraw flag if wind changed significantly
-    if (Math.abs(windStrength - this.windStrength) > 0.05) {
+    // Skip flag animation if disabled for performance
+    if (PerformanceSettings.getPreset().flagAnimations && Math.abs(windStrength - this.windStrength) > 0.05) {
       this.windStrength = windStrength;
       this.drawCountryFlag();
     }
