@@ -812,8 +812,9 @@ export class GameOverScene extends Phaser.Scene {
 
       nextY = 250;
 
-      // Celebration confetti for space victory!
+      // Celebration confetti and fanfare for space victory!
       this.createCelebrationParticles();
+      this.sound.play('fanfare', { volume: 0.8 });
     } else {
       // Normal crash: Original layout
       const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
