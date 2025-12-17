@@ -2890,8 +2890,8 @@ export class GameScene extends Phaser.Scene {
       // Check for space altitude (flying too high)
       const altitude = GROUND_LEVEL - shuttle.y;
 
-      // Play "I can see my house" sound when crossing 11000m going up
-      const HIGH_ALTITUDE_SOUND_THRESHOLD = 11000;
+      // Play "I can see my house" sound when crossing 10000m going up
+      const HIGH_ALTITUDE_SOUND_THRESHOLD = 10000;
       if (!this.playedHighAltitudeSound && altitude > HIGH_ALTITUDE_SOUND_THRESHOLD) {
         const velocity = shuttle.getVelocity();
         if (velocity.y < 0) { // Negative y = going up
