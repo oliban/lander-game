@@ -34,7 +34,7 @@ export class TombstoneManager {
 
     // Cache water bounds
     this.atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
-    this.atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    this.atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 5000;
   }
 
   initialize(): void {
