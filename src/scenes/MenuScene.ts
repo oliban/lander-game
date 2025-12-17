@@ -32,6 +32,9 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Reset score text array (important for scene restarts - prevents references to destroyed objects)
+    this.scoreTexts = [];
+
     // Dark navy background for maximum contrast
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0d1b2a);
 
