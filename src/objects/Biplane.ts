@@ -115,7 +115,7 @@ const VALID_COUNTRIES = ['USA', 'United Kingdom', 'France', 'Switzerland', 'Germ
 export class Biplane extends Phaser.GameObjects.Container {
   public isDestroyed: boolean = false;
   public readonly pointValue: number = 1000;
-  public readonly planeName: string = 'Propaganda Plane';
+  public readonly planeName: string;
   public country: string;
 
   private graphics: Phaser.GameObjects.Graphics;
@@ -164,6 +164,16 @@ export class Biplane extends Phaser.GameObjects.Container {
     super(scene, spawnX, spawnY);
 
     this.country = targetCountry;
+    const countryAdjectives: Record<string, string> = {
+      'USA': 'American',
+      'United Kingdom': 'British',
+      'France': 'French',
+      'Switzerland': 'Swiss',
+      'Germany': 'German',
+      'Poland': 'Polish',
+      'Russia': 'Russian',
+    };
+    this.planeName = targetCountry === 'GAME_INFO' ? 'Gameplay Propaganda Plane' : `${countryAdjectives[targetCountry] || targetCountry} Propaganda Plane`;
     this.baseY = spawnY;
     this.colors = BIPLANE_COLORS[targetCountry] || BIPLANE_COLORS['USA'];
 
