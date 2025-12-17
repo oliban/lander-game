@@ -1,8 +1,8 @@
 # Peace Shuttle - Product Requirements Document
 
 **Purpose:** This document captures ALL game functionality for verification after refactoring.
-**Version:** 1.0
-**Last Updated:** 2025-12-15
+**Version:** 1.1
+**Last Updated:** 2025-12-17
 
 ---
 
@@ -401,64 +401,67 @@ Peace Shuttle is a satirical Lunar Lander-style game where players pilot a "Peac
 ## 11. Achievements
 
 ### Core Gameplay (6)
-| ID | Name | Condition |
-|----|------|-----------|
-| first_contact | First Contact | Land on any pad |
-| smooth_operator | Smooth Operator | Perfect landing (vel ≤1.25) |
-| world_traveler | World Traveler | Visit ≥7 countries |
-| mission_complete | Welcome to Russia | Reach final pad |
-| peacekeeper | Peacekeeper | Deliver Peace Medal |
-| pacifist | Pacifist | Win with 0 destruction |
+| ID | Name | Tier | Condition |
+|----|------|------|-----------|
+| first_contact | First Contact | Bronze | Land successfully for the first time |
+| smooth_operator | Smooth Operator | Silver | Perform a perfect landing (vel ≤1.25) |
+| world_traveler | World Traveler | Gold | Visit all countries in one game |
+| mission_complete | Welcome to Яussia | Silver | Reach Putino's Palace |
+| peacekeeper | Peacekeeper | Gold | Deliver the Peace Medal |
+| pacifist | Pacifist | Gold | Win without destroying any buildings |
 
-### Destruction (11)
-| ID | Name | Condition |
-|----|------|-----------|
-| collateral_damage | Collateral Damage | Destroy 1+ building |
-| wrecking_ball | Wrecking Ball | Destroy ≥25 buildings |
-| cannon_fodder | Cannon Fodder | Destroy ≥5 cannons |
-| fisher_of_men | Fisher of Men | Destroy fisher boat |
-| fore | Fore! | Destroy golf cart |
-| red_baron | Red Baron | Destroy biplane (hidden) |
-| pablos_parking | Pablo's Parking | Land on boat (hidden) |
-| shark_hunter | Shark Hunter | Hit shark with bomb |
-| greenland_deal | Greenland Deal | Deliver ice to Washington |
-| vodka_on_the_rocks | Vodka on the Rocks | Deliver ice to Russia |
-| climate_change | Climate Change | Destroy Greenland ice |
+### Destruction (12)
+| ID | Name | Tier | Condition |
+|----|------|------|-----------|
+| collateral_damage | Collateral Damage | Bronze | Destroy your first building |
+| wrecking_ball | Wrecking Ball | Silver | Destroy 25 buildings in one game |
+| cannon_fodder | Cannon Fodder | Bronze | Destroy 5 cannons in one game |
+| fisher_of_men | Fisher of Men | Bronze | Sink a fishing boat |
+| fore | Fore! | Bronze | Destroy a golf cart |
+| red_baron | Red Baron | Silver | Shoot down the propaganda biplane (hidden) |
+| pablos_parking | Pablo's Parking | Silver | Land on the fishing boat (hidden) |
+| shark_hunter | Shark Hunter | Bronze | Hit a shark with a bomb |
+| greenland_deal | Greenland Deal | Silver | Deliver Greenland ice to Washington |
+| vodka_on_the_rocks | Vodka on the Rocks | Silver | Deliver Greenland ice to Putino's Palace |
+| climate_change | Climate Change | Bronze | Destroy Greenland ice with a bomb |
+| sonic_boom | Sonic Boom | Silver | Break the sound barrier |
 
 ### Deaths & Mishaps (9)
-| ID | Name | Condition |
-|----|------|-----------|
-| splashdown | Splashdown | Die in water |
-| duck_hunt | Duck Hunt | Killed by duck projectile |
-| lost_in_space | Lost in Space | Fall into void |
-| gone_in_60_seconds | Gone in 60 Seconds | Die within 60 seconds |
-| frequent_flyer | Frequent Flyer | Total deaths ≥10 |
-| running_on_empty | Running on Empty | Crash with 0 fuel |
-| thunderstruck | Thunderstruck | Hit by lightning |
-| singing_in_the_rain | Singing in the Rain | Reach Russia in rain |
-| puskas_award | Puskás Award | Bounce tombstone 3× (hidden) |
+| ID | Name | Tier | Condition |
+|----|------|------|-----------|
+| splashdown | Splashdown | Bronze | Die by crashing into water |
+| duck_hunt | Duck Hunt | Bronze | Get killed by a sitting duck |
+| lost_in_space | Lost in Space | Bronze | Fall into the void |
+| gone_in_60_seconds | Gone in 60 Seconds | Bronze | Die within the first minute |
+| frequent_flyer | Frequent Flyer | Silver | Die 10 times |
+| running_on_empty | Running on Empty | Bronze | Crash with zero fuel |
+| thunderstruck | Thunderstruck | Bronze | Get struck by lightning |
+| singing_in_the_rain | Singing in the Rain | Silver | Reach Russia in heavy rain |
+| puskas_award | Puskás Award | Gold | Bounce a tombstone 3 times (hidden) |
 
 ### 2-Player Combat (3)
-| ID | Name | Condition |
-|----|------|-----------|
-| first_blood | First Blood | Get first kill |
-| ace_pilot | Ace Pilot | Get ≥5 kills |
-| domination | Domination | Win with ≥5 kill lead |
+| ID | Name | Tier | Condition |
+|----|------|------|-----------|
+| first_blood | First Blood | Bronze | Get your first kill in 2-player mode |
+| ace_pilot | Ace Pilot | Silver | Get 5 kills in one 2-player session |
+| domination | Domination | Gold | Win with 5+ kill lead |
 
 ### Meta/Collection (3)
-| ID | Name | Condition |
-|----|------|-----------|
-| high_roller | High Roller | Casino chips worth ≥500 |
-| collector | Collector | Discover all item types |
-| trophy_hunter | Trophy Hunter | Unlock all achievements |
+| ID | Name | Tier | Condition |
+|----|------|------|-----------|
+| high_roller | High Roller | Silver | Collect casino chips worth 500+ total |
+| collector | Collector | Gold | Discover all collectible items |
+| trophy_hunter | Trophy Hunter | Platinum | Unlock all other achievements |
 
 ### Achievement Tiers
-| Tier | Color |
-|------|-------|
-| Bronze | 0xCD7F32 |
-| Silver | 0xC0C0C0 |
-| Gold | 0xFFD700 |
-| Platinum | 0xE5E4E2 |
+| Tier | Color | Hex |
+|------|-------|-----|
+| Bronze | Brown | 0xCD7F32 |
+| Silver | Silver | 0xC0C0C0 |
+| Gold | Gold | 0xFFD700 |
+| Platinum | Platinum | 0xE5E4E2 |
+
+**Total Achievements:** 33 (6 Core + 12 Destruction + 9 Deaths + 3 Combat + 3 Meta)
 
 ---
 
@@ -484,30 +487,42 @@ Peace Shuttle is a satirical Lunar Lander-style game where players pilot a "Peac
 ## 13. Countries & Terrain
 
 ### Country Order (West to East)
-| Country | Start X | Music |
-|---------|---------|-------|
-| Washington DC | 0 | usa |
-| Atlantic Ocean | 2000 | ocean |
-| United Kingdom | 4000 | uk |
-| France | 6000 | france |
-| Switzerland | 8000 | switzerland |
-| Germany | 10000 | germany |
-| Poland | 12000 | poland |
-| Russia | 14000 | russia |
+| Country | Start X | Cannon Density | Music |
+|---------|---------|----------------|-------|
+| Washington DC | -2800 | 0% | music_washington |
+| USA | 0 | 0% | music_usa |
+| Atlantic Ocean | 2000 | 0% | music_atlantic |
+| United Kingdom | 5000 | 30% | music_uk |
+| France | 7000 | 40% | music_france |
+| Switzerland | 10000 | 45% | music_switzerland |
+| Germany | 12000 | 50% | music_germany |
+| Poland | 15000 | 60% | music_poland |
+| Russia | 19000 | 20% | music_russia |
+
+### World Dimensions
+- **Total Width:** 25,600px
+- **World Start X:** -2800 (Washington DC)
+- **World End X:** 25,600 (past Putino's Palace)
 
 ### Terrain Features
-- Procedurally generated heights
-- Swiss mountains (highest peaks)
-- Atlantic ocean (water hazard)
-- Country-specific decorations
-- Landing pads per country
+- Procedurally generated heights using layered sine waves
+- Swiss mountains (highest peaks - Matterhorn at 1.5× screen height)
+- Atlantic ocean (animated water hazard with waves)
+- Country-specific colors and decorations
+- Gaussian peaks for dramatic Swiss mountain heights
 
-### Landing Pads
-| Location | X Position |
-|----------|------------|
-| Kennedy Space Center | ~200 |
-| Various mid-game | Per country |
-| Putino's Palace | ~25000 |
+### Landing Pads (9 total)
+| Location | X Position | Width | Notes |
+|----------|------------|-------|-------|
+| FIFA Kennedy Center | -2500 | 350px | Starting pad (Washington DC) |
+| NYC Fuel Stop | 1800 | 120px | USA |
+| Mid-Atlantic Platform | 4300 | 100px | Oil platform in Atlantic |
+| Dover Cliffs | 6800 | 80px | United Kingdom |
+| Matterhorn | 11000 | 80px | Switzerland (mountain top) |
+| Berlin Gas Station | 13500 | 80px | Germany |
+| Warsaw Depot | 14500 | 70px | Poland |
+| Border Station | 18500 | 60px | Poland/Russia border |
+| Putino's Palace | 25000 | 250px | Final destination (Russia) |
 
 ---
 
