@@ -11,6 +11,7 @@ import {
   CATEGORY_ORDER,
   HighScoreEntry,
 } from '../services/ScoreService';
+import { isMobileDevice } from '../utils/DeviceDetection';
 
 interface DestroyedBuilding {
   name: string;
@@ -72,6 +73,7 @@ export class GameOverScene extends Phaser.Scene {
   private playerName: string = '';
   private nameInputText!: Phaser.GameObjects.Text;
   private cursorBlink!: Phaser.Time.TimerEvent;
+  private mobileInput: HTMLInputElement | null = null;
   private wasVictory: boolean = false; // Track if this was a victory for high score restart
   // 2-player mode data to preserve across restart
   private playerCount: number = 1;
@@ -435,6 +437,11 @@ export class GameOverScene extends Phaser.Scene {
     const destroyedBuildings = data.destroyedBuildings || [];
     let destructionY = panelTop + 50;
 
+    // Separate cannons from other buildings
+    const cannons = destroyedBuildings.filter(b => b.name === 'Cannon');
+    const buildings = destroyedBuildings.filter(b => b.name !== 'Cannon');
+    const totalCannonPoints = cannons.reduce((sum, c) => sum + c.points, 0);
+
     if (destroyedBuildings.length === 0) {
       this.add.text(middlePanelX + panelWidth / 2, panelTop + mainPanelHeight / 2, 'No buildings destroyed\n\n(Peaceful mission!)', {
         fontFamily: 'Arial, Helvetica, sans-serif',
@@ -444,10 +451,45 @@ export class GameOverScene extends Phaser.Scene {
         align: 'center',
       }).setOrigin(0.5, 0.5);
     } else {
-      // Show up to 10 buildings with their images
-      const maxToShow = Math.min(destroyedBuildings.length, 10);
+      // Show cannons summary first (if any)
+      if (cannons.length > 0) {
+        // Try to show cannon thumbnail
+        try {
+          const thumb = this.add.image(middlePanelX + 30, destructionY + 14, 'cannon');
+          thumb.setDisplaySize(28, 28);
+          thumb.setOrigin(0.5, 0.5);
+        } catch {
+          const placeholder = this.add.graphics();
+          placeholder.fillStyle(0x666666, 1);
+          placeholder.fillRect(middlePanelX + 16, destructionY, 28, 28);
+        }
+
+        this.add.text(middlePanelX + 50, destructionY + 2, `Cannons x${cannons.length}`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '12px',
+          color: '#FFFFFF',
+        });
+
+        this.add.text(middlePanelX + 50, destructionY + 16, 'Various countries', {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '10px',
+          color: '#888888',
+        });
+
+        this.add.text(middlePanelX + panelWidth - 15, destructionY + 8, `+${totalCannonPoints}`, {
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '13px',
+          color: '#FF6600',
+          fontStyle: 'bold',
+        }).setOrigin(1, 0);
+
+        destructionY += 36;
+      }
+
+      // Show up to 9 buildings with their images (leaving room for cannon row)
+      const maxToShow = Math.min(buildings.length, cannons.length > 0 ? 9 : 10);
       for (let i = 0; i < maxToShow; i++) {
-        const building = destroyedBuildings[i];
+        const building = buildings[i];
 
         // Try to show building thumbnail
         try {
@@ -487,8 +529,9 @@ export class GameOverScene extends Phaser.Scene {
         destructionY += 36;
       }
 
-      if (destroyedBuildings.length > 10) {
-        this.add.text(middlePanelX + panelWidth / 2, destructionY + 10, `...and ${destroyedBuildings.length - 10} more!`, {
+      const remainingBuildings = buildings.length - maxToShow;
+      if (remainingBuildings > 0) {
+        this.add.text(middlePanelX + panelWidth / 2, destructionY + 10, `...and ${remainingBuildings} more!`, {
           fontFamily: 'Arial, Helvetica, sans-serif',
           fontSize: '12px',
           color: '#888888',
@@ -898,7 +941,12 @@ export class GameOverScene extends Phaser.Scene {
     inputBg.lineStyle(2, 0x333333);
     inputBg.strokeRoundedRect(x - 100, y + 68, 200, 35, 6);
 
-    // Name input text
+    // On mobile, create an actual HTML input to trigger keyboard
+    if (isMobileDevice()) {
+      this.createMobileInput(x, y, score);
+    }
+
+    // Name input text (display only on mobile, input on desktop)
     this.nameInputText = this.add.text(x, y + 85, '|', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '18px',
@@ -906,6 +954,17 @@ export class GameOverScene extends Phaser.Scene {
       fontStyle: 'bold',
     });
     this.nameInputText.setOrigin(0.5, 0.5);
+
+    // Make the input area tappable on mobile to focus the hidden input
+    if (isMobileDevice()) {
+      const inputHitArea = this.add.rectangle(x, y + 85, 200, 35, 0x000000, 0);
+      inputHitArea.setInteractive();
+      inputHitArea.on('pointerdown', () => {
+        if (this.mobileInput) {
+          this.mobileInput.focus();
+        }
+      });
+    }
 
     // Cursor blinking
     this.cursorBlink = this.time.addEvent({
@@ -971,6 +1030,10 @@ export class GameOverScene extends Phaser.Scene {
       chip.on('pointerdown', () => {
         this.playerName = name;
         this.nameInputText.setText(name + '|');
+        // Sync with mobile input if present
+        if (this.mobileInput) {
+          this.mobileInput.value = name;
+        }
       });
 
       chipX += chipWidth + 6;
@@ -1034,6 +1097,53 @@ export class GameOverScene extends Phaser.Scene {
     });
   }
 
+  private createMobileInput(x: number, y: number, score: number): void {
+    // Create an HTML input element for mobile keyboard
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 12;
+    input.autocomplete = 'off';
+    input.autocapitalize = 'off';
+    input.spellcheck = false;
+    input.style.cssText = `
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+      width: 1px;
+      height: 1px;
+      z-index: 9999;
+    `;
+    document.body.appendChild(input);
+    this.mobileInput = input;
+
+    // Sync input value to playerName
+    input.addEventListener('input', () => {
+      this.playerName = input.value.substring(0, 12);
+      this.nameInputText.setText(this.playerName + '|');
+    });
+
+    // Handle Enter key from mobile keyboard
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && this.playerName.length > 0) {
+        e.preventDefault();
+        input.blur();
+        this.submitHighScore(score);
+      }
+    });
+
+    // Focus the input immediately to show keyboard
+    setTimeout(() => {
+      input.focus();
+    }, 100);
+  }
+
+  private removeMobileInput(): void {
+    if (this.mobileInput) {
+      this.mobileInput.remove();
+      this.mobileInput = null;
+    }
+  }
+
   private async submitHighScore(score: number): Promise<void> {
     if (!this.nameEntryActive) return;
     this.nameEntryActive = false;
@@ -1041,6 +1151,9 @@ export class GameOverScene extends Phaser.Scene {
     if (this.cursorBlink) {
       this.cursorBlink.destroy();
     }
+
+    // Clean up mobile input
+    this.removeMobileInput();
 
     // Submit to server (also saves locally as fallback via ScoreService)
     await submitScore(this.playerName, score);
@@ -1199,5 +1312,10 @@ export class GameOverScene extends Phaser.Scene {
 
     // This will be called by the actual display methods
     // The implementation depends on which panel is being updated
+  }
+
+  shutdown(): void {
+    // Clean up mobile input when scene shuts down
+    this.removeMobileInput();
   }
 }
