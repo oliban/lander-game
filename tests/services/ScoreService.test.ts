@@ -26,6 +26,7 @@ vi.stubGlobal('fetch', mockFetch);
 import {
   submitScore,
   fetchScores,
+  fetchAllScores,
   syncPendingScores,
   hasPendingScores,
   getLocalScores,
@@ -70,7 +71,7 @@ describe('ScoreService', () => {
       expect(result).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith('/api/scores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ name: 'TestPlayer', score: 1000 }),
       });
 
@@ -206,6 +207,123 @@ describe('ScoreService', () => {
       const scores = await fetchScores('today');
 
       expect(scores).toEqual([]);
+    }, 15000);
+  });
+
+  describe('fetchAllScores', () => {
+    it('should fetch all score categories in a single request', async () => {
+      const mockAllScores = {
+        alltime: [
+          { name: 'AllTimeChamp', score: 5000, date: '2024-01-01' },
+          { name: 'Player2', score: 4000, date: '2024-01-02' },
+        ],
+        today: [
+          { name: 'TodayLeader', score: 3000, date: '2024-01-15' },
+        ],
+        week: [
+          { name: 'WeeklyWinner', score: 3500, date: '2024-01-10' },
+        ],
+        local: [
+          { name: 'LocalHero', score: 2000, date: '2024-01-01' },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockAllScores,
+      });
+
+      const result = await fetchAllScores();
+
+      expect(result).toEqual(mockAllScores);
+      expect(mockFetch).toHaveBeenCalledWith('/api/scores/all', {});
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return all four category keys in response', async () => {
+      const mockAllScores = {
+        alltime: [],
+        today: [],
+        week: [],
+        local: [],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockAllScores,
+      });
+
+      const result = await fetchAllScores();
+
+      expect(result).toHaveProperty('alltime');
+      expect(result).toHaveProperty('today');
+      expect(result).toHaveProperty('week');
+      expect(result).toHaveProperty('local');
+    });
+
+    it('should fallback to local scores for all categories on network error', async () => {
+      // Set up local scores
+      localStorageMock['peaceShuttle_highScores'] = JSON.stringify([
+        { name: 'LocalFallback', score: 1000, date: '2024-01-01' },
+      ]);
+
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      const result = await fetchAllScores();
+
+      // All categories should have local scores as fallback
+      expect(result.alltime).toEqual([{ name: 'LocalFallback', score: 1000, date: '2024-01-01' }]);
+      expect(result.today).toEqual([{ name: 'LocalFallback', score: 1000, date: '2024-01-01' }]);
+      expect(result.week).toEqual([{ name: 'LocalFallback', score: 1000, date: '2024-01-01' }]);
+      expect(result.local).toEqual([{ name: 'LocalFallback', score: 1000, date: '2024-01-01' }]);
+    }, 15000);
+
+    it('should fallback to empty arrays when no local scores and network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      const result = await fetchAllScores();
+
+      expect(result.alltime).toEqual([]);
+      expect(result.today).toEqual([]);
+      expect(result.week).toEqual([]);
+      expect(result.local).toEqual([]);
+    }, 15000);
+
+    it('should handle HTTP error responses and fallback to local scores', async () => {
+      localStorageMock['peaceShuttle_highScores'] = JSON.stringify([
+        { name: 'ErrorFallback', score: 500, date: '2024-01-01' },
+      ]);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      const result = await fetchAllScores();
+
+      // Should fallback to local scores
+      expect(result.alltime[0].name).toBe('ErrorFallback');
+    }, 15000);
+
+    it('should handle 503 (database busy) and retry', async () => {
+      const mockAllScores = {
+        alltime: [{ name: 'RetrySuccess', score: 1000, date: '2024-01-01' }],
+        today: [],
+        week: [],
+        local: [],
+      };
+
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 503 })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockAllScores,
+        });
+
+      const result = await fetchAllScores();
+
+      expect(result.alltime[0].name).toBe('RetrySuccess');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     }, 15000);
   });
 
