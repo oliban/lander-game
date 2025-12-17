@@ -4,12 +4,13 @@ import { InventoryItem } from '../systems/InventorySystem';
 import { createColoredButton } from '../ui/UIButton';
 import {
   submitScore,
-  fetchScores,
+  fetchAllScores,
   getLocalScores,
   ScoreCategory,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   HighScoreEntry,
+  AllScoresResponse,
 } from '../services/ScoreService';
 import { isMobileDevice } from '../utils/DeviceDetection';
 
@@ -82,6 +83,8 @@ export class GameOverScene extends Phaser.Scene {
   // Pagination state for highscores
   private currentCategory: ScoreCategory = 'alltime';
   private displayedScores: HighScoreEntry[] = [];
+  // Cache for all score categories (loaded once)
+  private scoreCache: Partial<Record<ScoreCategory, HighScoreEntry[]>> = {};
   private scoreDisplayElements: Phaser.GameObjects.GameObject[] = [];
   private categoryLabel!: Phaser.GameObjects.Text;
   private isLoadingScores: boolean = false;
@@ -111,14 +114,6 @@ export class GameOverScene extends Phaser.Scene {
     return [];
   }
 
-  private saveHighScores(scores: HighScoreEntry[]): void {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
-    } catch (e) {
-      console.error('Failed to save high scores:', e);
-    }
-  }
-
   private isHighScore(score: number): { isHigh: boolean; rank: number } {
     const highScores = this.loadHighScores();
     if (highScores.length < 10) {
@@ -130,32 +125,6 @@ export class GameOverScene extends Phaser.Scene {
       }
     }
     return { isHigh: false, rank: -1 };
-  }
-
-  private addHighScore(name: string, score: number): void {
-    const highScores = this.loadHighScores();
-    const newEntry: HighScoreEntry = {
-      name: name.substring(0, 12),
-      score,
-      date: new Date().toLocaleDateString(),
-    };
-
-    // Find position to insert
-    let inserted = false;
-    for (let i = 0; i < highScores.length; i++) {
-      if (score > highScores[i].score) {
-        highScores.splice(i, 0, newEntry);
-        inserted = true;
-        break;
-      }
-    }
-    if (!inserted) {
-      highScores.push(newEntry);
-    }
-
-    // Keep only top 10
-    const topTen = highScores.slice(0, 10);
-    this.saveHighScores(topTen);
   }
 
   create(data: GameOverData): void {
@@ -1252,18 +1221,37 @@ export class GameOverScene extends Phaser.Scene {
 
   // ============ API-based Score Methods ============
 
-  private async loadScoresFromAPI(category: ScoreCategory): Promise<HighScoreEntry[]> {
+  /**
+   * Load all scores once and cache them
+   */
+  private async loadAllScoresOnce(): Promise<void> {
+    if (Object.keys(this.scoreCache).length > 0) {
+      return; // Already loaded
+    }
     this.isLoadingScores = true;
     try {
-      const scores = await fetchScores(category);
-      return scores;
+      const allScores = await fetchAllScores();
+      this.scoreCache = allScores;
     } catch (error) {
       console.error('Failed to fetch scores from API:', error);
       // Fallback to local scores
-      return getLocalScores();
+      const localScores = getLocalScores();
+      this.scoreCache = {
+        alltime: localScores,
+        today: localScores,
+        week: localScores,
+        local: localScores,
+      };
     } finally {
       this.isLoadingScores = false;
     }
+  }
+
+  /**
+   * Get scores from cache (no API request)
+   */
+  private getScoresFromCache(category: ScoreCategory): HighScoreEntry[] {
+    return this.scoreCache[category] || getLocalScores();
   }
 
   private cycleCategory(direction: 'next' | 'prev'): void {
@@ -1280,24 +1268,14 @@ export class GameOverScene extends Phaser.Scene {
     this.refreshScoreDisplay();
   }
 
-  private async refreshScoreDisplay(): Promise<void> {
+  private refreshScoreDisplay(): void {
     // Update category label
     if (this.categoryLabel) {
       this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory]);
     }
 
-    // Show loading indicator
-    if (this.categoryLabel) {
-      this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory] + '...');
-    }
-
-    // Fetch new scores
-    this.displayedScores = await this.loadScoresFromAPI(this.currentCategory);
-
-    // Update label
-    if (this.categoryLabel) {
-      this.categoryLabel.setText(CATEGORY_LABELS[this.currentCategory]);
-    }
+    // Get scores from cache (no API call needed - cache loaded once on scene creation)
+    this.displayedScores = this.getScoresFromCache(this.currentCategory);
 
     // Update the score display
     this.updateScoreListDisplay();

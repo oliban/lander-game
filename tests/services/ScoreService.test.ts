@@ -70,7 +70,7 @@ describe('ScoreService', () => {
       expect(result).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith('/api/scores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ name: 'TestPlayer', score: 1000 }),
       });
 
