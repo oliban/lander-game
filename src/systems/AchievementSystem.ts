@@ -1,4 +1,5 @@
 import { ACHIEVEMENTS, Achievement } from '../data/achievements';
+import { trackAchievementUnlock } from '../services/AnalyticsService';
 
 const STORAGE_KEY = 'peaceShuttle_achievements';
 
@@ -94,6 +95,9 @@ export class AchievementSystem {
     for (const listener of this.listeners) {
       listener(achievement);
     }
+
+    // Track in Google Analytics
+    trackAchievementUnlock(achievement.id, achievement.name, achievement.tier);
 
     // Check for trophy hunter (all achievements)
     this.checkTrophyHunter();
