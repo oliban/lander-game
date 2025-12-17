@@ -2,12 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/src/styles/touch-controls.css" />
     <title>Peace Shuttle - Trumpleton's Mission to Russia</title>
     <!-- Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-3JEQ0D2QK1"></script>
@@ -27,9 +28,24 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background-color: #87CEEB;
+        background-color: #0d1f33;
+        /* Prevent iOS rubber-banding */
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+      /* Default layout when touch controls are hidden */
+      #app-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
       }
       #game-container {
+        flex: 1;
         width: 100%;
         height: 100%;
         display: flex;
@@ -39,7 +55,55 @@
     </style>
   </head>
   <body>
-    <div id="game-container"></div>
+    <!-- Main wrapper for flex layout -->
+    <div id="app-container">
+      <!-- Left Control Panel (hidden by default, shown on mobile) -->
+      <div id="left-panel" class="control-panel hidden">
+        <button id="gyro-toggle" class="control-btn gyro-btn">
+          <span class="icon">&#x21BB;</span>
+          <span class="label">Gyro</span>
+        </button>
+
+        <button id="gear-toggle" class="control-btn gear-btn">
+          <span class="icon">&#x2699;</span>
+          <span class="label">Gear</span>
+        </button>
+
+        <div id="steering-buttons" class="steering-container">
+          <button id="steer-left" class="control-btn steer-btn">
+            <span class="icon">&#x25C0;</span>
+            <span class="label">Left</span>
+          </button>
+          <button id="steer-right" class="control-btn steer-btn">
+            <span class="icon">&#x25B6;</span>
+            <span class="label">Right</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Game Container (Phaser canvas goes here) -->
+      <div id="game-container"></div>
+
+      <!-- Right Control Panel (hidden by default, shown on mobile) -->
+      <div id="right-panel" class="control-panel hidden">
+        <button id="bomb-btn" class="control-btn bomb-btn">
+          <span class="icon">&#x1F4A3;</span>
+          <span class="label">Bomb</span>
+        </button>
+
+        <button id="thrust-btn" class="control-btn thrust-btn">
+          <span class="icon">&#x25B2;</span>
+          <span class="label">Thrust</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Portrait orientation warning -->
+    <div id="portrait-warning" class="portrait-warning">
+      <div class="icon">&#x1F504;</div>
+      <div>Please rotate your device to landscape mode</div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
