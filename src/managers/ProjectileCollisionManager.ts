@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Cannon } from '../objects/Cannon';
 import { CountryDecoration } from '../objects/CountryDecoration';
 import { MedalHouse } from '../objects/MedalHouse';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 export interface ProjectileCollisionCallbacks {
   getCannons: () => Cannon[];
@@ -37,8 +38,10 @@ export class ProjectileCollisionManager {
 
     const toDestroy: Set<any> = new Set();
 
-    // Check projectile-projectile collisions
-    this.checkProjectileProjectileCollisions(allProjectiles, toDestroy);
+    // Check projectile-projectile collisions (skip at low quality - O(n²) is expensive)
+    if (PerformanceSettings.getPreset().projectileCollisions) {
+      this.checkProjectileProjectileCollisions(allProjectiles, toDestroy);
+    }
 
     // Check projectile-building collisions
     this.checkProjectileBuildingCollisions(allProjectiles, decorations, toDestroy);

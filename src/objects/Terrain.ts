@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TERRAIN_SEGMENT_WIDTH, TERRAIN_ROUGHNESS, GAME_HEIGHT, COLORS, COUNTRIES, LANDING_PADS, WORLD_START_X } from '../constants';
 import { darkenColor, lightenColor } from '../utils/ColorUtils';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 export interface TerrainVertex {
   x: number;
@@ -15,22 +16,33 @@ export interface FlatArea {
 
 export class Terrain {
   private scene: Phaser.Scene;
-  private graphics: Phaser.GameObjects.Graphics;
+  private graphics: Phaser.GameObjects.Graphics; // Legacy - kept for compatibility
   private oceanGraphics: Phaser.GameObjects.Graphics;
   private vertices: TerrainVertex[] = [];
   private bodies: MatterJS.BodyType[] = [];
   private waveOffset: number = 0;
   private flatAreas: FlatArea[] = [];
+  private staticOceanDrawn: boolean = false; // Track if static ocean has been drawn (for low quality)
+
+  // Chunked terrain for performance
+  private readonly CHUNK_WIDTH = 1000; // 1000px per chunk (smaller = better culling)
+  private chunks: Map<number, Phaser.GameObjects.Graphics> = new Map();
+  private chunkStartX: number = 0;
+  private chunkEndX: number = 0;
 
   constructor(scene: Phaser.Scene, startX: number, endX: number) {
     this.scene = scene;
-    this.graphics = scene.add.graphics();
+    this.graphics = scene.add.graphics(); // Keep for compatibility but don't use
+    this.graphics.setVisible(false); // Hide legacy graphics
     this.oceanGraphics = scene.add.graphics();
     this.oceanGraphics.setDepth(-1); // Render ocean behind terrain
 
+    this.chunkStartX = startX;
+    this.chunkEndX = endX;
+
     this.generateTerrain(startX, endX);
     this.createPhysicsBodies();
-    this.draw();
+    this.drawChunked(); // Use chunked drawing instead
   }
 
   private generateTerrain(startX: number, endX: number): void {
@@ -667,6 +679,137 @@ export class Terrain {
     this.graphics.fillCircle(x - height * 0.1, y - height * 0.7, height * 0.15);
   }
 
+  /**
+   * Draw terrain in chunks for better performance (culling)
+   */
+  private drawChunked(): void {
+    // Calculate chunk indices
+    const startChunk = Math.floor(this.chunkStartX / this.CHUNK_WIDTH);
+    const endChunk = Math.ceil(this.chunkEndX / this.CHUNK_WIDTH);
+
+    // Create a Graphics object for each chunk
+    for (let chunkIndex = startChunk; chunkIndex <= endChunk; chunkIndex++) {
+      const chunkStartX = chunkIndex * this.CHUNK_WIDTH;
+      const chunkEndX = chunkStartX + this.CHUNK_WIDTH;
+
+      const chunkGraphics = this.scene.add.graphics();
+      chunkGraphics.setDepth(0);
+      this.chunks.set(chunkIndex, chunkGraphics);
+
+      // Draw this chunk's terrain
+      this.drawChunk(chunkGraphics, chunkStartX, chunkEndX);
+    }
+  }
+
+  /**
+   * Draw a single chunk of terrain
+   */
+  private drawChunk(graphics: Phaser.GameObjects.Graphics, chunkStartX: number, chunkEndX: number): void {
+    const BLEND_WIDTH = 150;
+
+    // Get vertices in this chunk (with some overlap for smooth edges)
+    const chunkVertices = this.vertices.filter(
+      v => v.x >= chunkStartX - TERRAIN_SEGMENT_WIDTH && v.x <= chunkEndX + TERRAIN_SEGMENT_WIDTH
+    );
+
+    if (chunkVertices.length < 2) return;
+
+    // Find which countries this chunk spans
+    for (let countryIdx = 0; countryIdx < COUNTRIES.length; countryIdx++) {
+      const country = COUNTRIES[countryIdx];
+      const nextCountry = COUNTRIES[countryIdx + 1];
+      const countryEndX = nextCountry ? nextCountry.startX : Infinity;
+      const isOcean = country.name === 'Atlantic Ocean';
+
+      // Skip if country doesn't overlap this chunk
+      if (countryEndX < chunkStartX || country.startX > chunkEndX) continue;
+
+      // Skip ocean (handled separately)
+      if (isOcean) continue;
+
+      // Get vertices for this country within this chunk
+      const countryVertices = chunkVertices.filter(
+        v => v.x >= country.startX && v.x <= countryEndX + TERRAIN_SEGMENT_WIDTH
+      );
+
+      if (countryVertices.length < 2) continue;
+
+      // Draw the terrain layers for this country section
+      const isSwiss = country.name === 'Switzerland';
+      const dirtColor = darkenColor(country.color, 0.5);
+      const rockColor = darkenColor(country.color, 0.35);
+      const baseFillColor = isSwiss ? 0x3d6834 : rockColor;
+
+      // Base fill
+      graphics.fillStyle(baseFillColor, 1);
+      graphics.beginPath();
+      graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
+      for (let i = 1; i < countryVertices.length; i++) {
+        graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
+      }
+      graphics.lineTo(countryVertices[countryVertices.length - 1].x, GAME_HEIGHT + 100);
+      graphics.lineTo(countryVertices[0].x, GAME_HEIGHT + 100);
+      graphics.closePath();
+      graphics.fillPath();
+
+      // Middle dirt layer
+      const middleLayerColor = isSwiss ? 0x4a7c3f : dirtColor;
+      graphics.fillStyle(middleLayerColor, 1);
+      graphics.beginPath();
+      graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
+      for (let i = 1; i < countryVertices.length; i++) {
+        graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
+      }
+      for (let i = countryVertices.length - 1; i >= 0; i--) {
+        graphics.lineTo(countryVertices[i].x, countryVertices[i].y + 60);
+      }
+      graphics.closePath();
+      graphics.fillPath();
+
+      // Top grass/surface layer
+      const topLayerColor = isSwiss ? 0x5a9c4f : country.color;
+      graphics.fillStyle(topLayerColor, 1);
+      graphics.beginPath();
+      graphics.moveTo(countryVertices[0].x, countryVertices[0].y);
+      for (let i = 1; i < countryVertices.length; i++) {
+        graphics.lineTo(countryVertices[i].x, countryVertices[i].y);
+      }
+      for (let i = countryVertices.length - 1; i >= 0; i--) {
+        graphics.lineTo(countryVertices[i].x, countryVertices[i].y + 30);
+      }
+      graphics.closePath();
+      graphics.fillPath();
+
+      // Note: Grass blades removed from chunked terrain for cleaner look and better performance
+    }
+  }
+
+  /**
+   * Update which chunks are visible based on camera position
+   */
+  updateChunkVisibility(cameraX: number, screenWidth: number): void {
+    const margin = 1000; // Show chunks within this margin of screen
+    const visibleStart = cameraX - margin;
+    const visibleEnd = cameraX + screenWidth + margin;
+
+    // Cull terrain chunks
+    for (const [chunkIndex, graphics] of this.chunks) {
+      const chunkStartX = chunkIndex * this.CHUNK_WIDTH;
+      const chunkEndX = chunkStartX + this.CHUNK_WIDTH;
+
+      const isVisible = chunkEndX >= visibleStart && chunkStartX <= visibleEnd;
+      graphics.setVisible(isVisible);
+    }
+
+    // Cull ocean (Atlantic is from 2000 to 5000)
+    const atlanticStart = 2000;
+    const atlanticEnd = 5000;
+    const oceanVisible = atlanticEnd >= visibleStart && atlanticStart <= visibleEnd;
+    if (this.oceanGraphics) {
+      this.oceanGraphics.setVisible(oceanVisible);
+    }
+  }
+
   getVertices(): TerrainVertex[] {
     return this.vertices;
   }
@@ -692,9 +835,62 @@ export class Terrain {
   }
 
   update(waterPollutionLevel: number = 0): void {
-    // Animate ocean waves
-    this.waveOffset += 0.02;
-    this.drawOcean(waterPollutionLevel);
+    // Check if ocean waves are enabled for performance
+    const oceanWavesEnabled = PerformanceSettings.getPreset().oceanWaves;
+
+    if (oceanWavesEnabled) {
+      // Animate ocean waves
+      this.waveOffset += 0.02;
+      this.drawOcean(waterPollutionLevel);
+      this.staticOceanDrawn = false; // Reset so we redraw if setting changes
+    } else {
+      // Draw static ocean only once for performance
+      if (!this.staticOceanDrawn) {
+        this.drawStaticOcean(waterPollutionLevel);
+        this.staticOceanDrawn = true;
+      }
+    }
+  }
+
+  /**
+   * Draw a simplified static ocean (no animation) for low-performance devices
+   */
+  private drawStaticOcean(waterPollutionLevel: number = 0): void {
+    if (!this.oceanGraphics) {
+      this.oceanGraphics = this.scene.add.graphics();
+      this.oceanGraphics.setDepth(-1);
+    }
+    this.oceanGraphics.clear();
+
+    const atlanticStart = COUNTRIES.find(c => c.name === 'Atlantic Ocean')?.startX ?? 2000;
+    const atlanticEnd = COUNTRIES.find(c => c.name === 'United Kingdom')?.startX ?? 4000;
+    const oceanHeight = GAME_HEIGHT * 0.75;
+
+    // Helper to tint a color towards dark brown/black based on pollution level
+    const tintColor = (color: number, pollution: number): number => {
+      const pollutionColor = 0x0a0805;
+      const r = (color >> 16) & 0xFF;
+      const g = (color >> 8) & 0xFF;
+      const b = color & 0xFF;
+      const pr = (pollutionColor >> 16) & 0xFF;
+      const pg = (pollutionColor >> 8) & 0xFF;
+      const pb = pollutionColor & 0xFF;
+      const nr = Math.floor(r + (pr - r) * pollution);
+      const ng = Math.floor(g + (pg - g) * pollution);
+      const nb = Math.floor(b + (pb - b) * pollution);
+      return (nr << 16) | (ng << 8) | nb;
+    };
+
+    // Draw simple static ocean - just a rectangle
+    const baseOceanColor = tintColor(0x1E90FF, waterPollutionLevel);
+    this.oceanGraphics.fillStyle(baseOceanColor, 1);
+    this.oceanGraphics.fillRect(atlanticStart, oceanHeight, atlanticEnd - atlanticStart, GAME_HEIGHT - oceanHeight + 50);
+
+    // Draw brick walls at ocean edges
+    const leftLandHeight = this.getHeightAt(atlanticStart - 50) ?? oceanHeight;
+    const rightLandHeight = this.getHeightAt(atlanticEnd + 50) ?? oceanHeight;
+    this.drawBrickWall(atlanticStart, Math.min(leftLandHeight, oceanHeight), GAME_HEIGHT);
+    this.drawBrickWall(atlanticEnd, Math.min(rightLandHeight, oceanHeight), GAME_HEIGHT);
   }
 
   getWaveOffset(): number {
@@ -825,9 +1021,27 @@ export class Terrain {
     }
   }
 
+  /**
+   * Toggle terrain graphics visibility (for performance testing)
+   */
+  setVisible(visible: boolean): void {
+    // Toggle all chunks
+    for (const [, graphics] of this.chunks) {
+      graphics.setVisible(visible);
+    }
+    if (this.oceanGraphics) {
+      this.oceanGraphics.setVisible(visible);
+    }
+  }
+
   destroy(): void {
     this.graphics.destroy();
     this.oceanGraphics.destroy();
+    // Destroy all chunks
+    for (const [, graphics] of this.chunks) {
+      graphics.destroy();
+    }
+    this.chunks.clear();
     for (const body of this.bodies) {
       this.scene.matter.world.remove(body);
     }

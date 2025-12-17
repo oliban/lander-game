@@ -7,6 +7,7 @@ import {
   MAX_SAFE_LANDING_ANGLE,
   COLORS,
 } from '../constants';
+import { PerformanceSettings } from '../systems/PerformanceSettings';
 
 // Speed reduction when landing legs are extended
 const LEGS_DRAG_MULTIPLIER = 1.5;
@@ -106,30 +107,42 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
   }
 
   private createThrusterParticles(): void {
-    this.thrusterParticles = this.scene.add.particles(0, 0, 'particle', {
-      speed: { min: 100, max: 200 },
-      angle: { min: 80, max: 100 },
-      scale: { start: 0.5, end: 0 },
-      lifespan: { min: 200, max: 400 },
-      blendMode: Phaser.BlendModes.NORMAL,
-      frequency: 20,
-      emitting: false,
-      tint: [0xFF8800, 0xFFAA00, 0xFFCC00, 0xFFFFFF],
-    });
+    // Get performance settings
+    const preset = PerformanceSettings.getPreset();
 
-    // Create a STATIONARY chemtrail emitter at origin - we'll emit particles manually at world positions
-    // This emitter doesn't move, so particles stay where they're spawned
-    this.chemtrailEmitter = this.scene.add.particles(0, 0, 'particle', {
-      speed: { min: 5, max: 15 }, // Very slow drift
-      angle: { min: 0, max: 360 }, // Random drift direction
-      scale: { start: 0.4, end: 0.1 },
-      alpha: { start: 0.3, end: 0 },
-      lifespan: 15000, // 15 seconds (reduced for performance)
-      blendMode: Phaser.BlendModes.NORMAL,
-      frequency: -1, // Manual emission only (no auto-emit)
-      tint: [0x555555, 0x666666, 0x777777, 0x444444], // Grey colors
-    });
-    this.chemtrailEmitter.setDepth(-1); // Behind everything
+    // Only create thruster particles if enabled
+    if (preset.thrusterParticles) {
+      this.thrusterParticles = this.scene.add.particles(0, 0, 'particle', {
+        speed: { min: 100, max: 200 },
+        angle: { min: 80, max: 100 },
+        scale: { start: 0.5, end: 0 },
+        lifespan: { min: 200, max: 400 },
+        blendMode: Phaser.BlendModes.NORMAL,
+        frequency: 20,
+        emitting: false,
+        tint: [0xFF8800, 0xFFAA00, 0xFFCC00, 0xFFFFFF],
+      });
+    }
+
+    // Only create chemtrail emitter if enabled in performance settings
+    if (preset.chemtrails) {
+      // Use chemtrail lifespan from settings (or default to 15000)
+      const chemtrailLifespan = preset.chemtrailLifespan > 0 ? preset.chemtrailLifespan : 15000;
+
+      // Create a STATIONARY chemtrail emitter at origin - we'll emit particles manually at world positions
+      // This emitter doesn't move, so particles stay where they're spawned
+      this.chemtrailEmitter = this.scene.add.particles(0, 0, 'particle', {
+        speed: { min: 5, max: 15 }, // Very slow drift
+        angle: { min: 0, max: 360 }, // Random drift direction
+        scale: { start: 0.4, end: 0.1 },
+        alpha: { start: 0.3, end: 0 },
+        lifespan: chemtrailLifespan,
+        blendMode: Phaser.BlendModes.NORMAL,
+        frequency: -1, // Manual emission only (no auto-emit)
+        tint: [0x555555, 0x666666, 0x777777, 0x444444], // Grey colors
+      });
+      this.chemtrailEmitter.setDepth(-1); // Behind everything
+    }
   }
 
   update(cursors?: Phaser.Types.Input.Keyboard.CursorKeys): void {
@@ -295,9 +308,11 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
       const particleLifespan = baseLifespan + lifespanBonus;
 
       // More particles per emission at higher speeds (doubled with speed boost power-up)
+      // Apply performance multiplier to reduce particle count on low-end devices
+      const performanceMultiplier = PerformanceSettings.getPreset().particleMultiplier;
       const baseQuantity = 2;
       const quantityBonus = Math.floor(Math.min(speed * 0.3, 3));
-      const particleQuantity = Math.floor((baseQuantity + quantityBonus) * this.thrustMultiplier);
+      const particleQuantity = Math.max(1, Math.floor((baseQuantity + quantityBonus) * this.thrustMultiplier * performanceMultiplier));
 
       // Update emitter config (must include texture)
       this.thrusterParticles.setConfig({
@@ -318,7 +333,9 @@ export class Shuttle extends Phaser.Physics.Matter.Sprite {
 
       // Emit chemtrail particles at the exhaust position (world coordinates)
       // These stay in place because the emitter is stationary
-      if (this.chemtrailEmitter) {
+      // Check performance settings - chemtrails can be disabled mid-game
+      const chemtrailsEnabled = PerformanceSettings.getPreset().chemtrails;
+      if (this.chemtrailEmitter && chemtrailsEnabled) {
         // Emit chemtrail particles (more with speed boost power-up)
         const baseChemtrail = this.thrustMultiplier > 1 ? 2 : 1;
         this.chemtrailEmitter.emitParticleAt(thrustPos.x, thrustPos.y, baseChemtrail);

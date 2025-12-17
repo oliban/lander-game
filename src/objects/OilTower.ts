@@ -239,6 +239,25 @@ export class OilTower extends DestructibleObject {
     }
   }
 
+  /**
+   * Override setVisible to pause/resume the oil spurt emitter.
+   * When hidden (culled for draw distance), the emitter is paused to save CPU.
+   */
+  setVisible(value: boolean): this {
+    super.setVisible(value);
+
+    // Pause emitter when not visible, resume when visible
+    if (this.oilSpurtEmitter && !this.isDestroyed) {
+      if (value) {
+        this.oilSpurtEmitter.start();
+      } else {
+        this.oilSpurtEmitter.stop();
+      }
+    }
+
+    return this;
+  }
+
   destroy(fromScene?: boolean): void {
     if (this.oilSpurtEmitter) {
       this.oilSpurtEmitter.stop();
