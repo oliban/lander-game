@@ -135,7 +135,10 @@ export class UIScene extends Phaser.Scene {
     this.createScoreCounter();
     this.createInventoryDisplay();
     this.createMedalIndicator(); // Create after inventory so it's on top
-    this.createProgressBar();
+    // Don't show progress bar in dogfight mode - it's not relevant for PvP
+    if (this.gameMode !== 'dogfight') {
+      this.createProgressBar();
+    }
     this.createControlsHint();
 
     // Create P2 fuel gauge and inventory if 2-player mode
@@ -1161,7 +1164,10 @@ export class UIScene extends Phaser.Scene {
   }
 
   update(): void {
-    this.updateProgressBar();
+    // Only update progress bar if it exists (not in dogfight mode)
+    if (this.progressBar) {
+      this.updateProgressBar();
+    }
     this.updateTimer();
     this.updateMedalIndicator();
     this.updateSpeedometer();

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { COUNTRY_MUSIC, MUSIC_CROSSFADE_DURATION, MUSIC_DEFAULT_VOLUME } from '../constants';
+import { COUNTRY_MUSIC, MUSIC_CROSSFADE_DURATION } from '../constants';
+import { AudioSettings } from './AudioSettings';
 
 export class MusicManager {
   private scene: Phaser.Scene;
@@ -7,11 +8,27 @@ export class MusicManager {
   private nextTrack: Phaser.Sound.BaseSound | null = null;
   private currentCountry: string = '';
   private isCrossfading: boolean = false;
-  private masterVolume: number = MUSIC_DEFAULT_VOLUME;
+  private masterVolume: number;
   private enabled: boolean = true;
+  private audioSettingsListener: () => void;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+    this.masterVolume = AudioSettings.getMusicVolume();
+
+    // Listen for volume changes from settings
+    this.audioSettingsListener = () => {
+      this.setVolume(AudioSettings.getMusicVolume());
+    };
+    AudioSettings.addListener(this.audioSettingsListener);
+  }
+
+  /**
+   * Clean up listeners when MusicManager is destroyed
+   */
+  destroy(): void {
+    AudioSettings.removeListener(this.audioSettingsListener);
+    this.stopAll();
   }
 
   /**

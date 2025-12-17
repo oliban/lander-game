@@ -19,6 +19,7 @@ import { getCollectionSystem } from '../systems/CollectionSystem';
 import { MusicManager } from '../systems/MusicManager';
 import { PlayerState } from '../systems/PlayerState';
 import { PerformanceSettings } from '../systems/PerformanceSettings';
+import { AudioSettings } from '../systems/AudioSettings';
 import { WeatherManager } from '../managers/WeatherManager';
 import { ScorchMarkManager } from '../managers/ScorchMarkManager';
 import { TombstoneManager } from '../managers/TombstoneManager';
@@ -275,7 +276,7 @@ export class GameScene extends Phaser.Scene {
     this.tombstoneManager = new TombstoneManager(this, {
       getTerrainHeightAt: (x: number) => this.terrain.getHeightAt(x),
       onAchievementUnlock: (id: string) => this.achievementSystem.unlock(id),
-      playSound: (key: string, config?: { volume?: number }) => this.sound.play(key, config),
+      playSound: (key: string, config?: { volume?: number }) => this.playSpeechSound(key, config),
       isGameInitialized: () => this.gameInitialized,
     });
     this.tombstoneManager.initialize();
@@ -297,7 +298,7 @@ export class GameScene extends Phaser.Scene {
 
     // Initialize bomb manager
     this.bombManager = new BombManager(this, {
-      playSound: (key: string, config?: { volume?: number }) => this.sound.play(key, config),
+      playSound: (key: string, config?: { volume?: number }) => this.playSpeechSound(key, config),
       playSoundIfNotPlaying: (key: string) => this.playSoundIfNotPlaying(key),
       shakeCamera: (duration: number, intensity: number) => this.cameras.main.shake(duration, intensity),
       getTerrainHeightAt: (x: number) => this.terrain.getHeightAt(x),
@@ -442,7 +443,7 @@ export class GameScene extends Phaser.Scene {
       getShuttles: () => this.shuttles,
       getLandingPads: () => this.landingPads,
       getMusicManager: () => this.musicManager,
-      playSound: (key, config) => this.sound.play(key, config),
+      playSound: (key, config) => this.playSpeechSound(key, config),
       setGameState: (state) => { this.gameState = state as GameState; },
       stopUIScene: () => this.scene.stop('UIScene'),
       restartScene: (data) => this.scene.restart(data),
@@ -981,7 +982,7 @@ export class GameScene extends Phaser.Scene {
       // Check for sonic boom (speed >= 30) - per-player tracking
       if (speed >= 30 && !player.sonicBoomTriggered) {
         player.sonicBoomTriggered = true;
-        this.sound.play('sonic_boom', { volume: 0.7 });
+        this.playSpeechSound('sonic_boom', { volume: 0.7 });
         this.achievementSystem.unlock('sonic_boom');
         this.cameras.main.shake(200, 0.01);
       }
@@ -1211,7 +1212,7 @@ export class GameScene extends Phaser.Scene {
 
       this.gameState = 'crashed';
       shuttle.stopRocketSound();
-      this.sound.play('water_splash');
+      this.playSpeechSound('water_splash');
 
       // Track death achievement
       this.achievementSystem.onDeath('water');
@@ -1271,7 +1272,7 @@ export class GameScene extends Phaser.Scene {
     this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, cause);
 
     shuttle.explode();
-    this.sound.play('car_crash', { volume: 0.8 });
+    this.playSpeechSound('car_crash', { volume: 0.8 });
 
     this.transitionToGameOver({
       victory: false,
@@ -1316,7 +1317,7 @@ export class GameScene extends Phaser.Scene {
     this.tombstoneManager.spawnTombstone(shuttle.x, shuttle.y, 'terrain');
 
     shuttle.explode();
-    this.sound.play('car_crash', { volume: 0.8 });
+    this.playSpeechSound('car_crash', { volume: 0.8 });
 
     this.transitionToGameOver({
       victory: false,
@@ -1649,11 +1650,11 @@ export class GameScene extends Phaser.Scene {
 
     // Play landing sound based on quality (louder volumes for better audibility)
     if (landingResult.quality === 'perfect') {
-      this.sound.play('landing_perfect', { volume: 1.0 });
+      this.playSpeechSound('landing_perfect', { volume: 1.0 });
     } else if (landingResult.quality === 'good') {
-      this.sound.play('landing_good', { volume: 1.0 });
+      this.playSpeechSound('landing_good', { volume: 1.0 });
     } else {
-      this.sound.play('landing_rough', { volume: 1.0 });
+      this.playSpeechSound('landing_rough', { volume: 1.0 });
     }
 
     // Stop shuttle and auto-align upright
@@ -1879,11 +1880,11 @@ export class GameScene extends Phaser.Scene {
 
     // Play landing sound
     if (landingResult.quality === 'perfect') {
-      this.sound.play('landing_perfect', { volume: 1.0 });
+      this.playSpeechSound('landing_perfect', { volume: 1.0 });
     } else if (landingResult.quality === 'good') {
-      this.sound.play('landing_good', { volume: 1.0 });
+      this.playSpeechSound('landing_good', { volume: 1.0 });
     } else {
-      this.sound.play('landing_rough', { volume: 1.0 });
+      this.playSpeechSound('landing_rough', { volume: 1.0 });
     }
 
     // Stop shuttle and auto-align upright
@@ -1971,12 +1972,12 @@ export class GameScene extends Phaser.Scene {
 
     // Handle water crash differently - sink instead of explode
     if (cause === 'water') {
-      this.sound.play('water_splash');
+      this.playSpeechSound('water_splash');
       this.handleWaterSplash(shuttle, message, playerNum);
     } else {
       // Normal explosion for terrain/other crashes
       shuttle.explode();
-      this.sound.play('car_crash', { volume: 0.8 });
+      this.playSpeechSound('car_crash', { volume: 0.8 });
       this.checkGameOverAfterCrash();
     }
   }
@@ -2080,7 +2081,7 @@ export class GameScene extends Phaser.Scene {
     shuttle.explode();
 
     // Play crash and explosion sounds
-    this.sound.play('car_crash', { volume: 0.8 });
+    this.playSpeechSound('car_crash', { volume: 0.8 });
     const explosionNum = Math.floor(Math.random() * 3) + 1;
     this.sound.play(`explosion${explosionNum}`, { volume: 0.5 });
 
@@ -2234,8 +2235,15 @@ export class GameScene extends Phaser.Scene {
       (sound) => sound.key === key
     );
     if (!isPlaying) {
-      this.sound.play(key);
+      this.playSpeechSound(key);
     }
+  }
+
+  // Play a speech/SFX sound with the user's speech volume setting
+  private playSpeechSound(key: string, config?: { volume?: number }): void {
+    const speechVolume = AudioSettings.getSpeechVolume();
+    const baseVolume = config?.volume ?? 1.0;
+    this.sound.play(key, { ...config, volume: baseVolume * speechVolume });
   }
 
   // Generate and play a "boing" sound using Web Audio API
@@ -2901,7 +2909,7 @@ export class GameScene extends Phaser.Scene {
         const velocity = shuttle.getVelocity();
         if (velocity.y < 0) { // Negative y = going up
           this.playedHighAltitudeSound = true;
-          this.sound.play('i_can_see_my_house');
+          this.playSpeechSound('i_can_see_my_house');
         }
       }
 
@@ -2957,7 +2965,7 @@ export class GameScene extends Phaser.Scene {
     this.achievementSystem.onDeath('space');
 
     // Play space force sound
-    this.sound.play('space_force');
+    this.playSpeechSound('space_force');
 
     // Set game state to crashed
     this.gameState = 'crashed';

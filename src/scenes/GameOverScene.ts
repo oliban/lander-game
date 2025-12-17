@@ -13,6 +13,7 @@ import {
   AllScoresResponse,
 } from '../services/ScoreService';
 import { isMobileDevice } from '../utils/DeviceDetection';
+import { AudioSettings } from '../systems/AudioSettings';
 
 interface DestroyedBuilding {
   name: string;
@@ -194,12 +195,12 @@ export class GameOverScene extends Phaser.Scene {
   private createVictoryScreen(data: GameOverData): void {
     // Play random victory quote (use same index for audio and text)
     this.selectedVictoryQuoteIndex = Math.floor(Math.random() * VICTORY_QUOTES.length);
-    this.sound.play(`victory${this.selectedVictoryQuoteIndex + 1}`);
+    this.playSpeechSound(`victory${this.selectedVictoryQuoteIndex + 1}`);
 
     // Play fanfare and show confetti for victory!
     this.createCelebrationParticles();
     if (this.cache.audio.exists('fanfare')) {
-      this.sound.play('fanfare', { volume: 0.8 });
+      this.playSpeechSound('fanfare', { volume: 0.8 });
     }
 
     // Calculate score first
@@ -744,9 +745,9 @@ export class GameOverScene extends Phaser.Scene {
     // Play special sound for baguette death, skip sound for space death (already played)
     if (!isSpaceDeath) {
       if (data.cause === 'baguette' && this.cache.audio.exists('baguette_death')) {
-        this.sound.play('baguette_death');
+        this.playSpeechSound('baguette_death');
       } else {
-        this.sound.play(`crash${this.selectedCrashQuoteIndex + 1}`);
+        this.playSpeechSound(`crash${this.selectedCrashQuoteIndex + 1}`);
       }
     }
 
@@ -821,7 +822,7 @@ export class GameOverScene extends Phaser.Scene {
       // Celebration confetti and fanfare for space victory!
       this.createCelebrationParticles();
       if (this.cache.audio.exists('fanfare')) {
-        this.sound.play('fanfare', { volume: 0.8 });
+        this.playSpeechSound('fanfare', { volume: 0.8 });
       }
     } else {
       // Normal crash: Original layout
@@ -1368,6 +1369,13 @@ export class GameOverScene extends Phaser.Scene {
 
     // This will be called by the actual display methods
     // The implementation depends on which panel is being updated
+  }
+
+  // Play a speech/SFX sound with the user's speech volume setting
+  private playSpeechSound(key: string, config?: { volume?: number }): void {
+    const speechVolume = AudioSettings.getSpeechVolume();
+    const baseVolume = config?.volume ?? 1.0;
+    this.sound.play(key, { ...config, volume: baseVolume * speechVolume });
   }
 
   shutdown(): void {
