@@ -185,6 +185,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     tier: 'bronze',
     hidden: true,
   },
+  {
+    id: 'in_orbit',
+    name: 'In Orbit',
+    description: 'Send Trump to space',
+    tier: 'gold',
+  },
 
   // 2-Player Combat (3)
   {
