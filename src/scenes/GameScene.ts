@@ -2931,7 +2931,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Handle special "space death" when player flies above 1200 meters altitude.
+   * Handle special "space death" when player flies above 12,500 meters altitude.
    * This is treated as a humorous "victory" - sending Trump to space!
    */
   private handleSpaceDeath(shuttle: Shuttle): void {
@@ -2949,6 +2949,7 @@ export class GameScene extends Phaser.Scene {
 
     // Unlock the "In Orbit" achievement
     this.achievementSystem.unlock('in_orbit');
+    this.achievementSystem.onDeath('space');
 
     // Play space force sound
     this.sound.play('space_force');

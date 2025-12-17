@@ -780,8 +780,6 @@ export class GameOverScene extends Phaser.Scene {
     title.setOrigin(0.5, 0.5);
 
     // Different layout for space death vs normal crash
-    let nextY: number;
-
     if (isSpaceDeath) {
       // Space death: Show congratulations and space message nicely spaced
       const congratsText = this.add.text(GAME_WIDTH / 2, 100, 'Congratulations!', {
@@ -809,8 +807,6 @@ export class GameOverScene extends Phaser.Scene {
         color: '#FFD700',
         fontStyle: 'bold',
       }).setOrigin(0.5, 0.5);
-
-      nextY = 250;
     } else {
       // Normal crash: Original layout
       const message = this.add.text(GAME_WIDTH / 2, 120, data.message, {
@@ -828,8 +824,6 @@ export class GameOverScene extends Phaser.Scene {
         color: '#FFD700',
         fontStyle: 'bold',
       }).setOrigin(0.5, 0.5);
-
-      nextY = 210;
     }
 
     // Quote (synced with audio) - special quote for baguette death, skip for space death
