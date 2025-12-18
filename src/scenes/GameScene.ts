@@ -1724,6 +1724,13 @@ export class GameScene extends Phaser.Scene {
       // Track victory achievements
       this.achievementSystem.onVictory(hasMedal, this.destroyedBuildings.length);
 
+      // Check for reaching palace in rain with headwind (wind blowing west)
+      const hasRain = this.weatherManager.getRainIntensity() !== 'none';
+      const hasHeadwind = this.weatherManager.getWindStrength() < 0;
+      if (hasRain && hasHeadwind) {
+        this.achievementSystem.onPalaceReachedInRainWithHeadwind();
+      }
+
       this.time.delayedCall(1500, () => {
         this.scene.stop('UIScene');
         this.scene.stop('GameScene');
