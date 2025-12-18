@@ -952,7 +952,9 @@ export class GameOverScene extends Phaser.Scene {
 
   private createNameEntryUI(x: number, y: number, score: number): void {
     this.nameEntryActive = true;
-    this.playerName = '';
+    // Load saved player name from localStorage
+    const savedName = localStorage.getItem('peaceShuttle_playerName') || '';
+    this.playerName = savedName;
 
     // Background panel - taller to fit everything
     const panel = this.add.graphics();
@@ -989,7 +991,7 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     // Name input text (display only on mobile, input on desktop)
-    this.nameInputText = this.add.text(x, y + 85, '|', {
+    this.nameInputText = this.add.text(x, y + 85, this.playerName + '|', {
       fontFamily: 'Arial, Helvetica, sans-serif',
       fontSize: '18px',
       color: '#333333',
@@ -1158,6 +1160,11 @@ export class GameOverScene extends Phaser.Scene {
     document.body.appendChild(input);
     this.mobileInput = input;
 
+    // Pre-fill with saved name if available
+    if (this.playerName) {
+      input.value = this.playerName;
+    }
+
     // Sync input value to playerName
     input.addEventListener('input', () => {
       this.playerName = input.value.substring(0, 12);
@@ -1196,6 +1203,9 @@ export class GameOverScene extends Phaser.Scene {
 
     // Clean up mobile input
     this.removeMobileInput();
+
+    // Save player name for next time
+    localStorage.setItem('peaceShuttle_playerName', this.playerName);
 
     // Submit to server (also saves locally as fallback via ScoreService)
     await submitScore(this.playerName, score);
