@@ -765,7 +765,7 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     // Title with shadow (cartoon style) - Gold for space, red for crash
-    const titleText = isSpaceDeath ? 'YOU WON!' : 'MISSION FAILED';
+    const titleText = isSpaceDeath ? 'YOU WON!' : 'MISSION FAILED SUCCESSFULLY';
     const titleColor = isSpaceDeath ? '#FFD700' : '#F44336';
     const titleShadowColor = isSpaceDeath ? '#B8860B' : '#8B0000';
     const titleY = isSpaceDeath ? 50 : 70;

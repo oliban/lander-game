@@ -2040,7 +2040,7 @@ export class GameScene extends Phaser.Scene {
       if (this.playerCount === 2) {
         message = `P1: ${this.players[0]?.deathMessage || 'Unknown'}\nP2: ${this.players[1]?.deathMessage || 'Unknown'}`;
       } else {
-        message = this.players[0]?.deathMessage || 'Mission failed!';
+        message = this.players[0]?.deathMessage || 'Mission failed successfully!';
       }
 
       this.transitionToGameOver({
