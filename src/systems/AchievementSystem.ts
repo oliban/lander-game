@@ -200,6 +200,10 @@ export class AchievementSystem {
     this.unlock('vodka_on_the_rocks');
   }
 
+  onPalaceReachedInRainWithHeadwind(): void {
+    this.unlock('against_all_odds');
+  }
+
   onGreenlandDestroyed(): void {
     this.unlock('climate_change');
   }

@@ -35,6 +35,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     tier: 'silver',
   },
   {
+    id: 'against_all_odds',
+    name: 'Against All Odds',
+    description: "Reach Putino's Palace in rain with headwind",
+    tier: 'gold',
+  },
+  {
     id: 'peacekeeper',
     name: 'Peacekeeper',
     description: 'Deliver the Peace Medal',
