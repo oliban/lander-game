@@ -9,3 +9,7 @@ asset_creation/
 .playwright-mcp/
 coverage/
 .claude/settings.local.json
+
+# Audio assets (filtered from history)
+public/assets/audio/
+*.mp3
